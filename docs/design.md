@@ -1,0 +1,439 @@
+# Duck Block Utils - Design Document
+
+## Overview
+
+`duck_block_utils` is a DuckDB extension providing format-agnostic utilities for manipulating document blocks. It operates on data conforming to the [Document Block Specification](https://github.com/teaguesterling/duckdb_markdown/blob/main/docs/doc_block_spec.md).
+
+## Goals
+
+1. **Format Independence**: Work with blocks from any source (markdown, HTML, XML, YAML, Pandoc)
+2. **SQL-Native**: Integrate naturally with DuckDB's query patterns
+3. **Composable**: Functions that chain together for complex transformations
+4. **Lightweight**: Minimal dependencies, fast execution
+5. **Interoperability**: Enable cross-format document workflows
+
+## Non-Goals
+
+- Format-specific parsing (handled by dedicated extensions)
+- File I/O (use DuckDB's native capabilities)
+- Complex document rendering (handled by format extensions)
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    User SQL Queries                          │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  duck_block_utils Extension                  │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │ Manipulation│  │  Extraction │  │    Validation       │  │
+│  │  Functions  │  │  Functions  │  │    Functions        │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│              Pandoc AST Conversion Layer                     │
+│     (JSON AST ↔ doc_blocks, no Pandoc dependency)           │
+├─────────────────────────────────────────────────────────────┤
+│                    Core Block Types                          │
+│              (doc_block STRUCT handling)                     │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                Format-Specific Extensions                    │
+│   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
+│   │ markdown │  │  webbed  │  │   yaml   │  │  panduck │   │
+│   └──────────┘  └──────────┘  └──────────┘  └──────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Key Design Decision: Pandoc AST in Utils
+
+The Pandoc JSON AST conversion lives in `duck_block_utils` (not `panduck`) because:
+
+1. **No external dependency**: Pure JSON ↔ struct transformation
+2. **Enables interop**: Any tool producing Pandoc JSON can integrate
+3. **Separation of concerns**: panduck focuses on Pandoc binary integration
+4. **Reusability**: Other extensions can leverage the conversion
+
+See [pandoc_ast_spec.md](pandoc_ast_spec.md) for detailed conversion rules.
+
+## Data Model
+
+### Input Handling
+
+Functions accept blocks in two forms:
+
+1. **LIST of STRUCTs**: `LIST(doc_block)` - for aggregate operations
+2. **Individual rows**: Via table functions that process row-by-row
+
+### Block STRUCT Schema
+
+```sql
+STRUCT(
+    block_type VARCHAR,
+    content VARCHAR,
+    level INTEGER,
+    encoding VARCHAR,
+    attributes MAP(VARCHAR, VARCHAR),
+    block_order INTEGER,
+    source_format VARCHAR,  -- optional
+    file_path VARCHAR       -- optional
+)
+```
+
+### Type Registration
+
+```sql
+-- Register the doc_block type on extension load
+CREATE TYPE doc_block AS STRUCT(
+    block_type VARCHAR,
+    content VARCHAR,
+    level INTEGER,
+    encoding VARCHAR,
+    attributes MAP(VARCHAR, VARCHAR),
+    block_order INTEGER
+);
+
+-- Extended version with provenance
+CREATE TYPE doc_block_ext AS STRUCT(
+    block_type VARCHAR,
+    content VARCHAR,
+    level INTEGER,
+    encoding VARCHAR,
+    attributes MAP(VARCHAR, VARCHAR),
+    block_order INTEGER,
+    source_format VARCHAR,
+    file_path VARCHAR
+);
+```
+
+## Function Categories
+
+### 1. Manipulation Functions
+
+Transform block sequences without parsing content.
+
+#### doc_blocks_filter
+```cpp
+// Signature
+LIST(doc_block) doc_blocks_filter(LIST(doc_block) blocks, VARCHAR[] types)
+
+// Implementation
+- Iterate through blocks
+- Keep blocks where block_type IN types
+- Preserve block_order values
+```
+
+#### doc_blocks_exclude
+```cpp
+// Signature
+LIST(doc_block) doc_blocks_exclude(LIST(doc_block) blocks, VARCHAR[] types)
+
+// Implementation
+- Iterate through blocks
+- Keep blocks where block_type NOT IN types
+```
+
+#### doc_blocks_merge
+```cpp
+// Signature
+LIST(doc_block) doc_blocks_merge(LIST(doc_block) blocks1, LIST(doc_block) blocks2)
+
+// Implementation
+- Concatenate blocks2 after blocks1
+- Renumber block_order: blocks2 orders += max(blocks1 orders) + 1
+```
+
+#### doc_blocks_reorder
+```cpp
+// Signature
+LIST(doc_block) doc_blocks_reorder(LIST(doc_block) blocks)
+
+// Implementation
+- Sort by current block_order
+- Reassign block_order as 0, 1, 2, ...
+```
+
+#### doc_blocks_transform
+```cpp
+// Signature
+LIST(doc_block) doc_blocks_transform(
+    LIST(doc_block) blocks,
+    MAP(VARCHAR, VARCHAR) type_mapping,     -- old_type -> new_type
+    MAP(VARCHAR, VARCHAR) content_mapping   -- optional content transforms
+)
+
+// Implementation
+- For each block:
+  - If block_type in type_mapping, replace with mapped value
+  - Apply content transformations if specified
+```
+
+### 2. Extraction Functions
+
+Extract specific information from blocks.
+
+#### doc_blocks_to_text
+```cpp
+// Signature
+VARCHAR doc_blocks_to_text(LIST(doc_block) blocks)
+
+// Implementation
+- For each block:
+  - If encoding = 'text': append content
+  - If encoding = 'json': parse and extract text values
+  - If encoding = 'yaml': parse and extract text values
+- Join with newlines
+- Skip 'hr', 'raw' blocks
+```
+
+#### doc_blocks_headings
+```cpp
+// Signature (returns table)
+TABLE(level INT, title VARCHAR, id VARCHAR, block_order INT)
+    doc_blocks_headings(LIST(doc_block) blocks)
+
+// Implementation
+- Filter to block_type = 'heading'
+- Return level, content as title, attributes['id'], block_order
+```
+
+#### doc_blocks_toc
+```cpp
+// Signature (returns table)
+TABLE(level INT, title VARCHAR, id VARCHAR, indent VARCHAR, block_order INT)
+    doc_blocks_toc(LIST(doc_block) blocks)
+
+// Implementation
+- Call doc_blocks_headings
+- Add indent column: repeat('  ', level - 1)
+- Optionally generate IDs from titles if missing
+```
+
+#### doc_blocks_code_blocks
+```cpp
+// Signature (returns table)
+TABLE(language VARCHAR, content VARCHAR, info_string VARCHAR, block_order INT, file_path VARCHAR)
+    doc_blocks_code_blocks(LIST(doc_block) blocks)
+
+// Implementation
+- Filter to block_type = 'code'
+- Extract language from attributes['language']
+- Include file_path if present
+```
+
+#### doc_blocks_links
+```cpp
+// Signature (returns table)
+TABLE(text VARCHAR, url VARCHAR, title VARCHAR, block_order INT)
+    doc_blocks_links(LIST(doc_block) blocks)
+
+// Implementation
+- Scan content of 'paragraph', 'list' blocks for markdown links
+- Parse [text](url "title") patterns
+- Return extracted links
+```
+
+### 3. Validation Functions
+
+Check conformance and quality.
+
+#### doc_blocks_validate
+```cpp
+// Signature
+STRUCT(valid BOOL, errors LIST(VARCHAR)) doc_blocks_validate(LIST(doc_block) blocks)
+
+// Implementation
+- Check each block:
+  - block_type is non-empty VARCHAR
+  - encoding is one of: 'text', 'json', 'yaml', 'html', 'xml'
+  - If encoding = 'json', content is valid JSON
+  - If encoding = 'yaml', content is valid YAML
+  - block_order is non-negative integer
+  - level is NULL or positive integer (0 for metadata)
+- Return aggregated results
+```
+
+#### doc_blocks_lint
+```cpp
+// Signature (returns table)
+TABLE(severity VARCHAR, message VARCHAR, block_order INT, suggestion VARCHAR)
+    doc_blocks_lint(LIST(doc_block) blocks)
+
+// Implementation
+Checks:
+- 'warning': Heading levels skip (h1 -> h3)
+- 'warning': Empty content in non-hr blocks
+- 'warning': Unknown block_type (not core, not namespaced)
+- 'error': Duplicate block_order values
+- 'warning': Missing language on code blocks
+- 'info': Large block_order gaps
+```
+
+#### doc_blocks_stats
+```cpp
+// Signature
+TABLE(block_type VARCHAR, count INT, avg_content_length FLOAT)
+    doc_blocks_stats(LIST(doc_block) blocks)
+
+// Implementation
+- Group by block_type
+- Count occurrences
+- Calculate average content length
+```
+
+### 4. Conversion Helpers
+
+Facilitate format conversion workflows.
+
+#### doc_blocks_set_source
+```cpp
+// Signature
+LIST(doc_block_ext) doc_blocks_set_source(LIST(doc_block) blocks, VARCHAR format)
+
+// Implementation
+- Add/set source_format field on all blocks
+- Return extended block type
+```
+
+#### doc_blocks_normalize
+```cpp
+// Signature
+LIST(doc_block) doc_blocks_normalize(LIST(doc_block) blocks)
+
+// Implementation
+- Convert namespaced types to nearest core type:
+  - 'md:footnote' -> 'paragraph' (with attribute marker)
+  - 'html:div' -> 'raw' (with format='html')
+  - 'html:h1' -> 'heading' (level=1)
+  - etc.
+- Preserve original type in attributes['original_type']
+```
+
+#### doc_blocks_map_types
+```cpp
+// Signature
+LIST(doc_block) doc_blocks_map_types(
+    LIST(doc_block) blocks,
+    MAP(VARCHAR, VARCHAR) mapping
+)
+
+// Implementation
+- Apply type mapping: if block_type in mapping keys, replace with mapped value
+- Leave unmapped types unchanged
+```
+
+## Implementation Strategy
+
+### Phase 1: Core Infrastructure
+- Extension scaffolding
+- Type registration (doc_block, doc_block_ext)
+- Basic manipulation: filter, exclude, merge, reorder
+
+### Phase 2: Extraction Functions
+- doc_blocks_to_text
+- doc_blocks_headings
+- doc_blocks_toc
+- doc_blocks_code_blocks
+
+### Phase 3: Validation
+- doc_blocks_validate
+- doc_blocks_lint
+- doc_blocks_stats
+
+### Phase 4: Conversion Helpers
+- doc_blocks_set_source
+- doc_blocks_normalize
+- doc_blocks_map_types
+- doc_blocks_links
+
+### Phase 5: Advanced Features
+- Content-aware transformations
+- Cross-reference resolution
+- Document diffing
+
+## Dependencies
+
+### Required
+- DuckDB (>= 1.0.0)
+
+### Optional
+- yyjson (for JSON parsing in content extraction)
+- yaml-cpp (for YAML parsing, if supporting YAML content)
+
+## File Structure
+
+```
+duckdb_duck_block_utils/
+├── CMakeLists.txt
+├── Makefile
+├── README.md
+├── LICENSE
+├── docs/
+│   ├── design.md           # This document
+│   └── api.md              # API reference
+├── src/
+│   ├── duck_block_utils_extension.cpp
+│   ├── include/
+│   │   ├── duck_block_utils.hpp
+│   │   ├── block_types.hpp
+│   │   ├── manipulation.hpp
+│   │   ├── extraction.hpp
+│   │   ├── validation.hpp
+│   │   └── conversion.hpp
+│   ├── block_types.cpp      # Type registration
+│   ├── manipulation.cpp     # Filter, merge, etc.
+│   ├── extraction.cpp       # to_text, headings, etc.
+│   ├── validation.cpp       # validate, lint, stats
+│   └── conversion.cpp       # normalize, map_types
+└── test/
+    └── sql/
+        ├── manipulation.test
+        ├── extraction.test
+        ├── validation.test
+        └── conversion.test
+```
+
+## Testing Strategy
+
+### Unit Tests
+- Each function tested in isolation
+- Edge cases: empty lists, single blocks, malformed data
+
+### Integration Tests
+- Cross-extension workflows with duckdb_markdown
+- Round-trip transformations
+
+### Property-Based Tests
+- merge(a, b) length = len(a) + len(b)
+- filter then exclude = original (for complementary types)
+- reorder preserves block count
+
+## Performance Considerations
+
+### Memory
+- Avoid copying block content when possible
+- Use string_view for content inspection
+- Stream large block lists rather than materializing
+
+### Parallelism
+- Manipulation functions are embarrassingly parallel
+- Validation can parallelize per-block checks
+- Extraction may need sequential processing for some operations
+
+## Future Considerations
+
+### Potential Extensions
+- **doc_blocks_diff**: Compare two block sequences
+- **doc_blocks_patch**: Apply diff to blocks
+- **doc_blocks_search**: Full-text search within blocks
+- **doc_blocks_index**: Create searchable index
+
+### Ecosystem Integration
+- Shared type definitions across extensions
+- Common test fixtures
+- Unified documentation format
