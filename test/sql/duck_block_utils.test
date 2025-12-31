@@ -1,0 +1,153 @@
+# name: test/sql/duck_block_utils.test
+# description: test duck_block_utils extension - types and manipulation functions
+# group: [duck_block_utils]
+
+# Require statement will ensure this test is run with this extension loaded
+require duck_block_utils
+
+# ============================================================================
+# Type Tests - Using builder functions which return proper struct types
+# ============================================================================
+
+# Test doc_heading returns correct structure
+query I
+SELECT doc_heading('Test', 1).block_type;
+----
+heading
+
+# Test doc_paragraph with NULL level
+query I
+SELECT doc_paragraph('Hello').level IS NULL;
+----
+true
+
+# Test doc_code with attributes
+query I
+SELECT doc_code('print(1)', 'python').attributes['language'];
+----
+python
+
+# ============================================================================
+# doc_blocks_filter Tests
+# ============================================================================
+
+# Test filter with single type
+query I
+SELECT len(doc_blocks_filter(
+    [doc_heading('Title', 1), doc_paragraph('Text')],
+    ['heading']
+));
+----
+1
+
+# Test filter with multiple types
+query I
+SELECT len(doc_blocks_filter(
+    [doc_heading('Title', 1), doc_paragraph('Text'), doc_code('x=1', 'py')],
+    ['heading', 'code']
+));
+----
+2
+
+# Test filter with no matches
+query I
+SELECT len(doc_blocks_filter(
+    [doc_paragraph('Text')],
+    ['heading']
+));
+----
+0
+
+# Test filter preserves original block_order
+query I
+SELECT doc_blocks_filter(
+    [doc_heading('A', 1), doc_paragraph('B')],
+    ['heading']
+)[1].block_order;
+----
+0
+
+# ============================================================================
+# doc_blocks_exclude Tests
+# ============================================================================
+
+# Test exclude single type
+query I
+SELECT len(doc_blocks_exclude(
+    [doc_heading('Title', 1), doc_paragraph('Text'), doc_hr()],
+    ['hr']
+));
+----
+2
+
+# Test exclude multiple types
+query I
+SELECT len(doc_blocks_exclude(
+    [doc_heading('Title', 1), doc_metadata('title: Test'), doc_paragraph('Text')],
+    ['metadata', 'hr']
+));
+----
+2
+
+# ============================================================================
+# doc_blocks_merge Tests
+# ============================================================================
+
+# Test merge length
+query I
+SELECT len(doc_blocks_merge(
+    [doc_heading('A', 1)],
+    [doc_paragraph('B')]
+));
+----
+2
+
+# Test merge adjusts block_order for second list
+query I
+SELECT doc_blocks_merge(
+    [doc_heading('A', 1)],
+    [doc_paragraph('B')]
+)[2].block_order;
+----
+1
+
+# ============================================================================
+# doc_blocks_reorder Tests
+# ============================================================================
+
+# Test reorder assigns sequential order starting from 0
+query I
+SELECT doc_blocks_reorder(
+    [doc_heading('A', 1), doc_paragraph('B')]
+)[1].block_order;
+----
+0
+
+query I
+SELECT doc_blocks_reorder(
+    [doc_heading('A', 1), doc_paragraph('B')]
+)[2].block_order;
+----
+1
+
+# ============================================================================
+# doc_blocks_slice Tests
+# ============================================================================
+
+# Test slice extracts correct range
+query I
+SELECT len(doc_blocks_slice(
+    doc_assemble([doc_heading('A', 1), doc_paragraph('B'), doc_code('C', 'py'), doc_paragraph('D')]),
+    1, 2
+));
+----
+2
+
+# Test slice with no matches returns empty
+query I
+SELECT len(doc_blocks_slice(
+    [doc_heading('A', 1)],
+    5, 10
+));
+----
+0

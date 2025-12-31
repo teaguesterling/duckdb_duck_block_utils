@@ -1,0 +1,283 @@
+# name: test/sql/type_functions.test
+# description: test duck_block_utils extension - type functions
+# group: [duck_block_utils]
+
+require duck_block_utils
+
+# ============================================================================
+# duck_block Constructor Tests
+# ============================================================================
+
+# Test full constructor
+query I
+SELECT duck_block('heading', 'Title', 1, 'text', MAP{}, 0).block_type;
+----
+heading
+
+query I
+SELECT duck_block('heading', 'Title', 1, 'text', MAP{}, 0).content;
+----
+Title
+
+query I
+SELECT duck_block('heading', 'Title', 1, 'text', MAP{}, 0).level;
+----
+1
+
+# Test simple constructor (block_type, content)
+query I
+SELECT duck_block('paragraph', 'Hello world').block_type;
+----
+paragraph
+
+query I
+SELECT duck_block('paragraph', 'Hello world').content;
+----
+Hello world
+
+query I
+SELECT duck_block('paragraph', 'Hello world').encoding;
+----
+text
+
+query I
+SELECT duck_block('paragraph', 'Hello world').block_order;
+----
+0
+
+# ============================================================================
+# duck_block_valid Tests
+# ============================================================================
+
+# Test valid blocks return true
+query I
+SELECT duck_block_valid(doc_heading('Title', 1));
+----
+true
+
+query I
+SELECT duck_block_valid(doc_paragraph('Text'));
+----
+true
+
+query I
+SELECT duck_block_valid(doc_code('x=1', 'python'));
+----
+true
+
+# Test valid block types
+query I
+SELECT duck_block_valid(duck_block('heading', 'Test'));
+----
+true
+
+query I
+SELECT duck_block_valid(duck_block('paragraph', 'Test'));
+----
+true
+
+query I
+SELECT duck_block_valid(duck_block('code', 'Test'));
+----
+true
+
+query I
+SELECT duck_block_valid(duck_block('blockquote', 'Test'));
+----
+true
+
+query I
+SELECT duck_block_valid(duck_block('list', 'Test'));
+----
+true
+
+query I
+SELECT duck_block_valid(duck_block('table', 'Test'));
+----
+true
+
+query I
+SELECT duck_block_valid(duck_block('hr', ''));
+----
+true
+
+query I
+SELECT duck_block_valid(duck_block('metadata', 'Test'));
+----
+true
+
+query I
+SELECT duck_block_valid(duck_block('image', 'Test'));
+----
+true
+
+query I
+SELECT duck_block_valid(duck_block('raw', 'Test'));
+----
+true
+
+# Test invalid block type returns false
+query I
+SELECT duck_block_valid(duck_block('invalid_type', 'Test'));
+----
+false
+
+# ============================================================================
+# Field Accessor Tests
+# ============================================================================
+
+# Test duck_block_type
+query I
+SELECT duck_block_type(doc_heading('Title', 1));
+----
+heading
+
+query I
+SELECT duck_block_type(doc_paragraph('Text'));
+----
+paragraph
+
+# Test duck_block_content
+query I
+SELECT duck_block_content(doc_heading('My Title', 1));
+----
+My Title
+
+query I
+SELECT duck_block_content(doc_paragraph('Hello world'));
+----
+Hello world
+
+# Test duck_block_level
+query I
+SELECT duck_block_level(doc_heading('Title', 2));
+----
+2
+
+query I
+SELECT duck_block_level(doc_paragraph('Text')) IS NULL;
+----
+true
+
+# Test duck_block_encoding
+query I
+SELECT duck_block_encoding(doc_paragraph('Text'));
+----
+text
+
+query I
+SELECT duck_block_encoding(doc_metadata('title: Test'));
+----
+yaml
+
+query I
+SELECT duck_block_encoding(doc_list_block(['A', 'B']));
+----
+json
+
+# Test duck_block_order
+query I
+SELECT duck_block_order(doc_heading('Title', 1));
+----
+0
+
+query I
+SELECT duck_block_order(doc_assemble([doc_heading('A', 1), doc_paragraph('B')])[2]);
+----
+1
+
+# Test duck_block_attr
+query I
+SELECT duck_block_attr(doc_code('x=1', 'python'), 'language');
+----
+python
+
+query I
+SELECT duck_block_attr(doc_image('/img.png', 'Alt'), 'src');
+----
+/img.png
+
+query I
+SELECT duck_block_attr(doc_paragraph('Text'), 'nonexistent') IS NULL;
+----
+true
+
+# ============================================================================
+# Setter Function Tests
+# ============================================================================
+
+# Test duck_block_set_order
+query I
+SELECT duck_block_order(duck_block_set_order(doc_heading('Title', 1), 42));
+----
+42
+
+query I
+SELECT duck_block_type(duck_block_set_order(doc_heading('Title', 1), 42));
+----
+heading
+
+# Test duck_block_set_content
+query I
+SELECT duck_block_content(duck_block_set_content(doc_heading('Old', 1), 'New'));
+----
+New
+
+query I
+SELECT duck_block_level(duck_block_set_content(doc_heading('Old', 2), 'New'));
+----
+2
+
+# Test duck_block_set_level
+query I
+SELECT duck_block_level(duck_block_set_level(doc_heading('Title', 1), 3));
+----
+3
+
+query I
+SELECT duck_block_content(duck_block_set_level(doc_heading('Title', 1), 3));
+----
+Title
+
+# ============================================================================
+# Integration Tests
+# ============================================================================
+
+# Test using type functions with manipulation
+query I
+SELECT len(doc_blocks_filter(
+    [duck_block('heading', 'A'), duck_block('paragraph', 'B')],
+    ['heading']
+));
+----
+1
+
+# Test duck_block works with doc_assemble
+query I
+SELECT duck_block_order(doc_assemble([
+    duck_block('heading', 'Title'),
+    duck_block('paragraph', 'Text')
+])[2]);
+----
+1
+
+# Test chaining setters
+query I
+SELECT duck_block_content(
+    duck_block_set_level(
+        duck_block_set_content(doc_heading('Old', 1), 'New'),
+        3
+    )
+);
+----
+New
+
+query I
+SELECT duck_block_level(
+    duck_block_set_level(
+        duck_block_set_content(doc_heading('Old', 1), 'New'),
+        3
+    )
+);
+----
+3

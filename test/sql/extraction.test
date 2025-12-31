@@ -1,0 +1,222 @@
+# name: test/sql/extraction.test
+# description: test duck_block_utils extension - extraction functions
+# group: [duck_block_utils]
+
+require duck_block_utils
+
+# ============================================================================
+# doc_blocks_to_text Tests
+# ============================================================================
+
+# Test basic text extraction - verify it contains expected content
+query I
+SELECT length(doc_blocks_to_text([
+    doc_heading('Title', 1),
+    doc_paragraph('Hello world'),
+    doc_paragraph('Second paragraph')
+])) > 0;
+----
+true
+
+# Test text includes all blocks
+query I
+SELECT doc_blocks_to_text([
+    doc_heading('Title', 1),
+    doc_paragraph('Hello world'),
+    doc_paragraph('Second paragraph')
+]) LIKE '%Title%Hello world%Second paragraph%';
+----
+true
+
+# Test with custom separator
+query I
+SELECT doc_blocks_to_text([
+    doc_paragraph('Line 1'),
+    doc_paragraph('Line 2')
+], ' | ');
+----
+Line 1 | Line 2
+
+# Test that hr blocks are skipped
+query I
+SELECT doc_blocks_to_text([
+    doc_paragraph('Before'),
+    doc_hr(),
+    doc_paragraph('After')
+]) LIKE '%Before%After%';
+----
+true
+
+# Test that raw blocks are skipped
+query I
+SELECT doc_blocks_to_text([
+    doc_paragraph('Text'),
+    doc_raw('<div>html</div>')
+]) = 'Text';
+----
+true
+
+# Test empty result for empty list
+query I
+SELECT doc_blocks_to_text([]) = '';
+----
+true
+
+# ============================================================================
+# doc_blocks_headings Tests
+# ============================================================================
+
+# Test extracting headings
+query I
+SELECT len(doc_blocks_headings([
+    doc_heading('Title', 1),
+    doc_paragraph('Text'),
+    doc_heading('Section 1', 2),
+    doc_paragraph('More text'),
+    doc_heading('Section 2', 2)
+]));
+----
+3
+
+# Test heading structure - level
+query I
+SELECT doc_blocks_headings([doc_heading('Title', 1)])[1].level;
+----
+1
+
+# Test heading structure - title
+query I
+SELECT doc_blocks_headings([doc_heading('My Title', 2)])[1].title;
+----
+My Title
+
+# Test heading structure - block_order
+query I
+SELECT doc_blocks_headings(doc_assemble([
+    doc_heading('First', 1),
+    doc_paragraph('Text'),
+    doc_heading('Second', 2)
+]))[2].block_order;
+----
+2
+
+# Test non-headings are excluded
+query I
+SELECT len(doc_blocks_headings([
+    doc_paragraph('Text'),
+    doc_code('code', 'py'),
+    doc_hr()
+]));
+----
+0
+
+# ============================================================================
+# doc_blocks_code_blocks Tests
+# ============================================================================
+
+# Test extracting code blocks
+query I
+SELECT len(doc_blocks_code_blocks([
+    doc_paragraph('Intro'),
+    doc_code('print(1)', 'python'),
+    doc_paragraph('More text'),
+    doc_code('echo "hi"', 'bash')
+]));
+----
+2
+
+# Test code block structure - language
+query I
+SELECT doc_blocks_code_blocks([doc_code('x=1', 'python')])[1].language;
+----
+python
+
+# Test code block structure - content
+query I
+SELECT doc_blocks_code_blocks([doc_code('print("hello")', 'py')])[1].content;
+----
+print("hello")
+
+# Test code without language
+query I
+SELECT doc_blocks_code_blocks([doc_code('plain code')])[1].language;
+----
+(empty)
+
+# Test non-code blocks are excluded
+query I
+SELECT len(doc_blocks_code_blocks([
+    doc_heading('Title', 1),
+    doc_paragraph('Text')
+]));
+----
+0
+
+# ============================================================================
+# doc_blocks_stats Tests
+# ============================================================================
+
+# Test stats aggregation
+query I
+SELECT len(doc_blocks_stats([
+    doc_heading('Title', 1),
+    doc_paragraph('Text'),
+    doc_paragraph('More text'),
+    doc_code('x=1', 'py')
+]));
+----
+3
+
+# Test stats counts correctly
+query I
+SELECT doc_blocks_stats([
+    doc_paragraph('A'),
+    doc_paragraph('BB'),
+    doc_paragraph('CCC')
+])[1].count;
+----
+3
+
+# Test total content length
+query I
+SELECT doc_blocks_stats([
+    doc_paragraph('A'),
+    doc_paragraph('BB'),
+    doc_paragraph('CCC')
+])[1].total_content_length;
+----
+6
+
+# Test empty list returns empty stats
+query I
+SELECT len(doc_blocks_stats([]));
+----
+0
+
+# ============================================================================
+# Integration Tests
+# ============================================================================
+
+# Test extracting headings from a complex document
+query I
+SELECT len(doc_blocks_headings(doc_assemble([
+    doc_metadata('title: Test'),
+    doc_heading('Introduction', 1),
+    doc_paragraph('Welcome'),
+    doc_heading('Chapter 1', 2),
+    doc_paragraph('Content'),
+    doc_heading('Chapter 2', 2),
+    doc_code('example', 'py')
+])));
+----
+3
+
+# Test text extraction from assembled document
+query I
+SELECT length(doc_blocks_to_text(doc_assemble([
+    doc_heading('Title', 1),
+    doc_paragraph('Hello'),
+    doc_paragraph('World')
+]))) > 0;
+----
+true

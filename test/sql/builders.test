@@ -1,0 +1,285 @@
+# name: test/sql/builders.test
+# description: test duck_block_utils extension - builder functions
+# group: [duck_block_utils]
+
+require duck_block_utils
+
+# ============================================================================
+# doc_heading Tests
+# ============================================================================
+
+# Test doc_heading creates correct block_type
+query I
+SELECT doc_heading('My Title', 1).block_type;
+----
+heading
+
+# Test doc_heading sets content
+query I
+SELECT doc_heading('My Title', 1).content;
+----
+My Title
+
+# Test doc_heading sets level
+query I
+SELECT doc_heading('My Title', 2).level;
+----
+2
+
+# Test doc_heading sets encoding to text
+query I
+SELECT doc_heading('My Title', 1).encoding;
+----
+text
+
+# Test doc_heading initializes block_order to 0
+query I
+SELECT doc_heading('My Title', 1).block_order;
+----
+0
+
+# ============================================================================
+# doc_paragraph Tests
+# ============================================================================
+
+# Test doc_paragraph creates paragraph block
+query I
+SELECT doc_paragraph('Hello world').block_type;
+----
+paragraph
+
+# Test doc_paragraph content
+query I
+SELECT doc_paragraph('Hello world').content;
+----
+Hello world
+
+# Test doc_paragraph level is NULL
+query I
+SELECT doc_paragraph('Hello world').level IS NULL;
+----
+true
+
+# ============================================================================
+# doc_code Tests
+# ============================================================================
+
+# Test doc_code with language
+query I
+SELECT doc_code('print(1)', 'python').block_type;
+----
+code
+
+query I
+SELECT doc_code('print(1)', 'python').content;
+----
+print(1)
+
+query I
+SELECT doc_code('print(1)', 'python').attributes['language'];
+----
+python
+
+# Test doc_code without language (single arg)
+query I
+SELECT doc_code('print(1)').block_type;
+----
+code
+
+# ============================================================================
+# doc_blockquote Tests
+# ============================================================================
+
+# Test doc_blockquote with level
+query I
+SELECT doc_blockquote('Quote text', 2).block_type;
+----
+blockquote
+
+query I
+SELECT doc_blockquote('Quote text', 2).level;
+----
+2
+
+# Test doc_blockquote single arg defaults level to 1
+query I
+SELECT doc_blockquote('Quote text').level;
+----
+1
+
+# ============================================================================
+# doc_list_block Tests
+# ============================================================================
+
+# Test doc_list_block unordered
+query I
+SELECT doc_list_block(['First', 'Second', 'Third']).block_type;
+----
+list
+
+query I
+SELECT doc_list_block(['First', 'Second', 'Third']).encoding;
+----
+json
+
+query I
+SELECT doc_list_block(['First', 'Second', 'Third']).attributes['ordered'];
+----
+false
+
+# Test doc_list_block ordered
+query I
+SELECT doc_list_block(['First', 'Second'], true).attributes['ordered'];
+----
+true
+
+# Test doc_list_block content is JSON array
+query I
+SELECT doc_list_block(['A', 'B']).content;
+----
+["A","B"]
+
+# ============================================================================
+# doc_hr Tests
+# ============================================================================
+
+# Test doc_hr creates hr block
+query I
+SELECT doc_hr().block_type;
+----
+hr
+
+query I
+SELECT doc_hr().content;
+----
+(empty)
+
+# ============================================================================
+# doc_metadata Tests
+# ============================================================================
+
+# Test doc_metadata creates metadata block
+query I
+SELECT doc_metadata('title: Test').block_type;
+----
+metadata
+
+query I
+SELECT doc_metadata('title: Test').content;
+----
+title: Test
+
+query I
+SELECT doc_metadata('title: Test').encoding;
+----
+yaml
+
+query I
+SELECT doc_metadata('title: Test').level;
+----
+0
+
+# ============================================================================
+# doc_image Tests
+# ============================================================================
+
+# Test doc_image with all args
+query I
+SELECT doc_image('/path/to/img.png', 'Alt text', 'Title').block_type;
+----
+image
+
+query I
+SELECT doc_image('/path/to/img.png', 'Alt text', 'Title').attributes['src'];
+----
+/path/to/img.png
+
+query I
+SELECT doc_image('/path/to/img.png', 'Alt text', 'Title').attributes['alt'];
+----
+Alt text
+
+query I
+SELECT doc_image('/path/to/img.png', 'Alt text', 'Title').attributes['title'];
+----
+Title
+
+# Test doc_image with 2 args
+query I
+SELECT doc_image('/path/to/img.png', 'Alt text').attributes['src'];
+----
+/path/to/img.png
+
+# Test doc_image with 1 arg
+query I
+SELECT doc_image('/path/to/img.png').attributes['src'];
+----
+/path/to/img.png
+
+# ============================================================================
+# doc_raw Tests
+# ============================================================================
+
+# Test doc_raw with format
+query I
+SELECT doc_raw('<div>HTML</div>', 'html').block_type;
+----
+raw
+
+query I
+SELECT doc_raw('<div>HTML</div>', 'html').content;
+----
+<div>HTML</div>
+
+query I
+SELECT doc_raw('<div>HTML</div>', 'html').attributes['format'];
+----
+html
+
+query I
+SELECT doc_raw('<div>HTML</div>', 'html').encoding;
+----
+html
+
+# Test doc_raw single arg defaults to html
+query I
+SELECT doc_raw('<br>').encoding;
+----
+html
+
+query I
+SELECT doc_raw('<br>').attributes['format'];
+----
+html
+
+# ============================================================================
+# Integration: Using builders with manipulation functions
+# ============================================================================
+
+# Test filtering builder-created blocks
+query I
+SELECT len(doc_blocks_filter(
+    [doc_heading('Title', 1), doc_paragraph('Text'), doc_code('x=1', 'py')],
+    ['heading', 'code']
+));
+----
+2
+
+# Test merging builder-created blocks
+query I
+SELECT len(doc_blocks_merge(
+    [doc_heading('Title', 1)],
+    [doc_paragraph('Text')]
+));
+----
+2
+
+# Test reordering builder-created blocks
+query I
+SELECT doc_blocks_reorder([
+    doc_heading('Title', 1),
+    doc_paragraph('Text'),
+    doc_code('code', 'py')
+])[2].block_order;
+----
+1
