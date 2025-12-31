@@ -1,0 +1,62 @@
+site_name: duck_block_utils
+site_description: DuckDB extension for document block manipulation
+site_url: https://duck-block-utils.readthedocs.io/
+
+repo_name: duck_block_utils
+repo_url: https://github.com/yourusername/duck_block_utils
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: amber
+      accent: orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: amber
+      accent: orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+
+plugins:
+  - search
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - tables
+  - admonition
+  - pymdownx.details
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started: getting_started.md
+  - API Reference: api_reference.md
+  - Type Functions: type_functions.md
+  - Examples: examples.md
+  - Integration: integration.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/yourusername/duck_block_utils
