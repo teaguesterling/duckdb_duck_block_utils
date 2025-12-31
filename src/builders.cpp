@@ -8,9 +8,9 @@ namespace duckdb {
 static Value CreateAttributesMap(const map<string, string> &attrs) {
 	vector<Value> keys;
 	vector<Value> values;
-	for (auto &[k, v] : attrs) {
-		keys.push_back(Value(k));
-		values.push_back(Value(v));
+	for (auto &entry : attrs) {
+		keys.push_back(Value(entry.first));
+		values.push_back(Value(entry.second));
 	}
 	return Value::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR, keys, values);
 }
