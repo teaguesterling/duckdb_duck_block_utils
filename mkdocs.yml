@@ -2,8 +2,8 @@ site_name: duck_block_utils
 site_description: DuckDB extension for document block manipulation
 site_url: https://duck-block-utils.readthedocs.io/
 
-repo_name: duck_block_utils
-repo_url: https://github.com/yourusername/duck_block_utils
+repo_name: duckdb_duck_block_utils
+repo_url: https://github.com/teaguesterling/duckdb_duck_block_utils
 
 theme:
   name: material
@@ -59,4 +59,4 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/yourusername/duck_block_utils
+      link: https://github.com/teaguesterling/duckdb_duck_block_utils
