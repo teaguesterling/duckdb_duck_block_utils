@@ -20,9 +20,15 @@ SELECT doc_heading('My Title', 1).content;
 ----
 My Title
 
-# Test doc_heading sets level
+# Test doc_heading sets heading_level in attributes (not level field)
 query I
-SELECT doc_heading('My Title', 2).level;
+SELECT doc_heading('My Title', 2).level IS NULL;
+----
+true
+
+# Test doc_heading stores level in attributes
+query I
+SELECT doc_heading('My Title', 2).attributes['heading_level'];
 ----
 2
 

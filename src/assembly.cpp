@@ -16,15 +16,18 @@ static Value CreateElementWithOrder(const Value &element, int32_t new_order) {
 	return Value::STRUCT(BlockTypes::DocElementType(), std::move(children));
 }
 
-// Helper to create a heading block
-static Value CreateHeadingBlock(const string &title, int32_t level, int32_t element_order) {
+// Helper to create a heading block with heading_level in attributes
+static Value CreateHeadingBlock(const string &title, int32_t heading_level, int32_t element_order) {
 	child_list_t<Value> struct_values;
 	struct_values.push_back(make_pair("kind", Value(BlockTypes::KIND_BLOCK)));
 	struct_values.push_back(make_pair("element_type", Value(BlockTypes::TYPE_HEADING)));
 	struct_values.push_back(make_pair("content", Value(title)));
-	struct_values.push_back(make_pair("level", Value(level)));
+	struct_values.push_back(make_pair("level", Value()));  // NULL - structural level not used for headings
 	struct_values.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_TEXT)));
-	struct_values.push_back(make_pair("attributes", CreateAttributesMap({}, {})));
+	// Store heading level in attributes
+	vector<Value> keys = {Value("heading_level")};
+	vector<Value> values = {Value(std::to_string(heading_level))};
+	struct_values.push_back(make_pair("attributes", CreateAttributesMap(keys, values)));
 	struct_values.push_back(make_pair("element_order", Value(element_order)));
 
 	return Value::STRUCT(std::move(struct_values));
@@ -37,6 +40,69 @@ static int32_t GetElementLevel(const Value &element) {
 		return -1;
 	}
 	return children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+}
+
+// Helper to get heading_level from attributes, falling back to level field for backward compatibility
+static int32_t GetHeadingLevel(const Value &element) {
+	auto &children = StructValue::GetChildren(element);
+
+	// First check attributes for heading_level
+	auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
+	if (!attrs.IsNull()) {
+		auto &map_entries = MapValue::GetChildren(attrs);
+		for (auto &entry : map_entries) {
+			auto &kv = StructValue::GetChildren(entry);
+			if (!kv[0].IsNull() && kv[0].GetValue<string>() == "heading_level") {
+				if (!kv[1].IsNull()) {
+					return std::stoi(kv[1].GetValue<string>());
+				}
+			}
+		}
+	}
+
+	// Fall back to level field for backward compatibility
+	if (!children[BlockTypes::LEVEL_IDX].IsNull()) {
+		return children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+	}
+
+	return -1;
+}
+
+// Helper to create an element with updated heading_level attribute
+static Value CreateElementWithHeadingLevel(const Value &element, int32_t new_heading_level) {
+	auto children = StructValue::GetChildren(element);
+
+	// Rebuild attributes map with updated heading_level
+	auto &old_attrs = children[BlockTypes::ATTRIBUTES_IDX];
+	vector<Value> keys;
+	vector<Value> values;
+
+	bool found = false;
+	if (!old_attrs.IsNull()) {
+		auto &map_entries = MapValue::GetChildren(old_attrs);
+		for (auto &entry : map_entries) {
+			auto &kv = StructValue::GetChildren(entry);
+			if (!kv[0].IsNull()) {
+				string key = kv[0].GetValue<string>();
+				if (key == "heading_level") {
+					keys.push_back(Value(key));
+					values.push_back(Value(std::to_string(new_heading_level)));
+					found = true;
+				} else {
+					keys.push_back(kv[0]);
+					values.push_back(kv[1]);
+				}
+			}
+		}
+	}
+
+	if (!found) {
+		keys.push_back(Value("heading_level"));
+		values.push_back(Value(std::to_string(new_heading_level)));
+	}
+
+	children[BlockTypes::ATTRIBUTES_IDX] = CreateAttributesMap(keys, values);
+	return Value::STRUCT(BlockTypes::DocElementType(), std::move(children));
 }
 
 // Helper to get element_type from an element
@@ -145,15 +211,19 @@ void AssemblyFunctions::DocRebaseLevelsFun(DataChunk &args, ExpressionState &sta
 			}
 
 			auto element_type = GetElementType(block);
-			auto level = GetElementLevel(block);
 
-			// Only adjust level for headings (and other blocks that have levels)
-			if (element_type == BlockTypes::TYPE_HEADING && level > 0) {
-				int32_t new_level = level + offset;
-				// Clamp to valid heading levels (1-6)
-				if (new_level < 1) new_level = 1;
-				if (new_level > 6) new_level = 6;
-				rebased.push_back(CreateElementWithLevel(block, new_level));
+			// Only adjust heading_level for headings
+			if (element_type == BlockTypes::TYPE_HEADING) {
+				auto heading_level = GetHeadingLevel(block);
+				if (heading_level > 0) {
+					int32_t new_level = heading_level + offset;
+					// Clamp to valid heading levels (1-6)
+					if (new_level < 1) new_level = 1;
+					if (new_level > 6) new_level = 6;
+					rebased.push_back(CreateElementWithHeadingLevel(block, new_level));
+				} else {
+					rebased.push_back(block);
+				}
 			} else {
 				rebased.push_back(block);
 			}

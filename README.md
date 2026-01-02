@@ -62,27 +62,29 @@ STRUCT(
     kind VARCHAR,                       -- 'block' or 'inline'
     element_type VARCHAR,               -- 'heading', 'paragraph', 'text', 'link', etc.
     content VARCHAR,                    -- Primary content
-    level INTEGER,                      -- Hierarchy level (NULL if N/A)
+    level INTEGER,                      -- Structural nesting depth (NOT heading level)
     encoding VARCHAR,                   -- 'text', 'json', 'yaml', 'html', 'xml'
-    attributes MAP(VARCHAR, VARCHAR),   -- Type-specific metadata
+    attributes MAP(VARCHAR, VARCHAR),   -- Type-specific metadata (heading_level, href, etc.)
     element_order INTEGER               -- Position in document (0-indexed)
 )
 ```
 
 ### Block Types (kind='block')
 
-| Type | Description | Level Used | Typical Encoding |
-|------|-------------|------------|------------------|
-| `heading` | Section headings (h1-h6) | Yes (1-6) | text |
-| `paragraph` | Body text | No | text |
-| `code` | Code blocks | No | text |
-| `blockquote` | Quoted text | Optional | text |
-| `list` | Ordered/unordered lists | Optional | json |
-| `table` | Tabular data | No | json |
-| `hr` | Horizontal rule | No | text |
-| `metadata` | YAML frontmatter | No | yaml |
-| `image` | Image references | No | text |
-| `raw` | Raw HTML/XML | No | html/xml |
+| Type | Description | level Field | Key Attributes |
+|------|-------------|-------------|----------------|
+| `heading` | Section headings (h1-h6) | NULL | `heading_level` (1-6) |
+| `paragraph` | Body text | NULL | |
+| `code` | Code blocks | NULL | `language` |
+| `blockquote` | Quoted text | Nesting depth | |
+| `list` | Ordered/unordered lists | NULL | `ordered` |
+| `table` | Tabular data | NULL | |
+| `hr` | Horizontal rule | NULL | |
+| `metadata` | YAML frontmatter | NULL | |
+| `image` | Image references | NULL | `src`, `alt`, `title` |
+| `raw` | Raw HTML/XML | NULL | `format` |
+
+**Note:** For headings, the semantic level (h1-h6) is stored in `attributes['heading_level']`, not the `level` field. This separates heading semantics from structural nesting depth.
 
 ### Inline Types (kind='inline')
 

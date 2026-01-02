@@ -1,7 +1,7 @@
 # Duck Blocks Canonical Specification
 
-**Version:** 0.3.0
-**Status:** Canonical (Unified doc_element type)
+**Version:** 0.4.0
+**Status:** Canonical (Unified doc_element type, heading_level attribute)
 
 This document defines the canonical representation for duck_blocks - structured document elements for DuckDB. Extensions that produce or consume duck_blocks (markdown, webbed, etc.) MUST conform to this specification.
 
@@ -16,9 +16,9 @@ STRUCT(
     kind          VARCHAR,                      -- 'block' or 'inline'
     element_type  VARCHAR,                      -- Element type identifier
     content       VARCHAR,                      -- Text content (see Content Rules)
-    level         INTEGER,                      -- Semantic level (heading level, nesting depth)
+    level         INTEGER,                      -- Structural nesting depth (NOT heading level)
     encoding      VARCHAR,                      -- Content encoding hint
-    attributes    MAP(VARCHAR, VARCHAR),        -- Key-value metadata
+    attributes    MAP(VARCHAR, VARCHAR),        -- Key-value metadata (includes heading_level)
     element_order INTEGER                       -- Position in sequence
 )
 ```
@@ -32,18 +32,29 @@ STRUCT(
 
 ## Block Types (kind='block')
 
-| Type | Description | level Usage | encoding Values |
-|------|-------------|-------------|-----------------|
-| `heading` | Section heading | 1-6 (h1-h6) | `text` |
-| `paragraph` | Text paragraph | NULL | `text`, `markdown` |
-| `code` | Code block | NULL | `text` |
-| `blockquote` | Quoted content | Nesting depth | `text`, `markdown` |
-| `list` | List container | NULL | `json` (items array) |
-| `table` | Table | NULL | `json` |
-| `hr` | Horizontal rule | NULL | `text` |
-| `metadata` | YAML frontmatter | 0 | `yaml` |
-| `image` | Block-level image | NULL | `text` (src in attrs) |
-| `raw` | Raw format content | NULL | format name |
+| Type | Description | level Usage | encoding Values | Key Attributes |
+|------|-------------|-------------|-----------------|----------------|
+| `heading` | Section heading | NULL | `text` | `heading_level` (1-6) |
+| `paragraph` | Text paragraph | NULL | `text`, `markdown` | |
+| `code` | Code block | NULL | `text` | `language` |
+| `blockquote` | Quoted content | Nesting depth | `text`, `markdown` | |
+| `list` | List container | NULL | `json` (items array) | `ordered` |
+| `table` | Table | NULL | `json` | |
+| `hr` | Horizontal rule | NULL | `text` | |
+| `metadata` | YAML frontmatter | 0 | `yaml` | |
+| `image` | Block-level image | NULL | `text` | `src`, `alt`, `title` |
+| `raw` | Raw format content | NULL | format name | `format` |
+
+### Heading Level Attribute
+
+For heading elements, the semantic heading level (h1-h6) is stored in `attributes['heading_level']` as a string, NOT in the `level` field. This separates:
+
+- **`level` field**: Structural nesting depth (used by blockquotes, inlines)
+- **`heading_level` attribute**: Semantic heading level (1-6 for h1-h6)
+
+**Producers** MUST set `attributes['heading_level']` for heading elements.
+
+**Consumers** SHOULD check `attributes['heading_level']` first, then fall back to `level` field for backward compatibility with older data.
 
 ## Inline Types (kind='inline')
 
@@ -129,11 +140,14 @@ doc_bold([doc_text('text')])
 
 ### Level Field Semantics
 
-- `level = 1`: Top-level inline element
-- `level = N`: Nested N levels deep
-- Children of a container at level N are at level N+1
-- Siblings share the same level
-- For blocks: heading level (1-6), blockquote nesting depth, or NULL
+The `level` field represents **structural nesting depth**, not semantic level:
+
+- **For inlines**: `level = 1` is top-level, `level = N` is nested N levels deep
+- **For blockquotes**: nesting depth (1 = single quote, 2 = nested quote)
+- **For headings**: NULL (semantic level is in `attributes['heading_level']`)
+- **For other blocks**: typically NULL
+
+Children of a container at level N are at level N+1. Siblings share the same level.
 
 ### Element Order Field Semantics
 
@@ -164,9 +178,10 @@ A doc_element is **canonical** if:
 1. `kind` is `'block'`
 2. `element_type` is a recognized block type (or custom type with `x-` prefix)
 3. `element_order` is non-negative integer
-4. `level` is appropriate for element_type (1-6 for headings, NULL or valid for others)
-5. `encoding` matches content format
-6. `attributes` keys are valid identifiers
+4. `level` is NULL for headings (heading level is in attributes)
+5. For headings: `attributes['heading_level']` is '1'-'6'
+6. `encoding` matches content format
+7. `attributes` keys are valid identifiers
 
 ### Inline Validation (kind='inline')
 
@@ -191,7 +206,12 @@ CREATE OR REPLACE MACRO doc_element_is_valid(elem) AS (
     AND (
         elem.kind != 'block'
         OR elem.element_type != 'heading'
-        OR elem.level BETWEEN 1 AND 6
+        OR (
+            -- For headings: level should be NULL and heading_level attribute should be 1-6
+            (elem.level IS NULL OR elem.level BETWEEN 1 AND 6)  -- Allow level for backward compat
+            AND (elem.attributes['heading_level'] IS NULL
+                 OR elem.attributes['heading_level']::INTEGER BETWEEN 1 AND 6)
+        )
     )
     AND (
         elem.kind != 'inline'
@@ -241,6 +261,7 @@ Extensions that consume duck_blocks:
 
 ## Changelog
 
+- 0.4.0: Moved heading level from `level` field to `attributes['heading_level']` to separate semantic heading levels from structural nesting depth
 - 0.3.0: Unified doc_block and doc_inline into single doc_element type with `kind` discriminator
 - 0.2.0: Added Option C content rules for container types
 - 0.1.0: Initial draft specification

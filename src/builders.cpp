@@ -50,9 +50,14 @@ void BuilderFunctions::DocHeadingFun(DataChunk &args, ExpressionState &state, Ve
 	auto &entries = StructVector::GetEntries(result);
 
 	for (idx_t i = 0; i < count; i++) {
+		auto heading_level = level_vec.GetValue(i);
+		map<string, string> attrs;
+		if (!heading_level.IsNull()) {
+			attrs["heading_level"] = std::to_string(heading_level.GetValue<int32_t>());
+		}
 		SetBlockFields(entries, i, BlockTypes::TYPE_HEADING,
-		               content_vec.GetValue(i), level_vec.GetValue(i),
-		               BlockTypes::ENCODING_TEXT, CreateAttributesMap({}));
+		               content_vec.GetValue(i), Value(),
+		               BlockTypes::ENCODING_TEXT, CreateAttributesMap(attrs));
 	}
 }
 

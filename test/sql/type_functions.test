@@ -148,16 +148,29 @@ SELECT duck_block_content(doc_paragraph('Hello world'));
 ----
 Hello world
 
-# Test duck_block_level
+# Test duck_block_level - for headings, level is NULL (heading level is in attributes)
 query I
-SELECT duck_block_level(doc_heading('Title', 2));
+SELECT duck_block_level(doc_heading('Title', 2)) IS NULL;
 ----
-2
+true
 
+# Test duck_block_level for paragraph
 query I
 SELECT duck_block_level(doc_paragraph('Text')) IS NULL;
 ----
 true
+
+# Test duck_block_level for blockquote (uses level field)
+query I
+SELECT duck_block_level(doc_blockquote('Quote', 2));
+----
+2
+
+# Access heading level via attributes
+query I
+SELECT doc_heading('Title', 2).attributes['heading_level'];
+----
+2
 
 # Test duck_block_encoding
 query I
@@ -223,14 +236,20 @@ SELECT duck_block_content(duck_block_set_content(doc_heading('Old', 1), 'New'));
 ----
 New
 
+# For headings, level is NULL (heading level in attributes is preserved)
 query I
-SELECT duck_block_level(duck_block_set_content(doc_heading('Old', 2), 'New'));
+SELECT duck_block_level(duck_block_set_content(doc_heading('Old', 2), 'New')) IS NULL;
+----
+true
+
+query I
+SELECT duck_block_set_content(doc_heading('Old', 2), 'New').attributes['heading_level'];
 ----
 2
 
-# Test duck_block_set_level
+# Test duck_block_set_level - sets the level field (used for blockquotes, not headings)
 query I
-SELECT duck_block_level(duck_block_set_level(doc_heading('Title', 1), 3));
+SELECT duck_block_level(duck_block_set_level(doc_blockquote('Quote', 1), 3));
 ----
 3
 

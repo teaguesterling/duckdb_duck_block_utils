@@ -31,7 +31,7 @@ STRUCT(
 
 | element_type | Description | level | encoding | Key Attributes |
 |--------------|-------------|-------|----------|----------------|
-| `heading` | Section heading | 1-6 | text | `id` |
+| `heading` | Section heading | NULL | text | `heading_level` (1-6), `id` |
 | `paragraph` | Text paragraph | NULL | text | |
 | `code` | Code block | NULL | text | `language` |
 | `blockquote` | Quoted content | 1+ | text | |
@@ -85,10 +85,17 @@ Creates a heading block.
 
 **Returns:** `doc_element` with `kind='block'`, `element_type='heading'`
 
+**Note:** The heading level is stored in `attributes['heading_level']` as a string (e.g., `'2'`), not in the `level` field. The `level` field is NULL for headings. This distinguishes semantic heading levels from structural nesting depth used by other elements like blockquotes.
+
 **Example:**
 ```sql
-SELECT doc_heading('Introduction', 1);
--- {kind: 'block', element_type: 'heading', content: 'Introduction', level: 1, ...}
+SELECT doc_heading('Introduction', 2);
+-- {kind: 'block', element_type: 'heading', content: 'Introduction',
+--  level: NULL, attributes: {'heading_level': '2'}, ...}
+
+-- Access heading level:
+SELECT doc_heading('Title', 1).attributes['heading_level'];
+-- Returns: '1'
 ```
 
 ---
@@ -554,12 +561,14 @@ Adjusts heading levels by a fixed offset.
 
 **Notes:**
 - Only affects heading blocks
+- Modifies `attributes['heading_level']`, not the `level` field
 - Clamps results to valid range (1-6)
+- For backward compatibility, reads from `attributes['heading_level']` first, falling back to `level` field
 
 **Example:**
 ```sql
-SELECT doc_rebase_levels([doc_heading('Title', 1)], 1);
--- Returns heading with level=2
+SELECT doc_rebase_levels([doc_heading('Title', 1)], 1)[1].attributes['heading_level'];
+-- Returns: '2'
 ```
 
 ---
@@ -851,16 +860,23 @@ When implementing these types in webbed (or any other extension):
 
 3. **Block elements** should have:
    - `kind = 'block'`
-   - `level` is NULL except for headings (1-6) and blockquotes (nesting depth)
+   - `level` is NULL for most blocks, including headings
+   - For headings: use `attributes['heading_level']` (string '1'-'6')
+   - For blockquotes: `level` indicates nesting depth (1+)
 
-4. **Inline elements** should have:
+4. **Heading level handling:**
+   - **Producers** should set `attributes['heading_level']` (e.g., `'2'` for h2)
+   - **Consumers** should check `attributes['heading_level']` first, then fall back to `level` field for backward compatibility
+   - This separates semantic heading levels (h1-h6) from structural nesting depth
+
+5. **Inline elements** should have:
    - `kind = 'inline'`
    - `level >= 1` (indicates nesting depth in container inlines)
    - `element_order` for position within inline sequence
 
-5. **Whitespace inlines** (space, softbreak, linebreak) have empty content
+6. **Whitespace inlines** (space, softbreak, linebreak) have empty content
 
-6. **Container inlines** (bold, italic, link, etc.):
+7. **Container inlines** (bold, italic, link, etc.):
    - Simple case: content field contains the text
    - Complex case: content is empty, children are at level+1
 

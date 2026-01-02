@@ -136,7 +136,15 @@ void ExtractionFunctions::DocBlocksHeadingsFun(DataChunk &args, ExpressionState 
 				continue;
 			}
 
-			auto level = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
+			// Get heading_level from attributes, falling back to level field for backward compatibility
+			auto heading_level_str = GetElementAttribute(block, "heading_level");
+			int32_t level;
+			if (!heading_level_str.empty()) {
+				level = std::stoi(heading_level_str);
+			} else {
+				// Fall back to level field (for backward compatibility)
+				level = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
+			}
 			auto title = GetElementStringField(block, BlockTypes::CONTENT_IDX);
 			auto id = GetElementAttribute(block, "id");
 			auto element_order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);

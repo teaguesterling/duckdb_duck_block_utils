@@ -90,8 +90,14 @@ SELECT doc_section('Introduction', 2, [doc_paragraph('Text')])[1].content;
 ----
 Introduction
 
+# Test doc_section heading has level in attributes (not level field)
 query I
-SELECT doc_section('Introduction', 2, [doc_paragraph('Text')])[1].level;
+SELECT doc_section('Introduction', 2, [doc_paragraph('Text')])[1].level IS NULL;
+----
+true
+
+query I
+SELECT doc_section('Introduction', 2, [doc_paragraph('Text')])[1].attributes['heading_level'];
 ----
 2
 
@@ -137,32 +143,32 @@ heading
 # doc_rebase_levels Tests
 # ============================================================================
 
-# Test doc_rebase_levels increases heading levels
+# Test doc_rebase_levels increases heading levels (stored in attributes)
 query I
-SELECT doc_rebase_levels([doc_heading('Title', 1)], 1)[1].level;
+SELECT doc_rebase_levels([doc_heading('Title', 1)], 1)[1].attributes['heading_level'];
 ----
 2
 
 query I
-SELECT doc_rebase_levels([doc_heading('Title', 2)], 2)[1].level;
+SELECT doc_rebase_levels([doc_heading('Title', 2)], 2)[1].attributes['heading_level'];
 ----
 4
 
 # Test doc_rebase_levels decreases heading levels
 query I
-SELECT doc_rebase_levels([doc_heading('Title', 3)], -1)[1].level;
+SELECT doc_rebase_levels([doc_heading('Title', 3)], -1)[1].attributes['heading_level'];
 ----
 2
 
 # Test doc_rebase_levels clamps to minimum level 1
 query I
-SELECT doc_rebase_levels([doc_heading('Title', 1)], -5)[1].level;
+SELECT doc_rebase_levels([doc_heading('Title', 1)], -5)[1].attributes['heading_level'];
 ----
 1
 
 # Test doc_rebase_levels clamps to maximum level 6
 query I
-SELECT doc_rebase_levels([doc_heading('Title', 5)], 10)[1].level;
+SELECT doc_rebase_levels([doc_heading('Title', 5)], 10)[1].attributes['heading_level'];
 ----
 6
 
@@ -192,7 +198,7 @@ SELECT doc_rebase_levels([
     doc_heading('Title', 1),
     doc_paragraph('Text'),
     doc_heading('Subtitle', 2)
-], 1)[1].level;
+], 1)[1].attributes['heading_level'];
 ----
 2
 
@@ -201,7 +207,7 @@ SELECT doc_rebase_levels([
     doc_heading('Title', 1),
     doc_paragraph('Text'),
     doc_heading('Subtitle', 2)
-], 1)[3].level;
+], 1)[3].attributes['heading_level'];
 ----
 3
 
@@ -295,6 +301,39 @@ SELECT doc_assemble(
 ----
 heading
 
+# ============================================================================
+# Backward Compatibility Tests - reading heading level from level field
+# ============================================================================
+
+# Test doc_rebase_levels reads from level field when heading_level attribute is not set
+# Using duck_block to create a heading with level in the level field (old format)
+query I
+SELECT doc_rebase_levels([
+    duck_block('heading', 'Old Format', 2, 'text', MAP{}, 0)
+], 1)[1].attributes['heading_level'];
+----
+3
+
+# Test doc_blocks_headings reads from level field when heading_level attribute is not set
+query I
+SELECT doc_blocks_headings([
+    duck_block('heading', 'Old Format', 3, 'text', MAP{}, 0)
+])[1].level;
+----
+3
+
+# Test doc_blocks_headings prefers heading_level attribute over level field
+query I
+SELECT doc_blocks_headings([
+    duck_block('heading', 'New Format', 99, 'text', MAP{'heading_level': '2'}, 0)
+])[1].level;
+----
+2
+
+# ============================================================================
+# Integration: Building complex documents
+# ============================================================================
+
 # Test rebasing levels in a document merge
 query I
 SELECT len(doc_assemble(
@@ -318,7 +357,7 @@ SELECT doc_assemble(
             1
         )
     )
-)[1].level;
+)[1].attributes['heading_level'];
 ----
 1
 
@@ -331,6 +370,6 @@ SELECT doc_assemble(
             1
         )
     )
-)[2].level;
+)[2].attributes['heading_level'];
 ----
 2

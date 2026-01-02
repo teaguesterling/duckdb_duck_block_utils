@@ -39,9 +39,15 @@ doc_heading(
 **Example:**
 ```sql
 SELECT doc_heading('Introduction', 2, 'intro');
--- Returns: {element_type: 'heading', content: 'Introduction', level: 2,
---           encoding: 'text', attributes: {'id': 'intro'}, element_order: 0}
+-- Returns: {element_type: 'heading', content: 'Introduction', level: NULL,
+--           encoding: 'text', attributes: {'heading_level': '2', 'id': 'intro'}, element_order: 0}
+
+-- Access heading level:
+SELECT doc_heading('Title', 1).attributes['heading_level'];
+-- Returns: '1'
 ```
+
+**Note:** The heading level is stored in `attributes['heading_level']` as a string, not in the `level` field. This separates semantic heading levels (h1-h6) from structural nesting depth used by other elements.
 
 ### doc_paragraph
 
@@ -445,6 +451,8 @@ doc_rebase_levels(
 ) → LIST(doc_element)
 ```
 
+**Note:** This modifies `attributes['heading_level']`, not the `level` field. For backward compatibility, it reads from `attributes['heading_level']` first, falling back to the `level` field if not present.
+
 **Example:**
 ```sql
 -- Include a subdocument with adjusted heading levels
@@ -455,6 +463,10 @@ SELECT doc_assemble(
         1  -- h1 becomes h2, h2 becomes h3, etc.
     )
 );
+
+-- Check rebased level
+SELECT doc_rebase_levels([doc_heading('Title', 1)], 1)[1].attributes['heading_level'];
+-- Returns: '2'
 ```
 
 ### doc_with_toc
