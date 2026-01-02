@@ -145,11 +145,11 @@ SELECT pandoc_blocks_to_ast([]);
 ----
 []
 
-# Test NULL input returns empty array
+# Test NULL input returns NULL (standard SQL NULL propagation)
 query I
-SELECT pandoc_blocks_to_ast(NULL);
+SELECT pandoc_blocks_to_ast(NULL) IS NULL;
 ----
-[]
+true
 
 # Test inline elements are skipped in block output
 query I

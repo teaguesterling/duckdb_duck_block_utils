@@ -32,9 +32,9 @@ SELECT db_blocks_validate([]).valid;
 ----
 true
 
-# Test NULL input is valid
+# Test NULL input returns NULL (standard SQL NULL propagation)
 query I
-SELECT db_blocks_validate(NULL).valid;
+SELECT db_blocks_validate(NULL) IS NULL;
 ----
 true
 
