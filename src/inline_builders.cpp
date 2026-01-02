@@ -60,7 +60,8 @@ void InlineBuilderFunctions::DocSpaceFun(DataChunk &args, ExpressionState &state
 	auto &struct_entries = StructVector::GetEntries(result);
 
 	for (idx_t i = 0; i < count; i++) {
-		SetInlineFields(struct_entries, i, BlockTypes::INLINE_SPACE, Value(" "), {});
+		// Content is empty - the type "space" itself indicates a space should be rendered
+		SetInlineFields(struct_entries, i, BlockTypes::INLINE_SPACE, Value(""), {});
 	}
 }
 
@@ -78,7 +79,8 @@ void InlineBuilderFunctions::DocLineBreakFun(DataChunk &args, ExpressionState &s
 	auto &struct_entries = StructVector::GetEntries(result);
 
 	for (idx_t i = 0; i < count; i++) {
-		SetInlineFields(struct_entries, i, BlockTypes::INLINE_LINEBREAK, Value("\n"), {});
+		// Content is empty - the type "linebreak" itself indicates a line break should be rendered
+		SetInlineFields(struct_entries, i, BlockTypes::INLINE_LINEBREAK, Value(""), {});
 	}
 }
 

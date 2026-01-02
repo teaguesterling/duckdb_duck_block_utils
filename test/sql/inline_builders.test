@@ -12,7 +12,7 @@ require duck_block_utils
 query I
 SELECT typeof(doc_text('hello'));
 ----
-STRUCT(inline_type VARCHAR, content VARCHAR, "level" INTEGER, attributes MAP(VARCHAR, VARCHAR), inline_order INTEGER)
+STRUCT(inline_type VARCHAR, "content" VARCHAR, "level" INTEGER, attributes MAP(VARCHAR, VARCHAR), inline_order INTEGER)
 
 # ============================================================================
 # doc_text Tests
@@ -50,7 +50,7 @@ space
 query I
 SELECT doc_space().content;
 ----
-
+(empty)
 
 query I
 SELECT doc_softbreak().inline_type;
@@ -65,7 +65,7 @@ linebreak
 query I
 SELECT doc_linebreak().content;
 ----
-(LF)
+(empty)
 
 # ============================================================================
 # doc_link Tests
