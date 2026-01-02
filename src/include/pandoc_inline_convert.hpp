@@ -11,13 +11,13 @@ public:
 	static void Register(ExtensionLoader &loader);
 
 private:
-	// pandoc_inlines_to_doc_inlines(json) -> LIST(doc_inline)
-	// Converts nested Pandoc inline JSON to flat doc_inline rows
-	static void PandocInlinesToDocInlinesFun(DataChunk &args, ExpressionState &state, Vector &result);
+	// pandoc_inlines_to_db_inlines(json) -> LIST(duck_block)
+	// Converts nested Pandoc inline JSON to flat duck_block inline rows
+	static void PandocInlinesToDbInlinesFun(DataChunk &args, ExpressionState &state, Vector &result);
 
-	// doc_inlines_to_pandoc(LIST(doc_inline)) -> JSON
-	// Converts flat doc_inline rows back to nested Pandoc inline JSON
-	static void DocInlinesToPandocFun(DataChunk &args, ExpressionState &state, Vector &result);
+	// db_inlines_to_pandoc(LIST(duck_block)) -> JSON
+	// Converts flat duck_block inline rows back to nested Pandoc inline JSON
+	static void DbInlinesToPandocFun(DataChunk &args, ExpressionState &state, Vector &result);
 
 	// pandoc_inlines_to_text(json, mode) -> VARCHAR
 	// Renders Pandoc inlines to text/markdown/html

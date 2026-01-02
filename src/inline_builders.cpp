@@ -48,7 +48,7 @@ Value InlineBuilderFunctions::CreateInline(const string &inline_type, const stri
 // Text and whitespace
 // ============================================================================
 
-void InlineBuilderFunctions::DocTextFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbTextFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &content_vec = args.data[0];
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
@@ -59,7 +59,7 @@ void InlineBuilderFunctions::DocTextFun(DataChunk &args, ExpressionState &state,
 	}
 }
 
-void InlineBuilderFunctions::DocSpaceFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbSpaceFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
 
@@ -69,7 +69,7 @@ void InlineBuilderFunctions::DocSpaceFun(DataChunk &args, ExpressionState &state
 	}
 }
 
-void InlineBuilderFunctions::DocSoftBreakFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbSoftBreakFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
 
@@ -79,7 +79,7 @@ void InlineBuilderFunctions::DocSoftBreakFun(DataChunk &args, ExpressionState &s
 	}
 }
 
-void InlineBuilderFunctions::DocLineBreakFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbLineBreakFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
 
@@ -93,7 +93,7 @@ void InlineBuilderFunctions::DocLineBreakFun(DataChunk &args, ExpressionState &s
 // Formatting (container types)
 // ============================================================================
 
-void InlineBuilderFunctions::DocBoldFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbBoldFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &content_vec = args.data[0];
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
@@ -104,7 +104,7 @@ void InlineBuilderFunctions::DocBoldFun(DataChunk &args, ExpressionState &state,
 	}
 }
 
-void InlineBuilderFunctions::DocItalicFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbItalicFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &content_vec = args.data[0];
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
@@ -115,7 +115,7 @@ void InlineBuilderFunctions::DocItalicFun(DataChunk &args, ExpressionState &stat
 	}
 }
 
-void InlineBuilderFunctions::DocStrikethroughFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbStrikethroughFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &content_vec = args.data[0];
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
@@ -126,7 +126,7 @@ void InlineBuilderFunctions::DocStrikethroughFun(DataChunk &args, ExpressionStat
 	}
 }
 
-void InlineBuilderFunctions::DocSuperscriptFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbSuperscriptFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &content_vec = args.data[0];
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
@@ -137,7 +137,7 @@ void InlineBuilderFunctions::DocSuperscriptFun(DataChunk &args, ExpressionState 
 	}
 }
 
-void InlineBuilderFunctions::DocSubscriptFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbSubscriptFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &content_vec = args.data[0];
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
@@ -148,7 +148,7 @@ void InlineBuilderFunctions::DocSubscriptFun(DataChunk &args, ExpressionState &s
 	}
 }
 
-void InlineBuilderFunctions::DocSmallCapsFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbSmallCapsFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &content_vec = args.data[0];
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
@@ -159,7 +159,7 @@ void InlineBuilderFunctions::DocSmallCapsFun(DataChunk &args, ExpressionState &s
 	}
 }
 
-void InlineBuilderFunctions::DocUnderlineFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbUnderlineFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &content_vec = args.data[0];
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
@@ -174,7 +174,7 @@ void InlineBuilderFunctions::DocUnderlineFun(DataChunk &args, ExpressionState &s
 // Semantic elements
 // ============================================================================
 
-void InlineBuilderFunctions::DocInlineCodeFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbInlineCodeFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &content_vec = args.data[0];
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
@@ -185,7 +185,7 @@ void InlineBuilderFunctions::DocInlineCodeFun(DataChunk &args, ExpressionState &
 	}
 }
 
-void InlineBuilderFunctions::DocMathFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbMathFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &content_vec = args.data[0];
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
@@ -204,7 +204,7 @@ void InlineBuilderFunctions::DocMathFun(DataChunk &args, ExpressionState &state,
 	}
 }
 
-void InlineBuilderFunctions::DocLinkFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbLinkFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &text_vec = args.data[0];
 	auto &href_vec = args.data[1];
 	auto count = args.size();
@@ -228,7 +228,7 @@ void InlineBuilderFunctions::DocLinkFun(DataChunk &args, ExpressionState &state,
 	}
 }
 
-void InlineBuilderFunctions::DocInlineImageFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbInlineImageFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &src_vec = args.data[0];
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
@@ -259,7 +259,7 @@ void InlineBuilderFunctions::DocInlineImageFun(DataChunk &args, ExpressionState 
 	}
 }
 
-void InlineBuilderFunctions::DocQuotedFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbQuotedFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &content_vec = args.data[0];
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
@@ -278,7 +278,7 @@ void InlineBuilderFunctions::DocQuotedFun(DataChunk &args, ExpressionState &stat
 	}
 }
 
-void InlineBuilderFunctions::DocCiteFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbCiteFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &key_vec = args.data[0];
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
@@ -305,7 +305,7 @@ void InlineBuilderFunctions::DocCiteFun(DataChunk &args, ExpressionState &state,
 	}
 }
 
-void InlineBuilderFunctions::DocNoteFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbNoteFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &content_vec = args.data[0];
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
@@ -316,7 +316,7 @@ void InlineBuilderFunctions::DocNoteFun(DataChunk &args, ExpressionState &state,
 	}
 }
 
-void InlineBuilderFunctions::DocSpanFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbSpanFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &content_vec = args.data[0];
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
@@ -338,7 +338,7 @@ void InlineBuilderFunctions::DocSpanFun(DataChunk &args, ExpressionState &state,
 	}
 }
 
-void InlineBuilderFunctions::DocRawInlineFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void InlineBuilderFunctions::DbRawInlineFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &content_vec = args.data[0];
 	auto count = args.size();
 	auto &entries = StructVector::GetEntries(result);
@@ -364,63 +364,300 @@ void InlineBuilderFunctions::DocRawInlineFun(DataChunk &args, ExpressionState &s
 }
 
 // ============================================================================
+// Flattening helpers
+// ============================================================================
+
+// Helper to create a child element with adjusted level and order
+static Value CreateChildWithLevelAndOrder(const Value &element, int32_t new_level, int32_t new_order) {
+	auto children = StructValue::GetChildren(element);
+	children[BlockTypes::LEVEL_IDX] = Value(new_level);
+	children[BlockTypes::ELEMENT_ORDER_IDX] = Value(new_order);
+	return Value::STRUCT(BlockTypes::DuckBlockType(), std::move(children));
+}
+
+// Helper to flatten a parent inline with children into a list
+// Returns: [parent at level n, child1 at level n+1 order 0, child2 at level n+1 order 1, ...]
+static vector<Value> FlattenInlineWithChildren(const Value &parent_inline, const Value &children_list, int32_t base_level) {
+	vector<Value> result;
+
+	// Add parent inline with the specified level
+	auto parent_children = StructValue::GetChildren(parent_inline);
+	parent_children[BlockTypes::LEVEL_IDX] = Value(base_level);
+	parent_children[BlockTypes::ELEMENT_ORDER_IDX] = Value(0);
+	result.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(parent_children)));
+
+	// Add flattened children at level+1 with sequential element_order
+	if (!children_list.IsNull()) {
+		auto &child_blocks = ListValue::GetChildren(children_list);
+		int32_t child_order = 0;
+		for (auto &child : child_blocks) {
+			if (!child.IsNull()) {
+				result.push_back(CreateChildWithLevelAndOrder(child, base_level + 1, child_order++));
+			}
+		}
+	}
+
+	return result;
+}
+
+// ============================================================================
+// Flattening builder overloads - return LIST(duck_block) with parent + children
+// ============================================================================
+
+void InlineBuilderFunctions::DbBoldFlattenFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &children_vec = args.data[0];
+	auto count = args.size();
+
+	for (idx_t i = 0; i < count; i++) {
+		auto children_list = children_vec.GetValue(i);
+		auto parent = CreateInline(BlockTypes::INLINE_BOLD, "", {}, 1, 0);
+		auto flattened = FlattenInlineWithChildren(parent, children_list, 1);
+		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+	}
+}
+
+void InlineBuilderFunctions::DbItalicFlattenFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &children_vec = args.data[0];
+	auto count = args.size();
+
+	for (idx_t i = 0; i < count; i++) {
+		auto children_list = children_vec.GetValue(i);
+		auto parent = CreateInline(BlockTypes::INLINE_ITALIC, "", {}, 1, 0);
+		auto flattened = FlattenInlineWithChildren(parent, children_list, 1);
+		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+	}
+}
+
+void InlineBuilderFunctions::DbStrikethroughFlattenFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &children_vec = args.data[0];
+	auto count = args.size();
+
+	for (idx_t i = 0; i < count; i++) {
+		auto children_list = children_vec.GetValue(i);
+		auto parent = CreateInline(BlockTypes::INLINE_STRIKETHROUGH, "", {}, 1, 0);
+		auto flattened = FlattenInlineWithChildren(parent, children_list, 1);
+		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+	}
+}
+
+void InlineBuilderFunctions::DbSuperscriptFlattenFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &children_vec = args.data[0];
+	auto count = args.size();
+
+	for (idx_t i = 0; i < count; i++) {
+		auto children_list = children_vec.GetValue(i);
+		auto parent = CreateInline(BlockTypes::INLINE_SUPERSCRIPT, "", {}, 1, 0);
+		auto flattened = FlattenInlineWithChildren(parent, children_list, 1);
+		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+	}
+}
+
+void InlineBuilderFunctions::DbSubscriptFlattenFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &children_vec = args.data[0];
+	auto count = args.size();
+
+	for (idx_t i = 0; i < count; i++) {
+		auto children_list = children_vec.GetValue(i);
+		auto parent = CreateInline(BlockTypes::INLINE_SUBSCRIPT, "", {}, 1, 0);
+		auto flattened = FlattenInlineWithChildren(parent, children_list, 1);
+		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+	}
+}
+
+void InlineBuilderFunctions::DbSmallCapsFlattenFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &children_vec = args.data[0];
+	auto count = args.size();
+
+	for (idx_t i = 0; i < count; i++) {
+		auto children_list = children_vec.GetValue(i);
+		auto parent = CreateInline(BlockTypes::INLINE_SMALLCAPS, "", {}, 1, 0);
+		auto flattened = FlattenInlineWithChildren(parent, children_list, 1);
+		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+	}
+}
+
+void InlineBuilderFunctions::DbUnderlineFlattenFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &children_vec = args.data[0];
+	auto count = args.size();
+
+	for (idx_t i = 0; i < count; i++) {
+		auto children_list = children_vec.GetValue(i);
+		auto parent = CreateInline(BlockTypes::INLINE_UNDERLINE, "", {}, 1, 0);
+		auto flattened = FlattenInlineWithChildren(parent, children_list, 1);
+		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+	}
+}
+
+void InlineBuilderFunctions::DbLinkFlattenFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &href_vec = args.data[0];
+	auto &children_vec = args.data[1];
+	auto count = args.size();
+	bool has_title = args.ColumnCount() > 2;
+
+	for (idx_t i = 0; i < count; i++) {
+		auto href = href_vec.GetValue(i);
+		auto children_list = children_vec.GetValue(i);
+
+		map<string, string> attrs;
+		if (!href.IsNull()) attrs["href"] = href.GetValue<string>();
+		if (has_title) {
+			auto title = args.data[2].GetValue(i);
+			if (!title.IsNull()) attrs["title"] = title.GetValue<string>();
+		}
+
+		auto parent = CreateInline(BlockTypes::INLINE_LINK, "", attrs, 1, 0);
+		auto flattened = FlattenInlineWithChildren(parent, children_list, 1);
+		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+	}
+}
+
+void InlineBuilderFunctions::DbQuotedFlattenFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &children_vec = args.data[0];
+	auto count = args.size();
+	bool has_type = args.ColumnCount() > 1;
+
+	for (idx_t i = 0; i < count; i++) {
+		auto children_list = children_vec.GetValue(i);
+
+		map<string, string> attrs;
+		if (has_type) {
+			auto quote_type = args.data[1].GetValue(i);
+			attrs["quote_type"] = quote_type.IsNull() ? "double" : quote_type.GetValue<string>();
+		} else {
+			attrs["quote_type"] = "double";
+		}
+
+		auto parent = CreateInline(BlockTypes::INLINE_QUOTED, "", attrs, 1, 0);
+		auto flattened = FlattenInlineWithChildren(parent, children_list, 1);
+		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+	}
+}
+
+void InlineBuilderFunctions::DbSpanFlattenFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &children_vec = args.data[0];
+	auto count = args.size();
+	bool has_id = args.ColumnCount() > 1;
+	bool has_classes = args.ColumnCount() > 2;
+
+	for (idx_t i = 0; i < count; i++) {
+		auto children_list = children_vec.GetValue(i);
+
+		map<string, string> attrs;
+		if (has_id) {
+			auto id = args.data[1].GetValue(i);
+			if (!id.IsNull()) attrs["id"] = id.GetValue<string>();
+		}
+		if (has_classes) {
+			auto classes = args.data[2].GetValue(i);
+			if (!classes.IsNull()) attrs["class"] = classes.GetValue<string>();
+		}
+
+		auto parent = CreateInline(BlockTypes::INLINE_SPAN, "", attrs, 1, 0);
+		auto flattened = FlattenInlineWithChildren(parent, children_list, 1);
+		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+	}
+}
+
+void InlineBuilderFunctions::DbNoteFlattenFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &children_vec = args.data[0];
+	auto count = args.size();
+
+	for (idx_t i = 0; i < count; i++) {
+		auto children_list = children_vec.GetValue(i);
+		auto parent = CreateInline(BlockTypes::INLINE_NOTE, "", {}, 1, 0);
+		auto flattened = FlattenInlineWithChildren(parent, children_list, 1);
+		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+	}
+}
+
+// ============================================================================
 // Registration
 // ============================================================================
 
 void InlineBuilderFunctions::Register(ExtensionLoader &loader) {
-	auto doc_element_type = BlockTypes::DocElementType();
+	auto duck_block_type = BlockTypes::DuckBlockType();
 
 	// Text and whitespace
-	loader.RegisterFunction(ScalarFunction("doc_text", {LogicalType::VARCHAR}, doc_element_type, DocTextFun));
-	loader.RegisterFunction(ScalarFunction("doc_space", {}, doc_element_type, DocSpaceFun));
-	loader.RegisterFunction(ScalarFunction("doc_softbreak", {}, doc_element_type, DocSoftBreakFun));
-	loader.RegisterFunction(ScalarFunction("doc_linebreak", {}, doc_element_type, DocLineBreakFun));
+	loader.RegisterFunction(ScalarFunction("db_text", {LogicalType::VARCHAR}, duck_block_type, DbTextFun));
+	loader.RegisterFunction(ScalarFunction("db_space", {}, duck_block_type, DbSpaceFun));
+	loader.RegisterFunction(ScalarFunction("db_softbreak", {}, duck_block_type, DbSoftBreakFun));
+	loader.RegisterFunction(ScalarFunction("db_linebreak", {}, duck_block_type, DbLineBreakFun));
 
 	// Formatting
-	loader.RegisterFunction(ScalarFunction("doc_bold", {LogicalType::VARCHAR}, doc_element_type, DocBoldFun));
-	loader.RegisterFunction(ScalarFunction("doc_italic", {LogicalType::VARCHAR}, doc_element_type, DocItalicFun));
-	loader.RegisterFunction(ScalarFunction("doc_strikethrough", {LogicalType::VARCHAR}, doc_element_type, DocStrikethroughFun));
-	loader.RegisterFunction(ScalarFunction("doc_superscript", {LogicalType::VARCHAR}, doc_element_type, DocSuperscriptFun));
-	loader.RegisterFunction(ScalarFunction("doc_subscript", {LogicalType::VARCHAR}, doc_element_type, DocSubscriptFun));
-	loader.RegisterFunction(ScalarFunction("doc_smallcaps", {LogicalType::VARCHAR}, doc_element_type, DocSmallCapsFun));
-	loader.RegisterFunction(ScalarFunction("doc_underline", {LogicalType::VARCHAR}, doc_element_type, DocUnderlineFun));
+	loader.RegisterFunction(ScalarFunction("db_bold", {LogicalType::VARCHAR}, duck_block_type, DbBoldFun));
+	loader.RegisterFunction(ScalarFunction("db_italic", {LogicalType::VARCHAR}, duck_block_type, DbItalicFun));
+	loader.RegisterFunction(ScalarFunction("db_strikethrough", {LogicalType::VARCHAR}, duck_block_type, DbStrikethroughFun));
+	loader.RegisterFunction(ScalarFunction("db_superscript", {LogicalType::VARCHAR}, duck_block_type, DbSuperscriptFun));
+	loader.RegisterFunction(ScalarFunction("db_subscript", {LogicalType::VARCHAR}, duck_block_type, DbSubscriptFun));
+	loader.RegisterFunction(ScalarFunction("db_smallcaps", {LogicalType::VARCHAR}, duck_block_type, DbSmallCapsFun));
+	loader.RegisterFunction(ScalarFunction("db_underline", {LogicalType::VARCHAR}, duck_block_type, DbUnderlineFun));
 
 	// Semantic - inline code
-	loader.RegisterFunction(ScalarFunction("doc_inline_code", {LogicalType::VARCHAR}, doc_element_type, DocInlineCodeFun));
+	loader.RegisterFunction(ScalarFunction("db_inline_code", {LogicalType::VARCHAR}, duck_block_type, DbInlineCodeFun));
 
 	// Semantic - math
-	loader.RegisterFunction(ScalarFunction("doc_math", {LogicalType::VARCHAR}, doc_element_type, DocMathFun));
-	loader.RegisterFunction(ScalarFunction("doc_math", {LogicalType::VARCHAR, LogicalType::BOOLEAN}, doc_element_type, DocMathFun));
+	loader.RegisterFunction(ScalarFunction("db_math", {LogicalType::VARCHAR}, duck_block_type, DbMathFun));
+	loader.RegisterFunction(ScalarFunction("db_math", {LogicalType::VARCHAR, LogicalType::BOOLEAN}, duck_block_type, DbMathFun));
 
 	// Semantic - link
-	loader.RegisterFunction(ScalarFunction("doc_link", {LogicalType::VARCHAR, LogicalType::VARCHAR}, doc_element_type, DocLinkFun));
-	loader.RegisterFunction(ScalarFunction("doc_link", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, doc_element_type, DocLinkFun));
+	loader.RegisterFunction(ScalarFunction("db_link", {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbLinkFun));
+	loader.RegisterFunction(ScalarFunction("db_link", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbLinkFun));
 
 	// Semantic - inline image
-	loader.RegisterFunction(ScalarFunction("doc_inline_image", {LogicalType::VARCHAR}, doc_element_type, DocInlineImageFun));
-	loader.RegisterFunction(ScalarFunction("doc_inline_image", {LogicalType::VARCHAR, LogicalType::VARCHAR}, doc_element_type, DocInlineImageFun));
-	loader.RegisterFunction(ScalarFunction("doc_inline_image", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, doc_element_type, DocInlineImageFun));
+	loader.RegisterFunction(ScalarFunction("db_inline_image", {LogicalType::VARCHAR}, duck_block_type, DbInlineImageFun));
+	loader.RegisterFunction(ScalarFunction("db_inline_image", {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbInlineImageFun));
+	loader.RegisterFunction(ScalarFunction("db_inline_image", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbInlineImageFun));
 
 	// Semantic - quoted
-	loader.RegisterFunction(ScalarFunction("doc_quoted", {LogicalType::VARCHAR}, doc_element_type, DocQuotedFun));
-	loader.RegisterFunction(ScalarFunction("doc_quoted", {LogicalType::VARCHAR, LogicalType::VARCHAR}, doc_element_type, DocQuotedFun));
+	loader.RegisterFunction(ScalarFunction("db_quoted", {LogicalType::VARCHAR}, duck_block_type, DbQuotedFun));
+	loader.RegisterFunction(ScalarFunction("db_quoted", {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbQuotedFun));
 
 	// Semantic - citation
-	loader.RegisterFunction(ScalarFunction("doc_cite", {LogicalType::VARCHAR}, doc_element_type, DocCiteFun));
-	loader.RegisterFunction(ScalarFunction("doc_cite", {LogicalType::VARCHAR, LogicalType::VARCHAR}, doc_element_type, DocCiteFun));
-	loader.RegisterFunction(ScalarFunction("doc_cite", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, doc_element_type, DocCiteFun));
+	loader.RegisterFunction(ScalarFunction("db_cite", {LogicalType::VARCHAR}, duck_block_type, DbCiteFun));
+	loader.RegisterFunction(ScalarFunction("db_cite", {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbCiteFun));
+	loader.RegisterFunction(ScalarFunction("db_cite", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbCiteFun));
 
 	// Semantic - footnote
-	loader.RegisterFunction(ScalarFunction("doc_note", {LogicalType::VARCHAR}, doc_element_type, DocNoteFun));
+	loader.RegisterFunction(ScalarFunction("db_note", {LogicalType::VARCHAR}, duck_block_type, DbNoteFun));
 
 	// Semantic - span
-	loader.RegisterFunction(ScalarFunction("doc_span", {LogicalType::VARCHAR}, doc_element_type, DocSpanFun));
-	loader.RegisterFunction(ScalarFunction("doc_span", {LogicalType::VARCHAR, LogicalType::VARCHAR}, doc_element_type, DocSpanFun));
-	loader.RegisterFunction(ScalarFunction("doc_span", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, doc_element_type, DocSpanFun));
+	loader.RegisterFunction(ScalarFunction("db_span", {LogicalType::VARCHAR}, duck_block_type, DbSpanFun));
+	loader.RegisterFunction(ScalarFunction("db_span", {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbSpanFun));
+	loader.RegisterFunction(ScalarFunction("db_span", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbSpanFun));
 
 	// Semantic - raw inline
-	loader.RegisterFunction(ScalarFunction("doc_raw_inline", {LogicalType::VARCHAR}, doc_element_type, DocRawInlineFun));
-	loader.RegisterFunction(ScalarFunction("doc_raw_inline", {LogicalType::VARCHAR, LogicalType::VARCHAR}, doc_element_type, DocRawInlineFun));
+	loader.RegisterFunction(ScalarFunction("db_raw_inline", {LogicalType::VARCHAR}, duck_block_type, DbRawInlineFun));
+	loader.RegisterFunction(ScalarFunction("db_raw_inline", {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbRawInlineFun));
+
+	// ========================================================================
+	// Flattening overloads - take children list, return flattened list
+	// ========================================================================
+	auto duck_block_list_type = BlockTypes::DuckBlockListType();
+
+	// Formatting with children
+	loader.RegisterFunction(ScalarFunction("db_bold", {duck_block_list_type}, duck_block_list_type, DbBoldFlattenFun));
+	loader.RegisterFunction(ScalarFunction("db_italic", {duck_block_list_type}, duck_block_list_type, DbItalicFlattenFun));
+	loader.RegisterFunction(ScalarFunction("db_strikethrough", {duck_block_list_type}, duck_block_list_type, DbStrikethroughFlattenFun));
+	loader.RegisterFunction(ScalarFunction("db_superscript", {duck_block_list_type}, duck_block_list_type, DbSuperscriptFlattenFun));
+	loader.RegisterFunction(ScalarFunction("db_subscript", {duck_block_list_type}, duck_block_list_type, DbSubscriptFlattenFun));
+	loader.RegisterFunction(ScalarFunction("db_smallcaps", {duck_block_list_type}, duck_block_list_type, DbSmallCapsFlattenFun));
+	loader.RegisterFunction(ScalarFunction("db_underline", {duck_block_list_type}, duck_block_list_type, DbUnderlineFlattenFun));
+
+	// Link with children: db_link(href, children) and db_link(href, children, title)
+	loader.RegisterFunction(ScalarFunction("db_link", {LogicalType::VARCHAR, duck_block_list_type}, duck_block_list_type, DbLinkFlattenFun));
+	loader.RegisterFunction(ScalarFunction("db_link", {LogicalType::VARCHAR, duck_block_list_type, LogicalType::VARCHAR}, duck_block_list_type, DbLinkFlattenFun));
+
+	// Quoted with children: db_quoted(children) and db_quoted(children, quote_type)
+	loader.RegisterFunction(ScalarFunction("db_quoted", {duck_block_list_type}, duck_block_list_type, DbQuotedFlattenFun));
+	loader.RegisterFunction(ScalarFunction("db_quoted", {duck_block_list_type, LogicalType::VARCHAR}, duck_block_list_type, DbQuotedFlattenFun));
+
+	// Span with children: db_span(children), db_span(children, id), db_span(children, id, classes)
+	loader.RegisterFunction(ScalarFunction("db_span", {duck_block_list_type}, duck_block_list_type, DbSpanFlattenFun));
+	loader.RegisterFunction(ScalarFunction("db_span", {duck_block_list_type, LogicalType::VARCHAR}, duck_block_list_type, DbSpanFlattenFun));
+	loader.RegisterFunction(ScalarFunction("db_span", {duck_block_list_type, LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_list_type, DbSpanFlattenFun));
+
+	// Note with children: db_note(children)
+	loader.RegisterFunction(ScalarFunction("db_note", {duck_block_list_type}, duck_block_list_type, DbNoteFlattenFun));
 }
 
 } // namespace duckdb

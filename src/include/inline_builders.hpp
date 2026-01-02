@@ -10,37 +10,50 @@ public:
 	// Register all inline builder functions with the extension loader
 	static void Register(ExtensionLoader &loader);
 
-	// Helper to create a doc_inline Value with the given fields
+	// Helper to create a duck_block inline Value with the given fields
 	static Value CreateInline(const string &inline_type, const string &content,
 	                          const map<string, string> &attributes,
 	                          int32_t level = 1, int32_t inline_order = 0);
 
 private:
 	// Text and whitespace
-	static void DocTextFun(DataChunk &args, ExpressionState &state, Vector &result);
-	static void DocSpaceFun(DataChunk &args, ExpressionState &state, Vector &result);
-	static void DocSoftBreakFun(DataChunk &args, ExpressionState &state, Vector &result);
-	static void DocLineBreakFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbTextFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbSpaceFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbSoftBreakFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbLineBreakFun(DataChunk &args, ExpressionState &state, Vector &result);
 
 	// Formatting (container types)
-	static void DocBoldFun(DataChunk &args, ExpressionState &state, Vector &result);
-	static void DocItalicFun(DataChunk &args, ExpressionState &state, Vector &result);
-	static void DocStrikethroughFun(DataChunk &args, ExpressionState &state, Vector &result);
-	static void DocSuperscriptFun(DataChunk &args, ExpressionState &state, Vector &result);
-	static void DocSubscriptFun(DataChunk &args, ExpressionState &state, Vector &result);
-	static void DocSmallCapsFun(DataChunk &args, ExpressionState &state, Vector &result);
-	static void DocUnderlineFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbBoldFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbItalicFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbStrikethroughFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbSuperscriptFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbSubscriptFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbSmallCapsFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbUnderlineFun(DataChunk &args, ExpressionState &state, Vector &result);
 
 	// Semantic elements
-	static void DocInlineCodeFun(DataChunk &args, ExpressionState &state, Vector &result);
-	static void DocMathFun(DataChunk &args, ExpressionState &state, Vector &result);
-	static void DocLinkFun(DataChunk &args, ExpressionState &state, Vector &result);
-	static void DocInlineImageFun(DataChunk &args, ExpressionState &state, Vector &result);
-	static void DocQuotedFun(DataChunk &args, ExpressionState &state, Vector &result);
-	static void DocCiteFun(DataChunk &args, ExpressionState &state, Vector &result);
-	static void DocNoteFun(DataChunk &args, ExpressionState &state, Vector &result);
-	static void DocSpanFun(DataChunk &args, ExpressionState &state, Vector &result);
-	static void DocRawInlineFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbInlineCodeFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbMathFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbLinkFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbInlineImageFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbQuotedFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbCiteFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbNoteFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbSpanFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbRawInlineFun(DataChunk &args, ExpressionState &state, Vector &result);
+
+	// Flattening overloads - return LIST(duck_block) with parent + children
+	static void DbBoldFlattenFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbItalicFlattenFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbStrikethroughFlattenFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbSuperscriptFlattenFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbSubscriptFlattenFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbSmallCapsFlattenFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbUnderlineFlattenFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbLinkFlattenFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbQuotedFlattenFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbSpanFlattenFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbNoteFlattenFun(DataChunk &args, ExpressionState &state, Vector &result);
 };
 
 } // namespace duckdb

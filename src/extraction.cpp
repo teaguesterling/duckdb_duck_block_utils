@@ -49,7 +49,7 @@ static string GetElementAttribute(const Value &element, const string &key) {
 	return "";
 }
 
-void ExtractionFunctions::DocBlocksToTextFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void ExtractionFunctions::DbBlocksToTextFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &blocks_vec = args.data[0];
 	auto &separator_vec = args.data[1];
 
@@ -100,7 +100,7 @@ void ExtractionFunctions::DocBlocksToTextFun(DataChunk &args, ExpressionState &s
 	}
 }
 
-void ExtractionFunctions::DocBlocksHeadingsFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void ExtractionFunctions::DbBlocksHeadingsFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &blocks_vec = args.data[0];
 
 	// Define the return type for headings
@@ -162,7 +162,7 @@ void ExtractionFunctions::DocBlocksHeadingsFun(DataChunk &args, ExpressionState 
 	}
 }
 
-void ExtractionFunctions::DocBlocksCodeBlocksFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void ExtractionFunctions::DbBlocksCodeBlocksFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &blocks_vec = args.data[0];
 
 	// Define the return type for code blocks
@@ -213,7 +213,7 @@ void ExtractionFunctions::DocBlocksCodeBlocksFun(DataChunk &args, ExpressionStat
 	}
 }
 
-void ExtractionFunctions::DocBlocksStatsFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void ExtractionFunctions::DbBlocksStatsFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &blocks_vec = args.data[0];
 
 	// Define the return type for stats
@@ -275,21 +275,21 @@ void ExtractionFunctions::DocBlocksStatsFun(DataChunk &args, ExpressionState &st
 }
 
 void ExtractionFunctions::Register(ExtensionLoader &loader) {
-	auto doc_element_list_type = BlockTypes::DocElementListType();
+	auto duck_block_list_type = BlockTypes::DuckBlockListType();
 
-	// doc_blocks_to_text(blocks LIST(doc_element), separator VARCHAR) -> VARCHAR
+	// db_blocks_to_text(blocks LIST(duck_block), separator VARCHAR) -> VARCHAR
 	auto to_text_func = ScalarFunction(
-	    "doc_blocks_to_text",
-	    {doc_element_list_type, LogicalType::VARCHAR},
+	    "db_blocks_to_text",
+	    {duck_block_list_type, LogicalType::VARCHAR},
 	    LogicalType::VARCHAR,
-	    DocBlocksToTextFun
+	    DbBlocksToTextFun
 	);
 	loader.RegisterFunction(to_text_func);
 
 	// Single-arg version with default separator
 	auto to_text_func_simple = ScalarFunction(
-	    "doc_blocks_to_text",
-	    {doc_element_list_type},
+	    "db_blocks_to_text",
+	    {duck_block_list_type},
 	    LogicalType::VARCHAR,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &blocks_vec = args.data[0];
@@ -344,12 +344,12 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	heading_struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
 	auto heading_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(heading_struct_children)));
 
-	// doc_blocks_headings(blocks LIST(doc_element)) -> LIST(STRUCT)
+	// db_blocks_headings(blocks LIST(duck_block)) -> LIST(STRUCT)
 	auto headings_func = ScalarFunction(
-	    "doc_blocks_headings",
-	    {doc_element_list_type},
+	    "db_blocks_headings",
+	    {duck_block_list_type},
 	    heading_list_type,
-	    DocBlocksHeadingsFun
+	    DbBlocksHeadingsFun
 	);
 	loader.RegisterFunction(headings_func);
 
@@ -360,12 +360,12 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	code_struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
 	auto code_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(code_struct_children)));
 
-	// doc_blocks_code_blocks(blocks LIST(doc_element)) -> LIST(STRUCT)
+	// db_blocks_code_blocks(blocks LIST(duck_block)) -> LIST(STRUCT)
 	auto code_blocks_func = ScalarFunction(
-	    "doc_blocks_code_blocks",
-	    {doc_element_list_type},
+	    "db_blocks_code_blocks",
+	    {duck_block_list_type},
 	    code_list_type,
-	    DocBlocksCodeBlocksFun
+	    DbBlocksCodeBlocksFun
 	);
 	loader.RegisterFunction(code_blocks_func);
 
@@ -377,12 +377,12 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	stats_struct_children.push_back(make_pair("avg_content_length", LogicalType::DOUBLE));
 	auto stats_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(stats_struct_children)));
 
-	// doc_blocks_stats(blocks LIST(doc_element)) -> LIST(STRUCT)
+	// db_blocks_stats(blocks LIST(duck_block)) -> LIST(STRUCT)
 	auto stats_func = ScalarFunction(
-	    "doc_blocks_stats",
-	    {doc_element_list_type},
+	    "db_blocks_stats",
+	    {duck_block_list_type},
 	    stats_list_type,
-	    DocBlocksStatsFun
+	    DbBlocksStatsFun
 	);
 	loader.RegisterFunction(stats_func);
 }

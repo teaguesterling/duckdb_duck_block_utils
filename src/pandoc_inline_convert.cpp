@@ -412,7 +412,7 @@ static void FlattenPandocInlines(const string &json, int32_t level, int32_t &ord
 	}
 }
 
-void PandocInlineConvert::PandocInlinesToDocInlinesFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void PandocInlineConvert::PandocInlinesToDbInlinesFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &json_vec = args.data[0];
 	auto count = args.size();
 
@@ -420,7 +420,7 @@ void PandocInlineConvert::PandocInlinesToDocInlinesFun(DataChunk &args, Expressi
 		auto json_val = json_vec.GetValue(i);
 
 		if (json_val.IsNull()) {
-			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DocElementType())));
+			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DuckBlockType())));
 			continue;
 		}
 
@@ -430,7 +430,7 @@ void PandocInlineConvert::PandocInlinesToDocInlinesFun(DataChunk &args, Expressi
 
 		FlattenPandocInlines(json, 1, order, inlines);
 
-		result.SetValue(i, Value::LIST(BlockTypes::DocElementType(), inlines));
+		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), inlines));
 	}
 }
 
@@ -619,7 +619,7 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 	return json.str();
 }
 
-void PandocInlineConvert::DocInlinesToPandocFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void PandocInlineConvert::DbInlinesToPandocFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &list_vec = args.data[0];
 	auto count = args.size();
 
@@ -790,22 +790,22 @@ void PandocInlineConvert::PandocInlinesToTextFun(DataChunk &args, ExpressionStat
 }
 
 void PandocInlineConvert::Register(ExtensionLoader &loader) {
-	auto doc_element_list_type = BlockTypes::DocElementListType();
+	auto duck_block_list_type = BlockTypes::DuckBlockListType();
 
-	// pandoc_inlines_to_doc_inlines(json VARCHAR) -> LIST(doc_element)
+	// pandoc_inlines_to_db_inlines(json VARCHAR) -> LIST(doc_element)
 	loader.RegisterFunction(ScalarFunction(
-	    "pandoc_inlines_to_doc_inlines",
+	    "pandoc_inlines_to_db_inlines",
 	    {LogicalType::VARCHAR},
-	    doc_element_list_type,
-	    PandocInlinesToDocInlinesFun
+	    duck_block_list_type,
+	    PandocInlinesToDbInlinesFun
 	));
 
-	// doc_inlines_to_pandoc(LIST(doc_element)) -> VARCHAR (JSON)
+	// db_inlines_to_pandoc(LIST(doc_element)) -> VARCHAR (JSON)
 	loader.RegisterFunction(ScalarFunction(
-	    "doc_inlines_to_pandoc",
-	    {doc_element_list_type},
+	    "db_inlines_to_pandoc",
+	    {duck_block_list_type},
 	    LogicalType::VARCHAR,
-	    DocInlinesToPandocFun
+	    DbInlinesToPandocFun
 	));
 
 	// pandoc_inlines_to_text(json VARCHAR) -> VARCHAR

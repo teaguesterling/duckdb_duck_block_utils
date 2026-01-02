@@ -2,7 +2,7 @@
 
 namespace duckdb {
 
-LogicalType BlockTypes::DocElementType() {
+LogicalType BlockTypes::DuckBlockType() {
 	child_list_t<LogicalType> struct_children;
 	struct_children.push_back(make_pair("kind", LogicalType::VARCHAR));
 	struct_children.push_back(make_pair("element_type", LogicalType::VARCHAR));
@@ -16,11 +16,11 @@ LogicalType BlockTypes::DocElementType() {
 	return LogicalType::STRUCT(std::move(struct_children));
 }
 
-LogicalType BlockTypes::DocElementListType() {
-	return LogicalType::LIST(DocElementType());
+LogicalType BlockTypes::DuckBlockListType() {
+	return LogicalType::LIST(DuckBlockType());
 }
 
-LogicalType BlockTypes::DocElementExtType() {
+LogicalType BlockTypes::DuckBlockExtType() {
 	child_list_t<LogicalType> struct_children;
 	struct_children.push_back(make_pair("kind", LogicalType::VARCHAR));
 	struct_children.push_back(make_pair("element_type", LogicalType::VARCHAR));
@@ -38,8 +38,8 @@ LogicalType BlockTypes::DocElementExtType() {
 }
 
 void BlockTypes::Register(ExtensionLoader &loader) {
-	loader.RegisterType("doc_element", DocElementType());
-	loader.RegisterType("doc_element_ext", DocElementExtType());
+	loader.RegisterType("duck_block", DuckBlockType());
+	loader.RegisterType("duck_block_ext", DuckBlockExtType());
 }
 
 } // namespace duckdb

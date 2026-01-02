@@ -5,256 +5,256 @@
 require duck_block_utils
 
 # ============================================================================
-# doc_heading Tests
+# db_heading Tests
 # ============================================================================
 
-# Test doc_heading creates correct block_type
+# Test db_heading creates correct block_type
 query I
-SELECT doc_heading('My Title', 1).element_type;
+SELECT db_heading('My Title', 1).element_type;
 ----
 heading
 
-# Test doc_heading sets content
+# Test db_heading sets content
 query I
-SELECT doc_heading('My Title', 1).content;
+SELECT db_heading('My Title', 1).content;
 ----
 My Title
 
-# Test doc_heading sets heading_level in attributes (not level field)
+# Test db_heading sets heading_level in attributes (not level field)
 query I
-SELECT doc_heading('My Title', 2).level IS NULL;
+SELECT db_heading('My Title', 2).level IS NULL;
 ----
 true
 
-# Test doc_heading stores level in attributes
+# Test db_heading stores level in attributes
 query I
-SELECT doc_heading('My Title', 2).attributes['heading_level'];
+SELECT db_heading('My Title', 2).attributes['heading_level'];
 ----
 2
 
-# Test doc_heading sets encoding to text
+# Test db_heading sets encoding to text
 query I
-SELECT doc_heading('My Title', 1).encoding;
+SELECT db_heading('My Title', 1).encoding;
 ----
 text
 
-# Test doc_heading initializes block_order to 0
+# Test db_heading initializes block_order to 0
 query I
-SELECT doc_heading('My Title', 1).element_order;
+SELECT db_heading('My Title', 1).element_order;
 ----
 0
 
 # ============================================================================
-# doc_paragraph Tests
+# db_paragraph Tests
 # ============================================================================
 
-# Test doc_paragraph creates paragraph block
+# Test db_paragraph creates paragraph block
 query I
-SELECT doc_paragraph('Hello world').element_type;
+SELECT db_paragraph('Hello world').element_type;
 ----
 paragraph
 
-# Test doc_paragraph content
+# Test db_paragraph content
 query I
-SELECT doc_paragraph('Hello world').content;
+SELECT db_paragraph('Hello world').content;
 ----
 Hello world
 
-# Test doc_paragraph level is NULL
+# Test db_paragraph level is NULL
 query I
-SELECT doc_paragraph('Hello world').level IS NULL;
+SELECT db_paragraph('Hello world').level IS NULL;
 ----
 true
 
 # ============================================================================
-# doc_code Tests
+# db_code Tests
 # ============================================================================
 
-# Test doc_code with language
+# Test db_code with language
 query I
-SELECT doc_code('print(1)', 'python').element_type;
+SELECT db_code('print(1)', 'python').element_type;
 ----
 code
 
 query I
-SELECT doc_code('print(1)', 'python').content;
+SELECT db_code('print(1)', 'python').content;
 ----
 print(1)
 
 query I
-SELECT doc_code('print(1)', 'python').attributes['language'];
+SELECT db_code('print(1)', 'python').attributes['language'];
 ----
 python
 
-# Test doc_code without language (single arg)
+# Test db_code without language (single arg)
 query I
-SELECT doc_code('print(1)').element_type;
+SELECT db_code('print(1)').element_type;
 ----
 code
 
 # ============================================================================
-# doc_blockquote Tests
+# db_blockquote Tests
 # ============================================================================
 
-# Test doc_blockquote with level
+# Test db_blockquote with level
 query I
-SELECT doc_blockquote('Quote text', 2).element_type;
+SELECT db_blockquote('Quote text', 2).element_type;
 ----
 blockquote
 
 query I
-SELECT doc_blockquote('Quote text', 2).level;
+SELECT db_blockquote('Quote text', 2).level;
 ----
 2
 
-# Test doc_blockquote single arg defaults level to 1
+# Test db_blockquote single arg defaults level to 1
 query I
-SELECT doc_blockquote('Quote text').level;
+SELECT db_blockquote('Quote text').level;
 ----
 1
 
 # ============================================================================
-# doc_list_block Tests
+# db_list_block Tests
 # ============================================================================
 
-# Test doc_list_block unordered
+# Test db_list_block unordered
 query I
-SELECT doc_list_block(['First', 'Second', 'Third']).element_type;
+SELECT db_list_block(['First', 'Second', 'Third']).element_type;
 ----
 list
 
 query I
-SELECT doc_list_block(['First', 'Second', 'Third']).encoding;
+SELECT db_list_block(['First', 'Second', 'Third']).encoding;
 ----
 json
 
 query I
-SELECT doc_list_block(['First', 'Second', 'Third']).attributes['ordered'];
+SELECT db_list_block(['First', 'Second', 'Third']).attributes['ordered'];
 ----
 false
 
-# Test doc_list_block ordered
+# Test db_list_block ordered
 query I
-SELECT doc_list_block(['First', 'Second'], true).attributes['ordered'];
+SELECT db_list_block(['First', 'Second'], true).attributes['ordered'];
 ----
 true
 
-# Test doc_list_block content is JSON array
+# Test db_list_block content is JSON array
 query I
-SELECT doc_list_block(['A', 'B']).content;
+SELECT db_list_block(['A', 'B']).content;
 ----
 ["A","B"]
 
 # ============================================================================
-# doc_hr Tests
+# db_hr Tests
 # ============================================================================
 
-# Test doc_hr creates hr block
+# Test db_hr creates hr block
 query I
-SELECT doc_hr().element_type;
+SELECT db_hr().element_type;
 ----
 hr
 
 query I
-SELECT doc_hr().content;
+SELECT db_hr().content;
 ----
 (empty)
 
 # ============================================================================
-# doc_metadata Tests
+# db_metadata Tests
 # ============================================================================
 
-# Test doc_metadata creates metadata block
+# Test db_metadata creates metadata block
 query I
-SELECT doc_metadata('title: Test').element_type;
+SELECT db_metadata('title: Test').element_type;
 ----
 metadata
 
 query I
-SELECT doc_metadata('title: Test').content;
+SELECT db_metadata('title: Test').content;
 ----
 title: Test
 
 query I
-SELECT doc_metadata('title: Test').encoding;
+SELECT db_metadata('title: Test').encoding;
 ----
 yaml
 
 query I
-SELECT doc_metadata('title: Test').level;
+SELECT db_metadata('title: Test').level;
 ----
 0
 
 # ============================================================================
-# doc_image Tests
+# db_image Tests
 # ============================================================================
 
-# Test doc_image with all args
+# Test db_image with all args
 query I
-SELECT doc_image('/path/to/img.png', 'Alt text', 'Title').element_type;
+SELECT db_image('/path/to/img.png', 'Alt text', 'Title').element_type;
 ----
 image
 
 query I
-SELECT doc_image('/path/to/img.png', 'Alt text', 'Title').attributes['src'];
+SELECT db_image('/path/to/img.png', 'Alt text', 'Title').attributes['src'];
 ----
 /path/to/img.png
 
 query I
-SELECT doc_image('/path/to/img.png', 'Alt text', 'Title').attributes['alt'];
+SELECT db_image('/path/to/img.png', 'Alt text', 'Title').attributes['alt'];
 ----
 Alt text
 
 query I
-SELECT doc_image('/path/to/img.png', 'Alt text', 'Title').attributes['title'];
+SELECT db_image('/path/to/img.png', 'Alt text', 'Title').attributes['title'];
 ----
 Title
 
-# Test doc_image with 2 args
+# Test db_image with 2 args
 query I
-SELECT doc_image('/path/to/img.png', 'Alt text').attributes['src'];
+SELECT db_image('/path/to/img.png', 'Alt text').attributes['src'];
 ----
 /path/to/img.png
 
-# Test doc_image with 1 arg
+# Test db_image with 1 arg
 query I
-SELECT doc_image('/path/to/img.png').attributes['src'];
+SELECT db_image('/path/to/img.png').attributes['src'];
 ----
 /path/to/img.png
 
 # ============================================================================
-# doc_raw Tests
+# db_raw Tests
 # ============================================================================
 
-# Test doc_raw with format
+# Test db_raw with format
 query I
-SELECT doc_raw('<div>HTML</div>', 'html').element_type;
+SELECT db_raw('<div>HTML</div>', 'html').element_type;
 ----
 raw
 
 query I
-SELECT doc_raw('<div>HTML</div>', 'html').content;
+SELECT db_raw('<div>HTML</div>', 'html').content;
 ----
 <div>HTML</div>
 
 query I
-SELECT doc_raw('<div>HTML</div>', 'html').attributes['format'];
+SELECT db_raw('<div>HTML</div>', 'html').attributes['format'];
 ----
 html
 
 query I
-SELECT doc_raw('<div>HTML</div>', 'html').encoding;
+SELECT db_raw('<div>HTML</div>', 'html').encoding;
 ----
 html
 
-# Test doc_raw single arg defaults to html
+# Test db_raw single arg defaults to html
 query I
-SELECT doc_raw('<br>').encoding;
+SELECT db_raw('<br>').encoding;
 ----
 html
 
 query I
-SELECT doc_raw('<br>').attributes['format'];
+SELECT db_raw('<br>').attributes['format'];
 ----
 html
 
@@ -264,8 +264,8 @@ html
 
 # Test filtering builder-created blocks
 query I
-SELECT len(doc_blocks_filter(
-    [doc_heading('Title', 1), doc_paragraph('Text'), doc_code('x=1', 'py')],
+SELECT len(db_blocks_filter(
+    [db_heading('Title', 1), db_paragraph('Text'), db_code('x=1', 'py')],
     ['heading', 'code']
 ));
 ----
@@ -273,19 +273,84 @@ SELECT len(doc_blocks_filter(
 
 # Test merging builder-created blocks
 query I
-SELECT len(doc_blocks_merge(
-    [doc_heading('Title', 1)],
-    [doc_paragraph('Text')]
+SELECT len(db_blocks_merge(
+    [db_heading('Title', 1)],
+    [db_paragraph('Text')]
 ));
 ----
 2
 
 # Test reordering builder-created blocks
 query I
-SELECT doc_blocks_reorder([
-    doc_heading('Title', 1),
-    doc_paragraph('Text'),
-    doc_code('code', 'py')
+SELECT db_blocks_reorder([
+    db_heading('Title', 1),
+    db_paragraph('Text'),
+    db_code('code', 'py')
 ])[2].element_order;
 ----
 1
+
+# ============================================================================
+# Flattening Builder Overloads
+# ============================================================================
+
+# Test db_paragraph with children returns a list
+query I
+SELECT len(db_paragraph([db_text('Hello'), db_text(' world')]));
+----
+3
+
+# Test db_paragraph flattening - parent is first element with level 1
+query II
+SELECT db_paragraph([db_text('Hello')])[1].element_type, db_paragraph([db_text('Hello')])[1].level;
+----
+paragraph	1
+
+# Test db_paragraph flattening - children have level 2
+query II
+SELECT db_paragraph([db_text('Hello')])[2].element_type, db_paragraph([db_text('Hello')])[2].level;
+----
+text	2
+
+# Test db_paragraph flattening - children have sequential element_order
+query III
+SELECT db_paragraph([db_text('A'), db_text('B'), db_text('C')])[2].element_order,
+       db_paragraph([db_text('A'), db_text('B'), db_text('C')])[3].element_order,
+       db_paragraph([db_text('A'), db_text('B'), db_text('C')])[4].element_order;
+----
+0	1	2
+
+# Test db_heading with children
+query II
+SELECT db_heading(2, [db_text('Title')])[1].element_type, db_heading(2, [db_text('Title')])[1].attributes['heading_level'];
+----
+heading	2
+
+query I
+SELECT db_heading(2, [db_text('Title')])[2].level;
+----
+2
+
+# Test db_blockquote with children
+query II
+SELECT db_blockquote(1, [db_text('Quote')])[1].element_type, db_blockquote(1, [db_text('Quote')])[1].level;
+----
+blockquote	1
+
+# Test db_blockquote with just children (level defaults to 1)
+query I
+SELECT db_blockquote([db_text('Quote')])[1].level;
+----
+1
+
+# Test db_code with language and children
+query II
+SELECT db_code('python', [db_text('print(1)')])[1].element_type, db_code('python', [db_text('print(1)')])[1].attributes['language'];
+----
+code	python
+
+# Test db_code with just children (no language)
+query I
+SELECT len(db_code([db_text('x=1')]));
+----
+2

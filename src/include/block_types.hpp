@@ -8,22 +8,22 @@ namespace duckdb {
 class BlockTypes {
 public:
 	// ========================================================================
-	// Unified doc_element type
+	// Unified duck_block type
 	// ========================================================================
 
-	// Create the doc_element type
-	static LogicalType DocElementType();
+	// Create the duck_block type
+	static LogicalType DuckBlockType();
 
-	// Create a LIST(doc_element) type
-	static LogicalType DocElementListType();
+	// Create a LIST(duck_block) type
+	static LogicalType DuckBlockListType();
 
-	// Create the extended doc_element type with provenance fields
-	static LogicalType DocElementExtType();
+	// Create the extended duck_block type with provenance fields
+	static LogicalType DuckBlockExtType();
 
 	// Register types with the extension loader
 	static void Register(ExtensionLoader &loader);
 
-	// Field indices for doc_element struct
+	// Field indices for duck_block struct
 	static constexpr idx_t KIND_IDX = 0;
 	static constexpr idx_t ELEMENT_TYPE_IDX = 1;
 	static constexpr idx_t CONTENT_IDX = 2;
@@ -32,7 +32,7 @@ public:
 	static constexpr idx_t ATTRIBUTES_IDX = 5;
 	static constexpr idx_t ELEMENT_ORDER_IDX = 6;
 
-	// Additional field indices for doc_element_ext
+	// Additional field indices for duck_block_ext
 	static constexpr idx_t SOURCE_FORMAT_IDX = 7;
 	static constexpr idx_t FILE_PATH_IDX = 8;
 
@@ -48,6 +48,7 @@ public:
 	static constexpr const char *TYPE_CODE = "code";
 	static constexpr const char *TYPE_BLOCKQUOTE = "blockquote";
 	static constexpr const char *TYPE_LIST = "list";
+	static constexpr const char *TYPE_LIST_ITEM = "list_item";
 	static constexpr const char *TYPE_TABLE = "table";
 	static constexpr const char *TYPE_HR = "hr";
 	static constexpr const char *TYPE_METADATA = "metadata";

@@ -11,21 +11,21 @@ public:
 	static void Register(ExtensionLoader &loader);
 
 private:
-	// doc_assemble(blocks LIST(doc_block)) -> LIST(doc_block)
-	// Flattens nested structures and assigns sequential block_order
-	static void DocAssembleFun(DataChunk &args, ExpressionState &state, Vector &result);
+	// db_assemble(blocks LIST(duck_block)) -> LIST(duck_block)
+	// Flattens nested structures and assigns sequential element_order
+	static void DbAssembleFun(DataChunk &args, ExpressionState &state, Vector &result);
 
-	// doc_section(title VARCHAR, level INTEGER, children LIST(doc_block)) -> LIST(doc_block)
+	// db_section(title VARCHAR, level INTEGER, children LIST(duck_block)) -> LIST(duck_block)
 	// Creates a heading followed by children blocks
-	static void DocSectionFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbSectionFun(DataChunk &args, ExpressionState &state, Vector &result);
 
-	// doc_rebase_levels(blocks LIST(doc_block), offset INTEGER) -> LIST(doc_block)
+	// db_rebase_levels(blocks LIST(duck_block), offset INTEGER) -> LIST(duck_block)
 	// Adjusts all heading levels by the given offset
-	static void DocRebaseLevelsFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbRebaseLevelsFun(DataChunk &args, ExpressionState &state, Vector &result);
 
-	// doc_concat(blocks1 LIST(doc_block), blocks2 LIST(doc_block)) -> LIST(doc_block)
-	// Simple concatenation without block_order adjustment (use merge for that)
-	static void DocConcatFun(DataChunk &args, ExpressionState &state, Vector &result);
+	// db_concat(blocks1 LIST(duck_block), blocks2 LIST(duck_block)) -> LIST(duck_block)
+	// Simple concatenation without element_order adjustment (use merge for that)
+	static void DbConcatFun(DataChunk &args, ExpressionState &state, Vector &result);
 };
 
 } // namespace duckdb

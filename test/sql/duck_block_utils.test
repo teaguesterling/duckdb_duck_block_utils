@@ -9,32 +9,32 @@ require duck_block_utils
 # Type Tests - Using builder functions which return proper struct types
 # ============================================================================
 
-# Test doc_heading returns correct structure
+# Test db_heading returns correct structure
 query I
-SELECT doc_heading('Test', 1).element_type;
+SELECT db_heading('Test', 1).element_type;
 ----
 heading
 
-# Test doc_paragraph with NULL level
+# Test db_paragraph with NULL level
 query I
-SELECT doc_paragraph('Hello').level IS NULL;
+SELECT db_paragraph('Hello').level IS NULL;
 ----
 true
 
-# Test doc_code with attributes
+# Test db_code with attributes
 query I
-SELECT doc_code('print(1)', 'python').attributes['language'];
+SELECT db_code('print(1)', 'python').attributes['language'];
 ----
 python
 
 # ============================================================================
-# doc_blocks_filter Tests
+# db_blocks_filter Tests
 # ============================================================================
 
 # Test filter with single type
 query I
-SELECT len(doc_blocks_filter(
-    [doc_heading('Title', 1), doc_paragraph('Text')],
+SELECT len(db_blocks_filter(
+    [db_heading('Title', 1), db_paragraph('Text')],
     ['heading']
 ));
 ----
@@ -42,8 +42,8 @@ SELECT len(doc_blocks_filter(
 
 # Test filter with multiple types
 query I
-SELECT len(doc_blocks_filter(
-    [doc_heading('Title', 1), doc_paragraph('Text'), doc_code('x=1', 'py')],
+SELECT len(db_blocks_filter(
+    [db_heading('Title', 1), db_paragraph('Text'), db_code('x=1', 'py')],
     ['heading', 'code']
 ));
 ----
@@ -51,8 +51,8 @@ SELECT len(doc_blocks_filter(
 
 # Test filter with no matches
 query I
-SELECT len(doc_blocks_filter(
-    [doc_paragraph('Text')],
+SELECT len(db_blocks_filter(
+    [db_paragraph('Text')],
     ['heading']
 ));
 ----
@@ -60,21 +60,21 @@ SELECT len(doc_blocks_filter(
 
 # Test filter preserves original block_order
 query I
-SELECT doc_blocks_filter(
-    [doc_heading('A', 1), doc_paragraph('B')],
+SELECT db_blocks_filter(
+    [db_heading('A', 1), db_paragraph('B')],
     ['heading']
 )[1].element_order;
 ----
 0
 
 # ============================================================================
-# doc_blocks_exclude Tests
+# db_blocks_exclude Tests
 # ============================================================================
 
 # Test exclude single type
 query I
-SELECT len(doc_blocks_exclude(
-    [doc_heading('Title', 1), doc_paragraph('Text'), doc_hr()],
+SELECT len(db_blocks_exclude(
+    [db_heading('Title', 1), db_paragraph('Text'), db_hr()],
     ['hr']
 ));
 ----
@@ -82,62 +82,62 @@ SELECT len(doc_blocks_exclude(
 
 # Test exclude multiple types
 query I
-SELECT len(doc_blocks_exclude(
-    [doc_heading('Title', 1), doc_metadata('title: Test'), doc_paragraph('Text')],
+SELECT len(db_blocks_exclude(
+    [db_heading('Title', 1), db_metadata('title: Test'), db_paragraph('Text')],
     ['metadata', 'hr']
 ));
 ----
 2
 
 # ============================================================================
-# doc_blocks_merge Tests
+# db_blocks_merge Tests
 # ============================================================================
 
 # Test merge length
 query I
-SELECT len(doc_blocks_merge(
-    [doc_heading('A', 1)],
-    [doc_paragraph('B')]
+SELECT len(db_blocks_merge(
+    [db_heading('A', 1)],
+    [db_paragraph('B')]
 ));
 ----
 2
 
 # Test merge adjusts block_order for second list
 query I
-SELECT doc_blocks_merge(
-    [doc_heading('A', 1)],
-    [doc_paragraph('B')]
+SELECT db_blocks_merge(
+    [db_heading('A', 1)],
+    [db_paragraph('B')]
 )[2].element_order;
 ----
 1
 
 # ============================================================================
-# doc_blocks_reorder Tests
+# db_blocks_reorder Tests
 # ============================================================================
 
 # Test reorder assigns sequential order starting from 0
 query I
-SELECT doc_blocks_reorder(
-    [doc_heading('A', 1), doc_paragraph('B')]
+SELECT db_blocks_reorder(
+    [db_heading('A', 1), db_paragraph('B')]
 )[1].element_order;
 ----
 0
 
 query I
-SELECT doc_blocks_reorder(
-    [doc_heading('A', 1), doc_paragraph('B')]
+SELECT db_blocks_reorder(
+    [db_heading('A', 1), db_paragraph('B')]
 )[2].element_order;
 ----
 1
 
 # ============================================================================
-# doc_blocks_slice Tests
+# db_blocks_slice Tests
 # ============================================================================
 
 # Test slice extracts correct range
 query I
-SELECT len(doc_blocks_slice(
-    doc_assemble([doc_heading('A', 1), doc_paragraph('B'), doc_code('C', 'py'), doc_paragraph('D')]),
+SELECT len(db_blocks_slice(
+    db_assemble([db_heading('A', 1), db_paragraph('B'), db_code('C', 'py'), db_paragraph('D')]),
     1, 2
 ));
 ----
@@ -145,8 +145,8 @@ SELECT len(doc_blocks_slice(
 
 # Test slice with no matches returns empty
 query I
-SELECT len(doc_blocks_slice(
-    [doc_heading('A', 1)],
+SELECT len(db_blocks_slice(
+    [db_heading('A', 1)],
     5, 10
 ));
 ----

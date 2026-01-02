@@ -12,24 +12,24 @@ public:
 
 private:
 	// Filter blocks to include only specified types
-	// doc_blocks_filter(blocks LIST(doc_block), types VARCHAR[]) -> LIST(doc_block)
-	static void DocBlocksFilterFun(DataChunk &args, ExpressionState &state, Vector &result);
+	// db_blocks_filter(blocks LIST(duck_block), types VARCHAR[]) -> LIST(duck_block)
+	static void DbBlocksFilterFun(DataChunk &args, ExpressionState &state, Vector &result);
 
 	// Filter blocks to exclude specified types
-	// doc_blocks_exclude(blocks LIST(doc_block), types VARCHAR[]) -> LIST(doc_block)
-	static void DocBlocksExcludeFun(DataChunk &args, ExpressionState &state, Vector &result);
+	// db_blocks_exclude(blocks LIST(duck_block), types VARCHAR[]) -> LIST(duck_block)
+	static void DbBlocksExcludeFun(DataChunk &args, ExpressionState &state, Vector &result);
 
-	// Merge two block lists, adjusting block_order for continuity
-	// doc_blocks_merge(blocks1 LIST(doc_block), blocks2 LIST(doc_block)) -> LIST(doc_block)
-	static void DocBlocksMergeFun(DataChunk &args, ExpressionState &state, Vector &result);
+	// Merge two block lists, adjusting element_order for continuity
+	// db_blocks_merge(blocks1 LIST(duck_block), blocks2 LIST(duck_block)) -> LIST(duck_block)
+	static void DbBlocksMergeFun(DataChunk &args, ExpressionState &state, Vector &result);
 
-	// Renumber block_order values sequentially from 0
-	// doc_blocks_reorder(blocks LIST(doc_block)) -> LIST(doc_block)
-	static void DocBlocksReorderFun(DataChunk &args, ExpressionState &state, Vector &result);
+	// Renumber element_order values sequentially from 0
+	// db_blocks_reorder(blocks LIST(duck_block)) -> LIST(duck_block)
+	static void DbBlocksReorderFun(DataChunk &args, ExpressionState &state, Vector &result);
 
-	// Extract a contiguous range of blocks by block_order
-	// doc_blocks_slice(blocks LIST(doc_block), start INTEGER, end INTEGER) -> LIST(doc_block)
-	static void DocBlocksSliceFun(DataChunk &args, ExpressionState &state, Vector &result);
+	// Extract a contiguous range of blocks by element_order
+	// db_blocks_slice(blocks LIST(duck_block), start INTEGER, end INTEGER) -> LIST(duck_block)
+	static void DbBlocksSliceFun(DataChunk &args, ExpressionState &state, Vector &result);
 };
 
 } // namespace duckdb

@@ -10,31 +10,31 @@ require duck_block_utils
 
 # Test doc_inline type is registered with all fields
 query I
-SELECT typeof(doc_text('hello'));
+SELECT typeof(db_text('hello'));
 ----
 STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR, VARCHAR), element_order INTEGER)
 
 # ============================================================================
-# doc_text Tests
+# db_text Tests
 # ============================================================================
 
 query I
-SELECT doc_text('Hello world').element_type;
+SELECT db_text('Hello world').element_type;
 ----
 text
 
 query I
-SELECT doc_text('Hello world').content;
+SELECT db_text('Hello world').content;
 ----
 Hello world
 
 query I
-SELECT doc_text('Hello world').level;
+SELECT db_text('Hello world').level;
 ----
 1
 
 query I
-SELECT doc_text('Hello world').element_order;
+SELECT db_text('Hello world').element_order;
 ----
 0
 
@@ -43,75 +43,75 @@ SELECT doc_text('Hello world').element_order;
 # ============================================================================
 
 query I
-SELECT doc_space().element_type;
+SELECT db_space().element_type;
 ----
 space
 
 query I
-SELECT doc_space().content;
+SELECT db_space().content;
 ----
 (empty)
 
 query I
-SELECT doc_softbreak().element_type;
+SELECT db_softbreak().element_type;
 ----
 softbreak
 
 query I
-SELECT doc_linebreak().element_type;
+SELECT db_linebreak().element_type;
 ----
 linebreak
 
 query I
-SELECT doc_linebreak().content;
+SELECT db_linebreak().content;
 ----
 (empty)
 
 # ============================================================================
-# doc_link Tests
+# db_link Tests
 # ============================================================================
 
 query I
-SELECT doc_link('Click here', 'https://example.com').element_type;
+SELECT db_link('Click here', 'https://example.com').element_type;
 ----
 link
 
 query I
-SELECT doc_link('Click here', 'https://example.com').content;
+SELECT db_link('Click here', 'https://example.com').content;
 ----
 Click here
 
 query I
-SELECT doc_link('Click here', 'https://example.com').attributes['href'];
+SELECT db_link('Click here', 'https://example.com').attributes['href'];
 ----
 https://example.com
 
 query I
-SELECT doc_link('Click here', 'https://example.com', 'My Title').attributes['title'];
+SELECT db_link('Click here', 'https://example.com', 'My Title').attributes['title'];
 ----
 My Title
 
 # ============================================================================
-# doc_inline_image Tests
+# db_inline_image Tests
 # ============================================================================
 
 query I
-SELECT doc_inline_image('/path/to/img.png').element_type;
+SELECT db_inline_image('/path/to/img.png').element_type;
 ----
 image
 
 query I
-SELECT doc_inline_image('/path/to/img.png').attributes['src'];
+SELECT db_inline_image('/path/to/img.png').attributes['src'];
 ----
 /path/to/img.png
 
 query I
-SELECT doc_inline_image('/path/to/img.png', 'Alt text').attributes['alt'];
+SELECT db_inline_image('/path/to/img.png', 'Alt text').attributes['alt'];
 ----
 Alt text
 
 query I
-SELECT doc_inline_image('/path/to/img.png', 'Alt text').content;
+SELECT db_inline_image('/path/to/img.png', 'Alt text').content;
 ----
 Alt text
 
@@ -120,37 +120,37 @@ Alt text
 # ============================================================================
 
 query I
-SELECT doc_bold('Important').element_type;
+SELECT db_bold('Important').element_type;
 ----
 bold
 
 query I
-SELECT doc_italic('Emphasis').element_type;
+SELECT db_italic('Emphasis').element_type;
 ----
 italic
 
 query I
-SELECT doc_strikethrough('deleted').element_type;
+SELECT db_strikethrough('deleted').element_type;
 ----
 strikethrough
 
 query I
-SELECT doc_superscript('2').element_type;
+SELECT db_superscript('2').element_type;
 ----
 superscript
 
 query I
-SELECT doc_subscript('n').element_type;
+SELECT db_subscript('n').element_type;
 ----
 subscript
 
 query I
-SELECT doc_smallcaps('Title').element_type;
+SELECT db_smallcaps('Title').element_type;
 ----
 smallcaps
 
 query I
-SELECT doc_underline('underlined').element_type;
+SELECT db_underline('underlined').element_type;
 ----
 underline
 
@@ -159,77 +159,77 @@ underline
 # ============================================================================
 
 query I
-SELECT doc_inline_code('print(1)').element_type;
+SELECT db_inline_code('print(1)').element_type;
 ----
 code
 
 query I
-SELECT doc_math('E=mc^2').element_type;
+SELECT db_math('E=mc^2').element_type;
 ----
 math
 
 query I
-SELECT doc_math('E=mc^2').attributes['display'];
+SELECT db_math('E=mc^2').attributes['display'];
 ----
 inline
 
 query I
-SELECT doc_math('\\sum_{i=1}^n', true).attributes['display'];
+SELECT db_math('\\sum_{i=1}^n', true).attributes['display'];
 ----
 block
 
 query I
-SELECT doc_quoted('Hello').element_type;
+SELECT db_quoted('Hello').element_type;
 ----
 quoted
 
 query I
-SELECT doc_quoted('Hello').attributes['quote_type'];
+SELECT db_quoted('Hello').attributes['quote_type'];
 ----
 double
 
 query I
-SELECT doc_quoted('Hello', 'single').attributes['quote_type'];
+SELECT db_quoted('Hello', 'single').attributes['quote_type'];
 ----
 single
 
 query I
-SELECT doc_cite('knuth1984').element_type;
+SELECT db_cite('knuth1984').element_type;
 ----
 cite
 
 query I
-SELECT doc_cite('knuth1984').attributes['key'];
+SELECT db_cite('knuth1984').attributes['key'];
 ----
 knuth1984
 
 query I
-SELECT doc_note('Footnote content').element_type;
+SELECT db_note('Footnote content').element_type;
 ----
 note
 
 query I
-SELECT doc_span('text', 'my-id').element_type;
+SELECT db_span('text', 'my-id').element_type;
 ----
 span
 
 query I
-SELECT doc_span('text', 'my-id').attributes['id'];
+SELECT db_span('text', 'my-id').attributes['id'];
 ----
 my-id
 
 query I
-SELECT doc_raw_inline('<br>').element_type;
+SELECT db_raw_inline('<br>').element_type;
 ----
 raw
 
 query I
-SELECT doc_raw_inline('<br>').attributes['format'];
+SELECT db_raw_inline('<br>').attributes['format'];
 ----
 html
 
 query I
-SELECT doc_raw_inline('\\LaTeX', 'latex').attributes['format'];
+SELECT db_raw_inline('\\LaTeX', 'latex').attributes['format'];
 ----
 latex
 
@@ -238,17 +238,17 @@ latex
 # ============================================================================
 
 query I
-SELECT len([doc_text('Hello '), doc_bold('world'), doc_text('!')]);
+SELECT len([db_text('Hello '), db_bold('world'), db_text('!')]);
 ----
 3
 
 query I
-SELECT [doc_text('Hello '), doc_bold('world')][1].element_type;
+SELECT [db_text('Hello '), db_bold('world')][1].element_type;
 ----
 text
 
 query I
-SELECT [doc_text('Hello '), doc_bold('world')][2].element_type;
+SELECT [db_text('Hello '), db_bold('world')][2].element_type;
 ----
 bold
 
@@ -258,54 +258,54 @@ bold
 
 # Test basic Pandoc inline parsing
 query I
-SELECT len(pandoc_inlines_to_doc_inlines('[{"t":"Str","c":"Hello"}]'));
+SELECT len(pandoc_inlines_to_db_inlines('[{"t":"Str","c":"Hello"}]'));
 ----
 1
 
 query I
-SELECT pandoc_inlines_to_doc_inlines('[{"t":"Str","c":"Hello"}]')[1].element_type;
+SELECT pandoc_inlines_to_db_inlines('[{"t":"Str","c":"Hello"}]')[1].element_type;
 ----
 text
 
 query I
-SELECT pandoc_inlines_to_doc_inlines('[{"t":"Str","c":"Hello"}]')[1].content;
+SELECT pandoc_inlines_to_db_inlines('[{"t":"Str","c":"Hello"}]')[1].content;
 ----
 Hello
 
 # Test Space and LineBreak
 query I
-SELECT pandoc_inlines_to_doc_inlines('[{"t":"Space"}]')[1].element_type;
+SELECT pandoc_inlines_to_db_inlines('[{"t":"Space"}]')[1].element_type;
 ----
 space
 
 query I
-SELECT pandoc_inlines_to_doc_inlines('[{"t":"LineBreak"}]')[1].element_type;
+SELECT pandoc_inlines_to_db_inlines('[{"t":"LineBreak"}]')[1].element_type;
 ----
 linebreak
 
 # Test Strong (bold) with nested content
 query I
-SELECT len(pandoc_inlines_to_doc_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]'));
+SELECT len(pandoc_inlines_to_db_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]'));
 ----
 2
 
 query I
-SELECT pandoc_inlines_to_doc_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]')[1].element_type;
+SELECT pandoc_inlines_to_db_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]')[1].element_type;
 ----
 bold
 
 query I
-SELECT pandoc_inlines_to_doc_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]')[1].level;
+SELECT pandoc_inlines_to_db_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]')[1].level;
 ----
 1
 
 query I
-SELECT pandoc_inlines_to_doc_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]')[2].element_type;
+SELECT pandoc_inlines_to_db_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]')[2].element_type;
 ----
 text
 
 query I
-SELECT pandoc_inlines_to_doc_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]')[2].level;
+SELECT pandoc_inlines_to_db_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]')[2].level;
 ----
 2
 
@@ -322,6 +322,142 @@ Hello world
 
 # Test round-trip conversion
 query I
-SELECT doc_inlines_to_pandoc([doc_text('Hello')]);
+SELECT db_inlines_to_pandoc([db_text('Hello')]);
 ----
 [{"t":"Str","c":"Hello"}]
+
+# ============================================================================
+# Flattening Builder Overloads for Inlines
+# ============================================================================
+
+# Test db_bold with children returns a list
+query I
+SELECT len(db_bold([db_text('Hello'), db_text(' world')]));
+----
+3
+
+# Test db_bold flattening - parent is first element with level 1
+query II
+SELECT db_bold([db_text('Hello')])[1].element_type, db_bold([db_text('Hello')])[1].level;
+----
+bold	1
+
+# Test db_bold flattening - children have level 2
+query II
+SELECT db_bold([db_text('Hello')])[2].element_type, db_bold([db_text('Hello')])[2].level;
+----
+text	2
+
+# Test db_bold flattening - children have sequential element_order
+query III
+SELECT db_bold([db_text('A'), db_text('B'), db_text('C')])[2].element_order,
+       db_bold([db_text('A'), db_text('B'), db_text('C')])[3].element_order,
+       db_bold([db_text('A'), db_text('B'), db_text('C')])[4].element_order;
+----
+0	1	2
+
+# Test db_italic with children
+query II
+SELECT db_italic([db_text('Hello')])[1].element_type, db_italic([db_text('Hello')])[1].level;
+----
+italic	1
+
+# Test db_strikethrough with children
+query I
+SELECT len(db_strikethrough([db_text('Hello')]));
+----
+2
+
+# Test db_superscript with children
+query I
+SELECT len(db_superscript([db_text('2')]));
+----
+2
+
+# Test db_subscript with children
+query I
+SELECT len(db_subscript([db_text('n')]));
+----
+2
+
+# Test db_smallcaps with children
+query I
+SELECT len(db_smallcaps([db_text('Title')]));
+----
+2
+
+# Test db_underline with children
+query I
+SELECT len(db_underline([db_text('word')]));
+----
+2
+
+# Test db_link with href and children
+query II
+SELECT db_link('https://example.com', [db_text('Click')])[1].element_type,
+       db_link('https://example.com', [db_text('Click')])[1].attributes['href'];
+----
+link	https://example.com
+
+query I
+SELECT db_link('https://example.com', [db_text('Click')])[2].level;
+----
+2
+
+# Test db_link with href, children, and title
+query I
+SELECT db_link('https://example.com', [db_text('Click')], 'Title')[1].attributes['title'];
+----
+Title
+
+# Test db_quoted with children
+query I
+SELECT len(db_quoted([db_text('some words')]));
+----
+2
+
+query I
+SELECT db_quoted([db_text('some words')])[1].attributes['quote_type'];
+----
+double
+
+# Test db_quoted with children and quote_type
+query I
+SELECT db_quoted([db_text('word')], 'single')[1].attributes['quote_type'];
+----
+single
+
+# Test db_span with children
+query I
+SELECT len(db_span([db_text('content')]));
+----
+2
+
+# Test db_span with children and id
+query I
+SELECT db_span([db_text('content')], 'my-id')[1].attributes['id'];
+----
+my-id
+
+# Test db_span with children, id, and classes
+query I
+SELECT db_span([db_text('content')], 'my-id', 'class1 class2')[1].attributes['class'];
+----
+class1 class2
+
+# Test db_note with children
+query I
+SELECT len(db_note([db_text('Footnote')]));
+----
+2
+
+query I
+SELECT db_note([db_text('Footnote')])[1].element_type;
+----
+note
+
+# Test nested flattening - bold inside paragraph
+query I
+SELECT len(db_paragraph([db_bold([db_text('Hello')])[1], db_bold([db_text('Hello')])[2]]));
+----
+3
