@@ -9,6 +9,8 @@
 #include "pandoc_inline_convert.hpp"
 #include "assembly.hpp"
 #include "extraction.hpp"
+#include "validation.hpp"
+#include "pandoc_block_convert.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/function/scalar_function.hpp"
@@ -36,11 +38,11 @@ static void LoadInternal(ExtensionLoader &loader) {
 	// Phase 4: Extraction Functions
 	ExtractionFunctions::Register(loader);
 
-	// Phase 5: Validation Functions (TODO)
-	// RegisterValidationFunctions(loader);
+	// Phase 5: Validation Functions
+	ValidationFunctions::Register(loader);
 
-	// Phase 6: Pandoc AST Functions (TODO)
-	// RegisterPandocASTFunctions(loader);
+	// Phase 6: Pandoc AST Block Functions
+	PandocBlockConvert::Register(loader);
 }
 
 void DuckBlockUtilsExtension::Load(ExtensionLoader &loader) {

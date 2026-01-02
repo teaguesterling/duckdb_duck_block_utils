@@ -213,6 +213,161 @@ void ExtractionFunctions::DbBlocksCodeBlocksFun(DataChunk &args, ExpressionState
 	}
 }
 
+void ExtractionFunctions::DbBlocksTocFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &blocks_vec = args.data[0];
+
+	// Define the return type for TOC entries
+	child_list_t<LogicalType> toc_struct_children;
+	toc_struct_children.push_back(make_pair("level", LogicalType::INTEGER));
+	toc_struct_children.push_back(make_pair("title", LogicalType::VARCHAR));
+	toc_struct_children.push_back(make_pair("id", LogicalType::VARCHAR));
+	toc_struct_children.push_back(make_pair("indent", LogicalType::INTEGER));
+	toc_struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
+	auto toc_struct_type = LogicalType::STRUCT(std::move(toc_struct_children));
+
+	auto count = args.size();
+
+	for (idx_t i = 0; i < count; i++) {
+		auto blocks_val = blocks_vec.GetValue(i);
+
+		// Handle NULL input
+		if (blocks_val.IsNull()) {
+			result.SetValue(i, Value::LIST(toc_struct_type, vector<Value>()));
+			continue;
+		}
+
+		auto &blocks_list = ListValue::GetChildren(blocks_val);
+		vector<Value> toc_entries;
+
+		// Track minimum heading level for calculating indent
+		int32_t min_level = 7;  // Higher than max heading level (6)
+
+		// First pass: find headings and minimum level
+		vector<std::tuple<int32_t, string, string, int32_t>> headings;  // level, title, id, element_order
+
+		for (auto &block : blocks_list) {
+			if (block.IsNull()) {
+				continue;
+			}
+
+			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
+
+			if (element_type != BlockTypes::TYPE_HEADING) {
+				continue;
+			}
+
+			// Get heading_level from attributes, falling back to level field
+			auto heading_level_str = GetElementAttribute(block, "heading_level");
+			int32_t level;
+			if (!heading_level_str.empty()) {
+				level = std::stoi(heading_level_str);
+			} else {
+				level = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
+			}
+			auto title = GetElementStringField(block, BlockTypes::CONTENT_IDX);
+			auto id = GetElementAttribute(block, "id");
+			auto element_order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
+
+			if (level < min_level) {
+				min_level = level;
+			}
+
+			headings.push_back(std::make_tuple(level, title, id, element_order));
+		}
+
+		// Second pass: create TOC entries with calculated indent
+		for (auto &heading : headings) {
+			int32_t level = std::get<0>(heading);
+			auto &title = std::get<1>(heading);
+			auto &id = std::get<2>(heading);
+			int32_t element_order = std::get<3>(heading);
+			int32_t indent = level - min_level;  // 0-based indent relative to minimum level
+
+			child_list_t<Value> toc_values;
+			toc_values.push_back(make_pair("level", Value(level)));
+			toc_values.push_back(make_pair("title", Value(title)));
+			toc_values.push_back(make_pair("id", Value(id)));
+			toc_values.push_back(make_pair("indent", Value(indent)));
+			toc_values.push_back(make_pair("element_order", Value(element_order)));
+
+			toc_entries.push_back(Value::STRUCT(std::move(toc_values)));
+		}
+
+		result.SetValue(i, Value::LIST(toc_struct_type, std::move(toc_entries)));
+	}
+}
+
+void ExtractionFunctions::DbBlocksLinksFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &blocks_vec = args.data[0];
+
+	// Define the return type for links
+	child_list_t<LogicalType> link_struct_children;
+	link_struct_children.push_back(make_pair("href", LogicalType::VARCHAR));
+	link_struct_children.push_back(make_pair("text", LogicalType::VARCHAR));
+	link_struct_children.push_back(make_pair("title", LogicalType::VARCHAR));
+	link_struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
+	auto link_struct_type = LogicalType::STRUCT(std::move(link_struct_children));
+
+	auto count = args.size();
+
+	for (idx_t i = 0; i < count; i++) {
+		auto blocks_val = blocks_vec.GetValue(i);
+
+		// Handle NULL input
+		if (blocks_val.IsNull()) {
+			result.SetValue(i, Value::LIST(link_struct_type, vector<Value>()));
+			continue;
+		}
+
+		auto &blocks_list = ListValue::GetChildren(blocks_val);
+		vector<Value> links;
+
+		for (auto &block : blocks_list) {
+			if (block.IsNull()) {
+				continue;
+			}
+
+			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
+			auto element_order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
+
+			// Check for link inline elements
+			if (element_type == BlockTypes::INLINE_LINK) {
+				auto href = GetElementAttribute(block, "href");
+				auto text = GetElementStringField(block, BlockTypes::CONTENT_IDX);
+				auto title = GetElementAttribute(block, "title");
+
+				child_list_t<Value> link_values;
+				link_values.push_back(make_pair("href", Value(href)));
+				link_values.push_back(make_pair("text", Value(text)));
+				link_values.push_back(make_pair("title", Value(title)));
+				link_values.push_back(make_pair("element_order", Value(element_order)));
+
+				links.push_back(Value::STRUCT(std::move(link_values)));
+			}
+
+			// Check for image blocks (which have URLs)
+			if (element_type == BlockTypes::TYPE_IMAGE || element_type == BlockTypes::INLINE_IMAGE) {
+				auto src = GetElementAttribute(block, "src");
+				auto alt = GetElementStringField(block, BlockTypes::CONTENT_IDX);
+				auto title = GetElementAttribute(block, "title");
+
+				// Only include if there's a src URL
+				if (!src.empty()) {
+					child_list_t<Value> link_values;
+					link_values.push_back(make_pair("href", Value(src)));
+					link_values.push_back(make_pair("text", Value(alt)));
+					link_values.push_back(make_pair("title", Value(title)));
+					link_values.push_back(make_pair("element_order", Value(element_order)));
+
+					links.push_back(Value::STRUCT(std::move(link_values)));
+				}
+			}
+		}
+
+		result.SetValue(i, Value::LIST(link_struct_type, std::move(links)));
+	}
+}
+
 void ExtractionFunctions::DbBlocksStatsFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &blocks_vec = args.data[0];
 
@@ -385,6 +540,41 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	    DbBlocksStatsFun
 	);
 	loader.RegisterFunction(stats_func);
+
+	// Define return types for TOC
+	child_list_t<LogicalType> toc_struct_children;
+	toc_struct_children.push_back(make_pair("level", LogicalType::INTEGER));
+	toc_struct_children.push_back(make_pair("title", LogicalType::VARCHAR));
+	toc_struct_children.push_back(make_pair("id", LogicalType::VARCHAR));
+	toc_struct_children.push_back(make_pair("indent", LogicalType::INTEGER));
+	toc_struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
+	auto toc_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(toc_struct_children)));
+
+	// db_blocks_toc(blocks LIST(duck_block)) -> LIST(STRUCT)
+	auto toc_func = ScalarFunction(
+	    "db_blocks_toc",
+	    {duck_block_list_type},
+	    toc_list_type,
+	    DbBlocksTocFun
+	);
+	loader.RegisterFunction(toc_func);
+
+	// Define return types for links
+	child_list_t<LogicalType> link_struct_children;
+	link_struct_children.push_back(make_pair("href", LogicalType::VARCHAR));
+	link_struct_children.push_back(make_pair("text", LogicalType::VARCHAR));
+	link_struct_children.push_back(make_pair("title", LogicalType::VARCHAR));
+	link_struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
+	auto link_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(link_struct_children)));
+
+	// db_blocks_links(blocks LIST(duck_block)) -> LIST(STRUCT)
+	auto links_func = ScalarFunction(
+	    "db_blocks_links",
+	    {duck_block_list_type},
+	    link_list_type,
+	    DbBlocksLinksFun
+	);
+	loader.RegisterFunction(links_func);
 }
 
 } // namespace duckdb

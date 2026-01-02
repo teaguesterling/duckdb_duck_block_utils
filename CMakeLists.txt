@@ -19,6 +19,8 @@ set(EXTENSION_SOURCES
     src/pandoc_inline_convert.cpp
     src/assembly.cpp
     src/extraction.cpp
+    src/validation.cpp
+    src/pandoc_block_convert.cpp
 )
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})

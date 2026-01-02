@@ -298,9 +298,9 @@ void FlattenBlocks(const Value &input, vector<Value> &output, int &order) {
 - [x] Create `src/include/extraction.hpp`
 - [x] Implement `db_blocks_to_text`
 - [x] Implement `db_blocks_headings`
-- [ ] Implement `db_blocks_toc`
+- [x] Implement `db_blocks_toc`
 - [x] Implement `db_blocks_code_blocks`
-- [ ] Implement `db_blocks_links` (requires parsing markdown inline syntax)
+- [x] Implement `db_blocks_links`
 - [x] Implement `db_blocks_stats`
 - [x] Write tests
 
@@ -330,11 +330,11 @@ void FlattenBlocks(const Value &input, vector<Value> &output, int &order) {
 - Large gaps in block_order
 
 **Tasks:**
-- [ ] Create `src/include/validation.hpp`
-- [ ] Implement `db_blocks_validate`
-- [ ] Implement `db_blocks_lint`
-- [ ] Implement `db_blocks_structure`
-- [ ] Write tests
+- [x] Create `src/include/validation.hpp`
+- [x] Implement `db_blocks_validate`
+- [x] Implement `db_blocks_lint`
+- [x] Implement `db_blocks_structure`
+- [x] Write tests
 
 ---
 
@@ -378,13 +378,13 @@ See `docs/pandoc_ast_spec.md` for complete mapping.
 **Tasks:**
 - [x] Decide on JSON library (using yyjson)
 - [x] Create `src/include/pandoc_inline_convert.hpp`
-- [ ] Implement `pandoc_ast_to_blocks` (block-level conversion)
-- [ ] Implement `pandoc_blocks_to_ast` (block-level conversion)
+- [x] Implement `pandoc_ast_to_blocks` (block-level conversion)
+- [x] Implement `pandoc_blocks_to_ast` (block-level conversion)
 - [x] Implement `pandoc_inlines_to_text`
 - [x] Implement `pandoc_inlines_to_db_inlines`
 - [x] Implement `db_inlines_to_pandoc`
 - [x] Write inline conversion tests
-- [ ] Write block-level round-trip tests
+- [x] Write block-level round-trip tests
 
 ---
 

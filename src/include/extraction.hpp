@@ -26,6 +26,14 @@ private:
 	// db_blocks_stats(blocks LIST(duck_block)) -> LIST(STRUCT(element_type, count, avg_content_length))
 	// Get block type statistics
 	static void DbBlocksStatsFun(DataChunk &args, ExpressionState &state, Vector &result);
+
+	// db_blocks_toc(blocks LIST(duck_block)) -> LIST(STRUCT(level, title, id, indent, element_order))
+	// Generate table of contents from headings
+	static void DbBlocksTocFun(DataChunk &args, ExpressionState &state, Vector &result);
+
+	// db_blocks_links(blocks LIST(duck_block)) -> LIST(STRUCT(href, text, title, element_order))
+	// Extract links from blocks
+	static void DbBlocksLinksFun(DataChunk &args, ExpressionState &state, Vector &result);
 };
 
 } // namespace duckdb

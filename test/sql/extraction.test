@@ -220,3 +220,112 @@ SELECT length(db_blocks_to_text(db_assemble([
 ]))) > 0;
 ----
 true
+
+# ============================================================================
+# db_blocks_toc Tests
+# ============================================================================
+
+# Test TOC generation from headings
+query I
+SELECT len(db_blocks_toc([
+    db_heading('Introduction', 1),
+    db_paragraph('Text'),
+    db_heading('Chapter 1', 2),
+    db_heading('Section 1.1', 3),
+    db_heading('Chapter 2', 2)
+]));
+----
+4
+
+# Test TOC entry structure - level
+query I
+SELECT db_blocks_toc([db_heading('Title', 1)])[1].level;
+----
+1
+
+# Test TOC entry structure - title
+query I
+SELECT db_blocks_toc([db_heading('My Section', 2)])[1].title;
+----
+My Section
+
+# Test TOC entry structure - indent (relative to min level)
+query I
+SELECT db_blocks_toc([
+    db_heading('Chapter', 2),
+    db_heading('Section', 3)
+])[1].indent;
+----
+0
+
+query I
+SELECT db_blocks_toc([
+    db_heading('Chapter', 2),
+    db_heading('Section', 3)
+])[2].indent;
+----
+1
+
+# Test empty list returns empty TOC
+query I
+SELECT len(db_blocks_toc([]));
+----
+0
+
+# Test TOC with only paragraphs returns empty
+query I
+SELECT len(db_blocks_toc([db_paragraph('Text'), db_paragraph('More')]));
+----
+0
+
+# ============================================================================
+# db_blocks_links Tests
+# ============================================================================
+
+# Test extracting links from inline link elements
+query I
+SELECT len(db_blocks_links([
+    db_link('Click here', 'https://example.com'),
+    db_paragraph('Text'),
+    db_link('Another link', 'https://test.com')
+]));
+----
+2
+
+# Test link structure - href
+query I
+SELECT db_blocks_links([db_link('Click', 'https://example.com')])[1].href;
+----
+https://example.com
+
+# Test link structure - text
+query I
+SELECT db_blocks_links([db_link('Click me', 'https://example.com')])[1].text;
+----
+Click me
+
+# Test extracting images as links
+query I
+SELECT len(db_blocks_links([
+    db_inline_image('/path/to/img.png', 'Alt text')
+]));
+----
+1
+
+# Test image link href is src
+query I
+SELECT db_blocks_links([db_inline_image('/img.png', 'Alt')])[1].href;
+----
+/img.png
+
+# Test empty list returns no links
+query I
+SELECT len(db_blocks_links([]));
+----
+0
+
+# Test paragraphs without links return empty
+query I
+SELECT len(db_blocks_links([db_paragraph('Just text'), db_heading('Title', 1)]));
+----
+0
