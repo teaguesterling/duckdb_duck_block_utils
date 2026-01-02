@@ -8,21 +8,21 @@ require duck_block_utils
 # db_blocks_validate Tests
 # ============================================================================
 
-# Test valid blocks pass validation
+# Test valid blocks pass validation (using db_assemble to set sequential element_order)
 query I
-SELECT db_blocks_validate([
+SELECT db_blocks_validate(db_assemble([
     db_heading('Title', 1),
     db_paragraph('Text')
-]).valid;
+])).valid;
 ----
 true
 
 # Test valid blocks have empty errors
 query I
-SELECT len(db_blocks_validate([
+SELECT len(db_blocks_validate(db_assemble([
     db_heading('Title', 1),
     db_paragraph('Text')
-]).errors);
+])).errors);
 ----
 0
 
