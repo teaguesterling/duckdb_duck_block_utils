@@ -17,20 +17,23 @@ Comprehensive guide for implementing the `duck_block_utils` DuckDB extension. Th
 
 ---
 
-## Core Type: doc_block
+## Core Type: duck_block
 
 ```sql
 STRUCT(
-    block_type VARCHAR,                    -- 'heading', 'paragraph', 'code', etc.
+    kind VARCHAR,                          -- 'block' or 'inline'
+    element_type VARCHAR,                  -- 'heading', 'paragraph', 'code', 'text', 'link', etc.
     content VARCHAR,                       -- Primary content
-    level INTEGER,                         -- Hierarchy level (NULL if N/A)
-    encoding VARCHAR,                      -- 'text', 'json', 'yaml', 'html', 'xml'
-    attributes MAP(VARCHAR, VARCHAR),      -- Type-specific metadata
-    block_order INTEGER                    -- Position in document (0-indexed)
+    level INTEGER,                         -- Hierarchy level (NULL for blocks, >=1 for inlines)
+    encoding VARCHAR,                      -- 'text', 'json', 'yaml', 'html', 'xml', 'markdown'
+    attributes MAP(VARCHAR, VARCHAR),      -- Type-specific metadata (e.g., heading_level, href)
+    element_order INTEGER                  -- Position in sequence (0-indexed)
 )
 ```
 
-**Core block types:** `heading`, `paragraph`, `code`, `blockquote`, `list`, `table`, `hr`, `metadata`, `image`, `raw`
+**Block types (kind='block'):** `heading`, `paragraph`, `code`, `blockquote`, `list`, `table`, `hr`, `metadata`, `image`, `raw`
+
+**Inline types (kind='inline'):** `text`, `space`, `softbreak`, `linebreak`, `bold`, `italic`, `strikethrough`, `link`, `code`, `image`, `quoted`, `span`, `note`, etc.
 
 ---
 
@@ -47,24 +50,25 @@ STRUCT(
 
 namespace duckdb {
 
-LogicalType BlockTypes::DocBlockType() {
+LogicalType BlockTypes::DuckBlockType() {
     child_list_t<LogicalType> struct_children;
-    struct_children.push_back(make_pair("block_type", LogicalType::VARCHAR));
+    struct_children.push_back(make_pair("kind", LogicalType::VARCHAR));
+    struct_children.push_back(make_pair("element_type", LogicalType::VARCHAR));
     struct_children.push_back(make_pair("content", LogicalType::VARCHAR));
     struct_children.push_back(make_pair("level", LogicalType::INTEGER));
     struct_children.push_back(make_pair("encoding", LogicalType::VARCHAR));
     struct_children.push_back(make_pair("attributes",
         LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR)));
-    struct_children.push_back(make_pair("block_order", LogicalType::INTEGER));
+    struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
 
-    auto block_type = LogicalType::STRUCT(std::move(struct_children));
-    block_type.SetAlias("doc_block");
-    return block_type;
+    auto duck_block_type = LogicalType::STRUCT(std::move(struct_children));
+    duck_block_type.SetAlias("duck_block");
+    return duck_block_type;
 }
 
 void BlockTypes::Register(ExtensionLoader &loader) {
-    loader.RegisterType("doc_block", DocBlockType());
-    loader.RegisterType("doc_block_ext", DocBlockExtType());  // With source_format, file_path
+    loader.RegisterType("duck_block", DuckBlockType());
+    loader.RegisterType("duck_block_ext", DuckBlockExtType());  // With source_format, file_path
 }
 
 } // namespace duckdb
@@ -118,17 +122,17 @@ void DuckBlockUtilsExtension::Load(ExtensionLoader &loader) {
 
 | Function | Signature | Priority |
 |----------|-----------|----------|
-| `doc_blocks_filter` | `(LIST(doc_block), VARCHAR[]) → LIST(doc_block)` | HIGH |
-| `doc_blocks_exclude` | `(LIST(doc_block), VARCHAR[]) → LIST(doc_block)` | HIGH |
-| `doc_blocks_merge` | `(LIST(doc_block), LIST(doc_block)) → LIST(doc_block)` | HIGH |
-| `doc_blocks_reorder` | `(LIST(doc_block)) → LIST(doc_block)` | MEDIUM |
-| `doc_blocks_slice` | `(LIST(doc_block), INTEGER, INTEGER) → LIST(doc_block)` | MEDIUM |
+| `duck_blocks_filter` | `(LIST(duck_block), VARCHAR[]) → LIST(duck_block)` | HIGH |
+| `duck_blocks_exclude` | `(LIST(duck_block), VARCHAR[]) → LIST(duck_block)` | HIGH |
+| `duck_blocks_merge` | `(LIST(duck_block), LIST(duck_block)) → LIST(duck_block)` | HIGH |
+| `duck_blocks_reorder` | `(LIST(duck_block)) → LIST(duck_block)` | MEDIUM |
+| `duck_blocks_slice` | `(LIST(duck_block), INTEGER, INTEGER) → LIST(duck_block)` | MEDIUM |
 
 **Pattern for LIST-returning scalar:**
 
 ```cpp
-void DocBlocksFilterFun(DataChunk &args, ExpressionState &state, Vector &result) {
-    auto &blocks_vec = args.data[0];  // LIST(doc_block)
+void DbBlocksFilterFun(DataChunk &args, ExpressionState &state, Vector &result) {
+    auto &blocks_vec = args.data[0];  // LIST(duck_block)
     auto &types_vec = args.data[1];   // LIST(VARCHAR)
 
     for (idx_t i = 0; i < args.size(); i++) {
@@ -144,24 +148,24 @@ void DocBlocksFilterFun(DataChunk &args, ExpressionState &state, Vector &result)
         // Filter blocks
         vector<Value> filtered;
         for (auto &block : blocks_list) {
-            auto block_type = StructValue::GetChildren(block)[0].GetValue<string>();
+            auto block_type = StructValue::GetChildren(block)[1].GetValue<string>();
             if (type_set.count(block_type)) {
                 filtered.push_back(block);
             }
         }
 
-        result.SetValue(i, Value::LIST(BlockTypes::DocBlockType(), filtered));
+        result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), filtered));
     }
 }
 ```
 
 **Tasks:**
 - [ ] Create `src/include/manipulation.hpp`
-- [ ] Implement `doc_blocks_filter`
-- [ ] Implement `doc_blocks_exclude`
-- [ ] Implement `doc_blocks_merge`
-- [ ] Implement `doc_blocks_reorder`
-- [ ] Implement `doc_blocks_slice`
+- [ ] Implement `duck_blocks_filter`
+- [ ] Implement `duck_blocks_exclude`
+- [ ] Implement `duck_blocks_merge`
+- [ ] Implement `duck_blocks_reorder`
+- [ ] Implement `duck_blocks_slice`
 - [ ] Write tests for each function
 
 ---
@@ -174,21 +178,21 @@ void DocBlocksFilterFun(DataChunk &args, ExpressionState &state, Vector &result)
 
 | Function | Signature | Output |
 |----------|-----------|--------|
-| `doc_heading` | `(VARCHAR, INTEGER) → doc_block` | `{block_type: 'heading', ...}` |
-| `doc_paragraph` | `(VARCHAR) → doc_block` | `{block_type: 'paragraph', ...}` |
-| `doc_code` | `(VARCHAR, VARCHAR?) → doc_block` | Language in attributes |
-| `doc_blockquote` | `(VARCHAR) → doc_block` | |
-| `doc_list_block` | `(VARCHAR[], BOOLEAN?) → doc_block` | JSON-encoded content |
-| `doc_table_block` | `(VARCHAR[], VARCHAR[][]) → doc_block` | JSON-encoded content |
-| `doc_hr` | `() → doc_block` | Empty content |
-| `doc_metadata` | `(VARCHAR) → doc_block` | YAML content |
-| `doc_image` | `(VARCHAR, VARCHAR, VARCHAR?) → doc_block` | url, alt, title |
-| `doc_raw` | `(VARCHAR, VARCHAR) → doc_block` | format, content |
+| `db_heading` | `(VARCHAR, INTEGER) → duck_block` | `{element_type: 'heading', ...}` |
+| `db_paragraph` | `(VARCHAR) → duck_block` | `{element_type: 'paragraph', ...}` |
+| `db_code` | `(VARCHAR, VARCHAR?) → duck_block` | Language in attributes |
+| `duck_blockquote` | `(VARCHAR) → duck_block` | |
+| `db_list_block` | `(VARCHAR[], BOOLEAN?) → duck_block` | JSON-encoded content |
+| `db_table_block` | `(VARCHAR[], VARCHAR[][]) → duck_block` | JSON-encoded content |
+| `db_hr` | `() → duck_block` | Empty content |
+| `db_metadata` | `(VARCHAR) → duck_block` | YAML content |
+| `db_image` | `(VARCHAR, VARCHAR, VARCHAR?) → duck_block` | url, alt, title |
+| `db_raw` | `(VARCHAR, VARCHAR) → duck_block` | format, content |
 
 **Pattern for atomic constructor:**
 
 ```cpp
-void DocHeadingFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void DbHeadingFun(DataChunk &args, ExpressionState &state, Vector &result) {
     auto &content_vec = args.data[0];
     auto &level_vec = args.data[1];
 
@@ -199,14 +203,16 @@ void DocHeadingFun(DataChunk &args, ExpressionState &state, Vector &result) {
         auto content = content_vec.GetValue(i);
         auto level = level_vec.GetValue(i);
 
-        // Set struct fields
-        result_entries[0]->SetValue(i, Value("heading"));     // block_type
-        result_entries[1]->SetValue(i, content);               // content
-        result_entries[2]->SetValue(i, level);                 // level
-        result_entries[3]->SetValue(i, Value("text"));         // encoding
-        result_entries[4]->SetValue(i, Value::MAP(LogicalType::MAP(
-            LogicalType::VARCHAR, LogicalType::VARCHAR), {})); // attributes
-        result_entries[5]->SetValue(i, Value(0));              // block_order
+        // Set struct fields (7 fields: kind, element_type, content, level, encoding, attributes, element_order)
+        result_entries[0]->SetValue(i, Value("block"));        // kind
+        result_entries[1]->SetValue(i, Value("heading"));      // element_type
+        result_entries[2]->SetValue(i, content);               // content
+        result_entries[3]->SetValue(i, Value());               // level (NULL for blocks)
+        result_entries[4]->SetValue(i, Value("text"));         // encoding
+        result_entries[5]->SetValue(i, Value::MAP(LogicalType::MAP(
+            LogicalType::VARCHAR, LogicalType::VARCHAR),
+            {Value("heading_level")}, {level.ToString()}));    // attributes with heading_level
+        result_entries[6]->SetValue(i, Value(0));              // element_order
     }
 }
 ```
@@ -227,32 +233,32 @@ void DocHeadingFun(DataChunk &args, ExpressionState &state, Vector &result) {
 **API Pattern:**
 ```sql
 -- User writes:
-SELECT doc_assemble([
-    doc_heading('Title', 1),
-    doc_paragraph('Content'),
-    doc_section('Intro', 2, [doc_paragraph('Nested')])
+SELECT db_assemble([
+    db_heading('Title', 1),
+    db_paragraph('Content'),
+    db_section('Intro', 2, [db_paragraph('Nested')])
 ]);
 
--- doc_section returns LIST(doc_block), doc_assemble flattens everything
+-- db_section returns LIST(duck_block), db_assemble flattens everything
 ```
 
 **Functions:**
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `doc_assemble` | `(LIST(doc_block OR LIST)) → LIST(doc_block)` | Flatten + reorder |
-| `doc_section` | `(VARCHAR, INTEGER, LIST(doc_block)) → LIST(doc_block)` | Heading + children |
-| `doc_document` | `(LIST(doc_block)) → LIST(doc_block)` | Alias for assemble |
-| `doc_rebase_levels` | `(LIST(doc_block), INTEGER) → LIST(doc_block)` | Adjust all levels |
+| `db_assemble` | `(LIST(duck_block OR LIST)) → LIST(duck_block)` | Flatten + reorder |
+| `db_section` | `(VARCHAR, INTEGER, LIST(duck_block)) → LIST(duck_block)` | Heading + children |
+| `db_document` | `(LIST(duck_block)) → LIST(duck_block)` | Alias for assemble |
+| `db_rebase_levels` | `(LIST(duck_block), INTEGER) → LIST(duck_block)` | Adjust all levels |
 
 **Flattening logic:**
 
 ```cpp
 void FlattenBlocks(const Value &input, vector<Value> &output, int &order) {
     if (input.type().id() == LogicalTypeId::STRUCT) {
-        // Single block - update block_order and add
+        // Single block - update element_order and add
         auto children = StructValue::GetChildren(input);
-        children[5] = Value(order++);  // Update block_order
+        children[6] = Value(order++);  // Update element_order (index 6)
         output.push_back(Value::STRUCT(children));
     } else if (input.type().id() == LogicalTypeId::LIST) {
         // List - recurse into children
@@ -264,10 +270,10 @@ void FlattenBlocks(const Value &input, vector<Value> &output, int &order) {
 ```
 
 **Tasks:**
-- [ ] Implement `doc_assemble` with flattening
-- [ ] Implement `doc_section` (returns [heading, ...children])
-- [ ] Implement `doc_document` (alias or wrapper)
-- [ ] Implement `doc_rebase_levels`
+- [ ] Implement `db_assemble` with flattening
+- [ ] Implement `db_section` (returns [heading, ...children])
+- [ ] Implement `db_document` (alias or wrapper)
+- [ ] Implement `db_rebase_levels`
 - [ ] Write tests for nested structures
 
 ---
@@ -278,19 +284,19 @@ void FlattenBlocks(const Value &input, vector<Value> &output, int &order) {
 
 | Function | Return Type | Description |
 |----------|-------------|-------------|
-| `doc_blocks_to_text` | `VARCHAR` | Plain text concatenation |
-| `doc_blocks_headings` | `LIST(STRUCT)` | Extract heading info |
-| `doc_blocks_toc` | `LIST(STRUCT)` | TOC with indentation |
-| `doc_blocks_code_blocks` | `LIST(STRUCT)` | Code with language |
-| `doc_blocks_links` | `LIST(STRUCT)` | Links from content |
+| `duck_blocks_to_text` | `VARCHAR` | Plain text concatenation |
+| `duck_blocks_headings` | `LIST(STRUCT)` | Extract heading info |
+| `duck_blocks_toc` | `LIST(STRUCT)` | TOC with indentation |
+| `duck_blocks_code_blocks` | `LIST(STRUCT)` | Code with language |
+| `duck_blocks_links` | `LIST(STRUCT)` | Links from content |
 
 **Tasks:**
 - [ ] Create `src/include/extraction.hpp`
-- [ ] Implement `doc_blocks_to_text`
-- [ ] Implement `doc_blocks_headings`
-- [ ] Implement `doc_blocks_toc`
-- [ ] Implement `doc_blocks_code_blocks`
-- [ ] Implement `doc_blocks_links` (requires parsing markdown inline syntax)
+- [ ] Implement `duck_blocks_to_text`
+- [ ] Implement `duck_blocks_headings`
+- [ ] Implement `duck_blocks_toc`
+- [ ] Implement `duck_blocks_code_blocks`
+- [ ] Implement `duck_blocks_links` (requires parsing markdown inline syntax)
 - [ ] Write tests
 
 ---
@@ -301,10 +307,10 @@ void FlattenBlocks(const Value &input, vector<Value> &output, int &order) {
 
 | Function | Return Type | Description |
 |----------|-------------|-------------|
-| `doc_blocks_validate` | `STRUCT(valid, errors[])` | Schema compliance |
-| `doc_blocks_lint` | `LIST(STRUCT)` | Best practice checks |
-| `doc_blocks_stats` | `LIST(STRUCT)` | Per-type statistics |
-| `doc_blocks_structure` | `STRUCT` | Document summary |
+| `duck_blocks_validate` | `STRUCT(valid, errors[])` | Schema compliance |
+| `duck_blocks_lint` | `LIST(STRUCT)` | Best practice checks |
+| `duck_blocks_stats` | `LIST(STRUCT)` | Per-type statistics |
+| `duck_blocks_structure` | `STRUCT` | Document summary |
 
 **Validation checks:**
 - block_type is non-empty
@@ -321,10 +327,10 @@ void FlattenBlocks(const Value &input, vector<Value> &output, int &order) {
 
 **Tasks:**
 - [ ] Create `src/include/validation.hpp`
-- [ ] Implement `doc_blocks_validate`
-- [ ] Implement `doc_blocks_lint`
-- [ ] Implement `doc_blocks_stats`
-- [ ] Implement `doc_blocks_structure`
+- [ ] Implement `duck_blocks_validate`
+- [ ] Implement `duck_blocks_lint`
+- [ ] Implement `duck_blocks_stats`
+- [ ] Implement `duck_blocks_structure`
 - [ ] Write tests
 
 ---
@@ -337,8 +343,8 @@ void FlattenBlocks(const Value &input, vector<Value> &output, int &order) {
 
 | Function | Description |
 |----------|-------------|
-| `pandoc_ast_to_blocks` | Convert Pandoc JSON AST → LIST(doc_block) |
-| `pandoc_blocks_to_ast` | Convert LIST(doc_block) → Pandoc JSON AST |
+| `pandoc_ast_to_blocks` | Convert Pandoc JSON AST → LIST(duck_block) |
+| `panduck_blocks_to_ast` | Convert LIST(duck_block) → Pandoc JSON AST |
 | `pandoc_inlines_to_text` | Convert inline array to plain text |
 
 **Pandoc AST Structure:**
@@ -368,7 +374,7 @@ See `docs/pandoc_ast_spec.md` for complete mapping.
 - [ ] Decide on JSON library (yyjson vs DuckDB JSON)
 - [ ] Create `src/include/pandoc_ast.hpp`
 - [ ] Implement `pandoc_ast_to_blocks`
-- [ ] Implement `pandoc_blocks_to_ast`
+- [ ] Implement `panduck_blocks_to_ast`
 - [ ] Implement `pandoc_inlines_to_text`
 - [ ] Write round-trip tests
 
@@ -415,23 +421,23 @@ test/sql/
 **Recommendation:** Bundle yyjson for Phase 6 (Pandoc), make it optional (feature flag) initially.
 
 ### 2. Type Conflicts
-**Issue:** duckdb_markdown has `markdown_doc_block` with same schema.
+**Issue:** duckdb_markdown has `markdown_duck_block` with same schema.
 
-**Resolution:** Use `doc_block` as the generic name. They're structurally compatible.
+**Resolution:** Use `duck_block` as the generic name. They're structurally compatible.
 
 ### 3. Lambda Functions
-**Issue:** `doc_from_rows(query, row -> ...)` needs lambdas, but DuckDB support is limited.
+**Issue:** `db_from_rows(query, row -> ...)` needs lambdas, but DuckDB support is limited.
 
 **Resolution:** Skip for now. Users can use SQL patterns:
 ```sql
-SELECT doc_assemble(list(doc_section(name, 2, [doc_paragraph(bio)])))
+SELECT db_assemble(list(db_section(name, 2, [db_paragraph(bio)])))
 FROM people;
 ```
 
 ### 4. Error Handling
 **Pattern:** Provide both strict and permissive versions:
-- `doc_blocks_validate()` - returns struct with errors
-- `doc_blocks_filter()` - NULL on invalid input
+- `db_blocks_validate()` - returns struct with errors
+- `db_blocks_filter()` - NULL on invalid input
 - Consider `try_*` variants later
 
 ---
@@ -444,12 +450,12 @@ require duck_block_utils
 
 # Test filter
 query I
-SELECT len(doc_blocks_filter(
+SELECT len(db_blocks_filter(
     [
-        {'block_type': 'heading', 'content': 'Title', 'level': 1,
-         'encoding': 'text', 'attributes': MAP{}, 'block_order': 0}::doc_block,
-        {'block_type': 'paragraph', 'content': 'Text', 'level': NULL,
-         'encoding': 'text', 'attributes': MAP{}, 'block_order': 1}::doc_block
+        {'kind': 'block', 'element_type': 'heading', 'content': 'Title', 'level': NULL,
+         'encoding': 'text', 'attributes': MAP{'heading_level': '1'}, 'element_order': 0}::duck_block,
+        {'kind': 'block', 'element_type': 'paragraph', 'content': 'Text', 'level': NULL,
+         'encoding': 'text', 'attributes': MAP{}, 'element_order': 1}::duck_block
     ],
     ['heading']
 ));
@@ -458,12 +464,12 @@ SELECT len(doc_blocks_filter(
 
 # Test merge preserves order
 query I
-SELECT (doc_blocks_merge(
-    [{'block_type': 'heading', 'content': 'A', 'level': 1,
-      'encoding': 'text', 'attributes': MAP{}, 'block_order': 0}::doc_block],
-    [{'block_type': 'paragraph', 'content': 'B', 'level': NULL,
-      'encoding': 'text', 'attributes': MAP{}, 'block_order': 0}::doc_block]
-)[1]).block_order;
+SELECT (db_blocks_merge(
+    [{'kind': 'block', 'element_type': 'heading', 'content': 'A', 'level': NULL,
+      'encoding': 'text', 'attributes': MAP{'heading_level': '1'}, 'element_order': 0}::duck_block],
+    [{'kind': 'block', 'element_type': 'paragraph', 'content': 'B', 'level': NULL,
+      'encoding': 'text', 'attributes': MAP{}, 'element_order': 0}::duck_block]
+)[2]).element_order;
 ----
 1
 ```
@@ -483,8 +489,8 @@ SELECT (doc_blocks_merge(
 ## Getting Started
 
 1. Start with Phase 1.1 (Type Registration)
-2. Verify types work: `SELECT {'block_type': 'test', ...}::doc_block;`
-3. Implement `doc_blocks_filter` as first function
+2. Verify types work: `SELECT db_heading('Test', 1);`
+3. Implement `db_blocks_filter` as first function
 4. Build incrementally, testing each function
 
 **Reference:** Look at `../duckdb_markdown/src/markdown_types.cpp` for type registration patterns.
