@@ -75,10 +75,10 @@ void BlockTypes::Register(ExtensionLoader &loader) {
 ```
 
 **Tasks:**
-- [ ] Create `src/include/block_types.hpp` header
-- [ ] Create `src/block_types.cpp` implementation
-- [ ] Register types in extension loader
-- [ ] Write basic type tests
+- [x] Create `src/include/block_types.hpp` header
+- [x] Create `src/block_types.cpp` implementation
+- [x] Register types in extension loader
+- [x] Write basic type tests
 
 #### 1.2 Extension Entry Point
 
@@ -110,9 +110,9 @@ void DuckBlockUtilsExtension::Load(ExtensionLoader &loader) {
 ```
 
 **Tasks:**
-- [ ] Update extension entry point
-- [ ] Add include guards and headers
-- [ ] Verify extension loads cleanly
+- [x] Update extension entry point
+- [x] Add include guards and headers
+- [x] Verify extension loads cleanly
 
 #### 1.3 Basic Manipulation Functions
 
@@ -122,11 +122,11 @@ void DuckBlockUtilsExtension::Load(ExtensionLoader &loader) {
 
 | Function | Signature | Priority |
 |----------|-----------|----------|
-| `duck_blocks_filter` | `(LIST(duck_block), VARCHAR[]) → LIST(duck_block)` | HIGH |
-| `duck_blocks_exclude` | `(LIST(duck_block), VARCHAR[]) → LIST(duck_block)` | HIGH |
-| `duck_blocks_merge` | `(LIST(duck_block), LIST(duck_block)) → LIST(duck_block)` | HIGH |
-| `duck_blocks_reorder` | `(LIST(duck_block)) → LIST(duck_block)` | MEDIUM |
-| `duck_blocks_slice` | `(LIST(duck_block), INTEGER, INTEGER) → LIST(duck_block)` | MEDIUM |
+| `db_blocks_filter` | `(LIST(duck_block), VARCHAR[]) → LIST(duck_block)` | HIGH |
+| `db_blocks_exclude` | `(LIST(duck_block), VARCHAR[]) → LIST(duck_block)` | HIGH |
+| `db_blocks_merge` | `(LIST(duck_block), LIST(duck_block)) → LIST(duck_block)` | HIGH |
+| `db_blocks_reorder` | `(LIST(duck_block)) → LIST(duck_block)` | MEDIUM |
+| `db_blocks_slice` | `(LIST(duck_block), INTEGER, INTEGER) → LIST(duck_block)` | MEDIUM |
 
 **Pattern for LIST-returning scalar:**
 
@@ -160,13 +160,13 @@ void DbBlocksFilterFun(DataChunk &args, ExpressionState &state, Vector &result) 
 ```
 
 **Tasks:**
-- [ ] Create `src/include/manipulation.hpp`
-- [ ] Implement `duck_blocks_filter`
-- [ ] Implement `duck_blocks_exclude`
-- [ ] Implement `duck_blocks_merge`
-- [ ] Implement `duck_blocks_reorder`
-- [ ] Implement `duck_blocks_slice`
-- [ ] Write tests for each function
+- [x] Create `src/include/manipulation.hpp`
+- [x] Implement `db_blocks_filter`
+- [x] Implement `db_blocks_exclude`
+- [x] Implement `db_blocks_merge`
+- [x] Implement `db_blocks_reorder`
+- [x] Implement `db_blocks_slice`
+- [x] Write tests for each function
 
 ---
 
@@ -181,7 +181,7 @@ void DbBlocksFilterFun(DataChunk &args, ExpressionState &state, Vector &result) 
 | `db_heading` | `(VARCHAR, INTEGER) → duck_block` | `{element_type: 'heading', ...}` |
 | `db_paragraph` | `(VARCHAR) → duck_block` | `{element_type: 'paragraph', ...}` |
 | `db_code` | `(VARCHAR, VARCHAR?) → duck_block` | Language in attributes |
-| `duck_blockquote` | `(VARCHAR) → duck_block` | |
+| `db_blockquote` | `(VARCHAR) → duck_block` | |
 | `db_list_block` | `(VARCHAR[], BOOLEAN?) → duck_block` | JSON-encoded content |
 | `db_table_block` | `(VARCHAR[], VARCHAR[][]) → duck_block` | JSON-encoded content |
 | `db_hr` | `() → duck_block` | Empty content |
@@ -218,11 +218,13 @@ void DbHeadingFun(DataChunk &args, ExpressionState &state, Vector &result) {
 ```
 
 **Tasks:**
-- [ ] Create `src/include/builders.hpp`
-- [ ] Implement each atomic constructor
-- [ ] Handle optional parameters (default values)
-- [ ] Implement JSON encoding for list/table content
-- [ ] Write tests
+- [x] Create `src/include/builders.hpp`
+- [x] Implement each atomic constructor
+- [x] Handle optional parameters (default values)
+- [x] Implement JSON encoding for list/table content
+- [x] Write tests
+- [x] Implement inline builders (`db_text`, `db_bold`, `db_italic`, etc.)
+- [x] Implement flattening builder overloads
 
 ---
 
@@ -270,11 +272,12 @@ void FlattenBlocks(const Value &input, vector<Value> &output, int &order) {
 ```
 
 **Tasks:**
-- [ ] Implement `db_assemble` with flattening
-- [ ] Implement `db_section` (returns [heading, ...children])
-- [ ] Implement `db_document` (alias or wrapper)
-- [ ] Implement `db_rebase_levels`
-- [ ] Write tests for nested structures
+- [x] Implement `db_assemble` with flattening
+- [x] Implement `db_section` (returns [heading, ...children])
+- [x] Implement `db_document` (alias or wrapper)
+- [x] Implement `db_rebase_levels`
+- [x] Implement `db_concat`
+- [x] Write tests for nested structures
 
 ---
 
@@ -284,20 +287,22 @@ void FlattenBlocks(const Value &input, vector<Value> &output, int &order) {
 
 | Function | Return Type | Description |
 |----------|-------------|-------------|
-| `duck_blocks_to_text` | `VARCHAR` | Plain text concatenation |
-| `duck_blocks_headings` | `LIST(STRUCT)` | Extract heading info |
-| `duck_blocks_toc` | `LIST(STRUCT)` | TOC with indentation |
-| `duck_blocks_code_blocks` | `LIST(STRUCT)` | Code with language |
-| `duck_blocks_links` | `LIST(STRUCT)` | Links from content |
+| `db_blocks_to_text` | `VARCHAR` | Plain text concatenation |
+| `db_blocks_headings` | `LIST(STRUCT)` | Extract heading info |
+| `db_blocks_toc` | `LIST(STRUCT)` | TOC with indentation |
+| `db_blocks_code_blocks` | `LIST(STRUCT)` | Code with language |
+| `db_blocks_links` | `LIST(STRUCT)` | Links from content |
+| `db_blocks_stats` | `LIST(STRUCT)` | Per-type statistics |
 
 **Tasks:**
-- [ ] Create `src/include/extraction.hpp`
-- [ ] Implement `duck_blocks_to_text`
-- [ ] Implement `duck_blocks_headings`
-- [ ] Implement `duck_blocks_toc`
-- [ ] Implement `duck_blocks_code_blocks`
-- [ ] Implement `duck_blocks_links` (requires parsing markdown inline syntax)
-- [ ] Write tests
+- [x] Create `src/include/extraction.hpp`
+- [x] Implement `db_blocks_to_text`
+- [x] Implement `db_blocks_headings`
+- [ ] Implement `db_blocks_toc`
+- [x] Implement `db_blocks_code_blocks`
+- [ ] Implement `db_blocks_links` (requires parsing markdown inline syntax)
+- [x] Implement `db_blocks_stats`
+- [x] Write tests
 
 ---
 
@@ -307,10 +312,9 @@ void FlattenBlocks(const Value &input, vector<Value> &output, int &order) {
 
 | Function | Return Type | Description |
 |----------|-------------|-------------|
-| `duck_blocks_validate` | `STRUCT(valid, errors[])` | Schema compliance |
-| `duck_blocks_lint` | `LIST(STRUCT)` | Best practice checks |
-| `duck_blocks_stats` | `LIST(STRUCT)` | Per-type statistics |
-| `duck_blocks_structure` | `STRUCT` | Document summary |
+| `db_blocks_validate` | `STRUCT(valid, errors[])` | Schema compliance |
+| `db_blocks_lint` | `LIST(STRUCT)` | Best practice checks |
+| `db_blocks_structure` | `STRUCT` | Document summary |
 
 **Validation checks:**
 - block_type is non-empty
@@ -327,10 +331,9 @@ void FlattenBlocks(const Value &input, vector<Value> &output, int &order) {
 
 **Tasks:**
 - [ ] Create `src/include/validation.hpp`
-- [ ] Implement `duck_blocks_validate`
-- [ ] Implement `duck_blocks_lint`
-- [ ] Implement `duck_blocks_stats`
-- [ ] Implement `duck_blocks_structure`
+- [ ] Implement `db_blocks_validate`
+- [ ] Implement `db_blocks_lint`
+- [ ] Implement `db_blocks_structure`
 - [ ] Write tests
 
 ---
@@ -344,8 +347,10 @@ void FlattenBlocks(const Value &input, vector<Value> &output, int &order) {
 | Function | Description |
 |----------|-------------|
 | `pandoc_ast_to_blocks` | Convert Pandoc JSON AST → LIST(duck_block) |
-| `panduck_blocks_to_ast` | Convert LIST(duck_block) → Pandoc JSON AST |
+| `pandoc_blocks_to_ast` | Convert LIST(duck_block) → Pandoc JSON AST |
 | `pandoc_inlines_to_text` | Convert inline array to plain text |
+| `pandoc_inlines_to_db_inlines` | Convert Pandoc inline JSON → LIST(duck_block) |
+| `db_inlines_to_pandoc` | Convert LIST(duck_block) → Pandoc inline JSON |
 
 **Pandoc AST Structure:**
 ```json
@@ -371,12 +376,15 @@ void FlattenBlocks(const Value &input, vector<Value> &output, int &order) {
 See `docs/pandoc_ast_spec.md` for complete mapping.
 
 **Tasks:**
-- [ ] Decide on JSON library (yyjson vs DuckDB JSON)
-- [ ] Create `src/include/pandoc_ast.hpp`
-- [ ] Implement `pandoc_ast_to_blocks`
-- [ ] Implement `panduck_blocks_to_ast`
-- [ ] Implement `pandoc_inlines_to_text`
-- [ ] Write round-trip tests
+- [x] Decide on JSON library (using yyjson)
+- [x] Create `src/include/pandoc_inline_convert.hpp`
+- [ ] Implement `pandoc_ast_to_blocks` (block-level conversion)
+- [ ] Implement `pandoc_blocks_to_ast` (block-level conversion)
+- [x] Implement `pandoc_inlines_to_text`
+- [x] Implement `pandoc_inlines_to_db_inlines`
+- [x] Implement `db_inlines_to_pandoc`
+- [x] Write inline conversion tests
+- [ ] Write block-level round-trip tests
 
 ---
 
