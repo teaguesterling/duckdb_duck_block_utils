@@ -1,0 +1,439 @@
+# name: test/sql/builders_v2.test
+# description: test duck_block_utils extension - v2 builder functions (LIST return, config-first)
+# group: [duck_block_utils]
+
+require duck_block_utils
+
+# ============================================================================
+# db_heading Tests (v2: level first, returns LIST)
+# ============================================================================
+
+# Test db_heading returns a list
+query I
+SELECT typeof(db_heading(1, 'My Title'));
+----
+duck_block[]
+
+# Test db_heading creates correct element_type
+query I
+SELECT db_heading(1, 'My Title')[1].element_type;
+----
+heading
+
+# Test db_heading sets content for simple text
+query I
+SELECT db_heading(1, 'My Title')[1].content;
+----
+My Title
+
+# Test db_heading sets heading_level in attributes (not level field)
+query I
+SELECT db_heading(2, 'My Title')[1].level;
+----
+1
+
+# Test db_heading stores heading level in attributes
+query I
+SELECT db_heading(2, 'My Title')[1].attributes['heading_level'];
+----
+2
+
+# Test db_heading with inline children - content is NULL
+query I
+SELECT db_heading(1, [db_text('Hello'), db_bold('World')])[1].content IS NULL;
+----
+true
+
+# Test db_heading with inline children - returns flattened list
+query I
+SELECT len(db_heading(1, [db_text('Hello'), db_bold('World')]));
+----
+3
+
+# Test db_heading children are at level 2
+query I
+SELECT db_heading(1, [db_text('Hello')])[2].level;
+----
+2
+
+# ============================================================================
+# db_paragraph Tests (v2: returns LIST)
+# ============================================================================
+
+# Test db_paragraph returns a list
+query I
+SELECT len(db_paragraph('Hello world'));
+----
+1
+
+# Test db_paragraph creates paragraph block
+query I
+SELECT db_paragraph('Hello world')[1].element_type;
+----
+paragraph
+
+# Test db_paragraph content for simple text
+query I
+SELECT db_paragraph('Hello world')[1].content;
+----
+Hello world
+
+# Test db_paragraph level is 1 (top-level)
+query I
+SELECT db_paragraph('Hello world')[1].level;
+----
+1
+
+# Test db_paragraph with inline children
+query I
+SELECT len(db_paragraph([db_text('Click '), db_link('https://example.com', 'here')]));
+----
+3
+
+# Test db_paragraph with children - content is NULL
+query I
+SELECT db_paragraph([db_bold('Important')])[1].content IS NULL;
+----
+true
+
+# Test db_paragraph children have correct levels
+query I
+SELECT db_paragraph([db_text('A'), db_text('B')])[2].level;
+----
+2
+
+# ============================================================================
+# db_code Tests (v2: language first when specified)
+# ============================================================================
+
+# Test db_code with language (language first)
+query I
+SELECT db_code('python', 'print(1)')[1].element_type;
+----
+code
+
+query I
+SELECT db_code('python', 'print(1)')[1].content;
+----
+print(1)
+
+query I
+SELECT db_code('python', 'print(1)')[1].attributes['language'];
+----
+python
+
+# Test db_code without language (single arg)
+query I
+SELECT db_code('print(1)')[1].element_type;
+----
+code
+
+query I
+SELECT db_code('print(1)')[1].content;
+----
+print(1)
+
+# ============================================================================
+# db_blockquote Tests (v2: level first when specified)
+# ============================================================================
+
+# Test db_blockquote with level (level first)
+query I
+SELECT db_blockquote(2, 'Quote text')[1].element_type;
+----
+blockquote
+
+query I
+SELECT db_blockquote(2, 'Quote text')[1].level;
+----
+2
+
+# Test db_blockquote single arg defaults level to 1
+query I
+SELECT db_blockquote('Quote text')[1].level;
+----
+1
+
+# Test db_blockquote with children
+query I
+SELECT len(db_blockquote([db_text('Quoted '), db_bold('text')]));
+----
+3
+
+# ============================================================================
+# db_list_block Tests (v2: ordered first when specified)
+# ============================================================================
+
+# Test db_list_block unordered (default)
+query I
+SELECT db_list_block(['First', 'Second', 'Third'])[1].element_type;
+----
+list
+
+query I
+SELECT db_list_block(['First', 'Second', 'Third'])[1].encoding;
+----
+json
+
+query I
+SELECT db_list_block(['First', 'Second', 'Third'])[1].attributes['ordered'];
+----
+false
+
+# Test db_list_block ordered (ordered first)
+query I
+SELECT db_list_block(true, ['First', 'Second'])[1].attributes['ordered'];
+----
+true
+
+# Test db_list_block content is JSON array
+query I
+SELECT db_list_block(['A', 'B'])[1].content;
+----
+["A","B"]
+
+# ============================================================================
+# db_list_item Tests (NEW in v2)
+# ============================================================================
+
+# Test db_list_item creates list_item block
+query I
+SELECT db_list_item('Item text')[1].element_type;
+----
+list_item
+
+# Test db_list_item with text content
+query I
+SELECT db_list_item('Item text')[1].content;
+----
+Item text
+
+# Test db_list_item unordered by default
+query I
+SELECT db_list_item('Item text')[1].attributes['ordered'];
+----
+false
+
+# Test db_list_item ordered (ordered first)
+query I
+SELECT db_list_item(true, 'Item text')[1].attributes['ordered'];
+----
+true
+
+# Test db_list_item with inline children
+query I
+SELECT len(db_list_item([db_link('https://github.com', 'GitHub'), db_text(' '), db_inline_image('badge.svg', 'CI')]));
+----
+4
+
+# Test db_list_item children have correct levels
+query I
+SELECT db_list_item([db_text('content')])[2].level;
+----
+2
+
+# ============================================================================
+# db_hr Tests (v2: returns LIST)
+# ============================================================================
+
+# Test db_hr creates hr block in a list
+query I
+SELECT len(db_hr());
+----
+1
+
+query I
+SELECT db_hr()[1].element_type;
+----
+hr
+
+query I
+SELECT db_hr()[1].content;
+----
+(empty)
+
+# ============================================================================
+# db_metadata Tests (v2: returns LIST)
+# ============================================================================
+
+query I
+SELECT db_metadata('title: Test')[1].element_type;
+----
+metadata
+
+query I
+SELECT db_metadata('title: Test')[1].content;
+----
+title: Test
+
+query I
+SELECT db_metadata('title: Test')[1].encoding;
+----
+yaml
+
+# ============================================================================
+# db_image Tests (v2: returns LIST)
+# ============================================================================
+
+query I
+SELECT db_image('/path/to/img.png', 'Alt text', 'Title')[1].element_type;
+----
+image
+
+query I
+SELECT db_image('/path/to/img.png', 'Alt text', 'Title')[1].attributes['src'];
+----
+/path/to/img.png
+
+query I
+SELECT db_image('/path/to/img.png', 'Alt text')[1].attributes['alt'];
+----
+Alt text
+
+query I
+SELECT db_image('/path/to/img.png')[1].attributes['src'];
+----
+/path/to/img.png
+
+# ============================================================================
+# db_raw Tests (v2: format first when specified)
+# ============================================================================
+
+query I
+SELECT db_raw('html', '<div>HTML</div>')[1].element_type;
+----
+raw
+
+query I
+SELECT db_raw('html', '<div>HTML</div>')[1].content;
+----
+<div>HTML</div>
+
+query I
+SELECT db_raw('html', '<div>HTML</div>')[1].encoding;
+----
+html
+
+# Test db_raw single arg defaults to html
+query I
+SELECT db_raw('<br>')[1].encoding;
+----
+html
+
+# ============================================================================
+# Integration: Using v2 builders with manipulation functions
+# ============================================================================
+
+# Test filtering builder-created blocks (need to flatten first)
+query I
+SELECT len(db_blocks_filter(
+    list_flatten([db_heading(1, 'Title'), db_paragraph('Text'), db_code('py', 'x=1')]),
+    ['heading', 'code']
+));
+----
+2
+
+# Test merging builder-created blocks
+query I
+SELECT len(db_blocks_merge(
+    db_heading(1, 'Title'),
+    db_paragraph('Text')
+));
+----
+2
+
+# ============================================================================
+# Nested Content Tests (v2 core feature)
+# ============================================================================
+
+# Test deeply nested content
+query I
+SELECT len(db_paragraph([
+    db_text('Click '),
+    db_bold([db_italic('here')]),
+    db_text('!')
+]));
+----
+5
+
+# Test content is NULL when children exist (at every level)
+query I
+SELECT db_bold([db_text('text')])[1].content IS NULL;
+----
+true
+
+# Test nested children get incremented levels
+query I
+SELECT db_paragraph([db_bold([db_text('nested')])])[2].level;
+----
+2
+
+# Test element_order is preserved within children
+query III
+SELECT db_paragraph([db_text('A'), db_text('B'), db_text('C')])[2].element_order,
+       db_paragraph([db_text('A'), db_text('B'), db_text('C')])[3].element_order,
+       db_paragraph([db_text('A'), db_text('B'), db_text('C')])[4].element_order;
+----
+0	1	2
+
+# ============================================================================
+# db_assemble Tests (v2: takes LIST(LIST(duck_block)))
+# ============================================================================
+
+# Test db_assemble flattens list of lists
+query I
+SELECT len(db_assemble([
+    db_heading(1, 'Title'),
+    db_paragraph('Text'),
+    db_hr()
+]));
+----
+3
+
+# Test db_assemble assigns sequential element_order
+query III
+SELECT db_assemble([db_heading(1, 'A'), db_paragraph('B'), db_hr()])[1].element_order,
+       db_assemble([db_heading(1, 'A'), db_paragraph('B'), db_hr()])[2].element_order,
+       db_assemble([db_heading(1, 'A'), db_paragraph('B'), db_hr()])[3].element_order;
+----
+0	1	2
+
+# Test db_assemble with nested inline content
+query I
+SELECT len(db_assemble([
+    db_heading(1, 'Title'),
+    db_paragraph([db_text('Hello '), db_bold('world')])
+]));
+----
+4
+
+# Test db_assemble preserves child levels
+query I
+SELECT db_assemble([
+    db_heading(1, 'Title'),
+    db_paragraph([db_bold('Important')])
+])[3].level;
+----
+2
+
+# ============================================================================
+# Complete Document Pattern
+# ============================================================================
+
+# Test building a complete document
+query I
+SELECT len(db_assemble([
+    db_metadata('title: Test Doc'),
+    db_heading(1, 'Introduction'),
+    db_paragraph('Welcome to the guide.'),
+    db_heading(2, 'Getting Started'),
+    db_paragraph([
+        db_text('First, '),
+        db_link('https://example.com', 'install the extension'),
+        db_text('.')
+    ]),
+    db_code('sql', 'LOAD duck_block_utils;'),
+    db_hr()
+]));
+----
+10

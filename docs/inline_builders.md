@@ -12,196 +12,241 @@ While block builders (`db_heading`, `db_paragraph`, etc.) create document struct
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  Block + Inline Structure                                               │
-│                                                                         │
-│  db_paragraph with inline content:                                     │
-│  ┌───────────────────────────────────────────────────────────┐         │
-│  │ db_text("Click ") + db_link("here", url) + db_text("!") │         │
-│  └───────────────────────────────────────────────────────────┘         │
-│                            ↓                                            │
-│  Markdown:  Click [here](https://example.com)!                         │
-│  HTML:      Click <a href="https://example.com">here</a>!              │
+│  Block + Inline Composition                                              │
+│                                                                          │
+│  db_paragraph([                                                         │
+│      db_text('Click '),                                                 │
+│      db_link('https://example.com', 'here'),                            │
+│      db_text('!')                                                       │
+│  ])                                                                      │
+│                                                                          │
+│  Returns: [{paragraph, content=NULL}, {text}, {link}, {text}]           │
+│                                                                          │
+│  Markdown:  Click [here](https://example.com)!                          │
+│  HTML:      Click <a href="https://example.com">here</a>!               │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-## The Unified duck_block Type
+## Universal Pattern
 
-Both block and inline elements use the same unified type, distinguished by the `kind` field:
+**All inline builders return `LIST(duck_block)`** and follow the same rules as block builders:
 
-```sql
-STRUCT(
-    kind VARCHAR,                       -- 'inline' for inline elements
-    element_type VARCHAR,               -- 'text', 'link', 'bold', 'italic', etc.
-    content VARCHAR,                    -- Text content or alt text
-    level INTEGER,                      -- Nesting depth (1 = top level)
-    encoding VARCHAR,                   -- Content encoding (typically 'text')
-    attributes MAP(VARCHAR, VARCHAR),   -- Type-specific: href, src, title, etc.
-    element_order INTEGER               -- Position in inline sequence
-)
-```
+- **Config params first, content last**
+- **VARCHAR content** → Element's `content` field is set
+- **Children** → Element's `content` is NULL, children at `level+1`
 
-## Inline Constructors
+## Text and Whitespace
 
 ### db_text
 
-Create plain text content.
-
 ```sql
-db_text(content VARCHAR) → duck_block
+db_text(content VARCHAR) → LIST(duck_block)
 ```
+
+Creates plain text content.
 
 **Example:**
 ```sql
 SELECT db_text('Hello world');
--- Returns: {kind: 'inline', element_type: 'text', content: 'Hello world',
---           level: 1, encoding: 'text', attributes: {}, element_order: 0}
+-- Returns: [{kind: 'inline', element_type: 'text', content: 'Hello world', level: 1}]
+```
+
+### Whitespace Functions
+
+```sql
+db_space() → LIST(duck_block)       -- Word separator
+db_softbreak() → LIST(duck_block)   -- Soft line break
+db_linebreak() → LIST(duck_block)   -- Hard line break
 ```
 
 ---
 
-### db_link
+## Formatting Builders
 
-Create a hyperlink.
-
-```sql
-db_link(
-    text VARCHAR,
-    href VARCHAR,
-    title VARCHAR DEFAULT NULL
-) → duck_block
-```
-
-**Example:**
-```sql
-SELECT db_link('Click here', 'https://example.com');
--- Returns: {kind: 'inline', element_type: 'link', content: 'Click here',
---           level: 1, encoding: 'text',
---           attributes: {'href': 'https://example.com'}, element_order: 0}
-
-SELECT db_link('DuckDB', 'https://duckdb.org', 'The DuckDB website');
--- Returns: {kind: 'inline', element_type: 'link', content: 'DuckDB',
---           level: 1, encoding: 'text',
---           attributes: {'href': 'https://duckdb.org', 'title': 'The DuckDB website'},
---           element_order: 0}
-```
-
----
-
-### db_inline_image
-
-Create an inline image.
-
-```sql
-db_inline_image(
-    src VARCHAR,
-    alt VARCHAR DEFAULT NULL,
-    title VARCHAR DEFAULT NULL
-) → duck_block
-```
-
-**Example:**
-```sql
-SELECT db_inline_image('/img/logo.png', 'Logo', 'Company Logo');
--- Returns: {kind: 'inline', element_type: 'image', content: 'Logo',
---           level: 1, encoding: 'text',
---           attributes: {'src': '/img/logo.png', 'alt': 'Logo', 'title': 'Company Logo'},
---           element_order: 0}
-```
-
----
+All formatting builders accept `duck_block_content` (VARCHAR, single element, or list):
 
 ### db_bold
 
-Create bold/strong text.
-
 ```sql
-db_bold(content VARCHAR) → duck_block
+db_bold(content duck_block_content) → LIST(duck_block)
 ```
 
 **Example:**
 ```sql
+-- Simple
 SELECT db_bold('Important');
--- Returns: {kind: 'inline', element_type: 'bold', content: 'Important',
---           level: 1, encoding: 'text', attributes: {}, element_order: 0}
-```
 
----
+-- With nested formatting
+SELECT db_bold([db_text('very '), db_italic('important')]);
+```
 
 ### db_italic
 
-Create italic/emphasis text.
-
 ```sql
-db_italic(content VARCHAR) → duck_block
+db_italic(content duck_block_content) → LIST(duck_block)
 ```
 
-**Example:**
+### db_strikethrough
+
 ```sql
-SELECT db_italic('emphasized');
--- Returns: {kind: 'inline', element_type: 'italic', content: 'emphasized',
---           level: 1, encoding: 'text', attributes: {}, element_order: 0}
+db_strikethrough(content duck_block_content) → LIST(duck_block)
+```
+
+### db_superscript
+
+```sql
+db_superscript(content duck_block_content) → LIST(duck_block)
+```
+
+### db_subscript
+
+```sql
+db_subscript(content duck_block_content) → LIST(duck_block)
+```
+
+### db_smallcaps
+
+```sql
+db_smallcaps(content duck_block_content) → LIST(duck_block)
+```
+
+### db_underline
+
+```sql
+db_underline(content duck_block_content) → LIST(duck_block)
 ```
 
 ---
 
+## Semantic Elements
+
 ### db_inline_code
 
-Create inline code (monospace).
-
 ```sql
-db_inline_code(content VARCHAR) → duck_block
+db_inline_code(content VARCHAR) → LIST(duck_block)
 ```
+
+Creates inline code (monospace). Does not accept children.
 
 **Example:**
 ```sql
 SELECT db_inline_code('print()');
--- Returns: {kind: 'inline', element_type: 'code', content: 'print()',
---           level: 1, encoding: 'text', attributes: {}, element_order: 0}
 ```
 
----
-
-### db_strikethrough
-
-Create strikethrough text.
+### db_math
 
 ```sql
-db_strikethrough(content VARCHAR) → duck_block
+db_math(content VARCHAR) → LIST(duck_block)
+db_math(display BOOLEAN, content VARCHAR) → LIST(duck_block)
 ```
+
+Creates a math expression.
+
+**Parameters:**
+- `display` - (Optional, first when specified) True for block display, false for inline
+- `content` - LaTeX math content
 
 **Example:**
 ```sql
-SELECT db_strikethrough('deleted');
--- Returns: {kind: 'inline', element_type: 'strikethrough', content: 'deleted',
---           level: 1, encoding: 'text', attributes: {}, element_order: 0}
+SELECT db_math('E=mc^2');
+SELECT db_math(true, '\\sum_{i=1}^n x_i');
 ```
 
----
-
-### Additional Inline Types
-
-| Function | Element Type | Description |
-|----------|--------------|-------------|
-| `db_superscript(content)` | `superscript` | Superscript text |
-| `db_subscript(content)` | `subscript` | Subscript text |
-| `db_smallcaps(content)` | `smallcaps` | Small capitals |
-| `db_underline(content)` | `underline` | Underlined text |
-| `db_math(content, block)` | `math` | Math expression |
-| `db_quoted(content, type)` | `quoted` | Quoted text |
-| `db_cite(key)` | `cite` | Citation reference |
-| `db_note(content)` | `note` | Footnote |
-| `db_span(content, id)` | `span` | Generic container |
-| `db_raw_inline(content, fmt)` | `raw` | Raw format content |
-
----
-
-## Whitespace Elements
+### db_link
 
 ```sql
-db_space() → duck_block      -- Word separator
-db_softbreak() → duck_block  -- Soft line break
-db_linebreak() → duck_block  -- Hard line break
+db_link(href VARCHAR, content duck_block_content) → LIST(duck_block)
+db_link(href VARCHAR, title VARCHAR, content duck_block_content) → LIST(duck_block)
 ```
+
+Creates a hyperlink.
+
+**Parameters:**
+- `href` - URL (first param)
+- `title` - (Optional) Link title/tooltip
+- `content` - Link text or inline children (last param)
+
+**Example:**
+```sql
+-- Simple link
+SELECT db_link('https://example.com', 'Click here');
+
+-- Link with formatted text
+SELECT db_link('https://example.com', [
+    db_bold('Click'),
+    db_text(' here')
+]);
+
+-- Link with title
+SELECT db_link('https://duckdb.org', 'DuckDB Website', 'DuckDB');
+```
+
+### db_inline_image
+
+```sql
+db_inline_image(src VARCHAR) → LIST(duck_block)
+db_inline_image(src VARCHAR, alt VARCHAR) → LIST(duck_block)
+db_inline_image(src VARCHAR, alt VARCHAR, title VARCHAR) → LIST(duck_block)
+```
+
+Creates an inline image.
+
+**Example:**
+```sql
+SELECT db_inline_image('/img/logo.png', 'Logo', 'Company Logo');
+```
+
+### db_quoted
+
+```sql
+db_quoted(content duck_block_content) → LIST(duck_block)
+db_quoted(quote_type VARCHAR, content duck_block_content) → LIST(duck_block)
+```
+
+Creates quoted text.
+
+**Parameters:**
+- `quote_type` - (Optional, first when specified) 'single' or 'double'
+- `content` - Quoted content
+
+### db_cite
+
+```sql
+db_cite(key VARCHAR) → LIST(duck_block)
+```
+
+Creates a citation reference.
+
+### db_note
+
+```sql
+db_note(content duck_block_content) → LIST(duck_block)
+```
+
+Creates a footnote.
+
+### db_span
+
+```sql
+db_span(content duck_block_content) → LIST(duck_block)
+db_span(id VARCHAR, content duck_block_content) → LIST(duck_block)
+db_span(id VARCHAR, class VARCHAR, content duck_block_content) → LIST(duck_block)
+```
+
+Creates a generic inline container with optional id and class.
+
+### db_raw_inline
+
+```sql
+db_raw_inline(content VARCHAR) → LIST(duck_block)
+db_raw_inline(format VARCHAR, content VARCHAR) → LIST(duck_block)
+```
+
+Creates raw inline content.
+
+**Parameters:**
+- `format` - (Optional, first when specified) 'html', 'latex', etc.
+- `content` - Raw content
 
 ---
 
@@ -209,17 +254,16 @@ db_linebreak() → duck_block  -- Hard line break
 
 ### Building Rich Text
 
-Combine inline elements into arrays for structured content:
+Compose inline elements into arrays for structured content:
 
 ```sql
--- Create a formatted sentence
-SELECT [
+SELECT db_paragraph([
     db_text('Click '),
-    db_link('here', 'https://example.com'),
+    db_link('https://example.com', 'here'),
     db_text(' to learn more about '),
     db_bold('DuckDB'),
     db_text('.')
-];
+]);
 ```
 
 ### Dynamic Link Generation
@@ -227,43 +271,74 @@ SELECT [
 Generate links from query data:
 
 ```sql
--- Create links from a table
-SELECT db_link(
-    project_name,
-    'https://github.com/' || owner || '/' || repo
-) AS project_link
+SELECT db_paragraph([
+    db_link(
+        'https://github.com/' || owner || '/' || repo,
+        project_name
+    )
+])
 FROM projects;
 ```
 
 ### Badge Generation
 
-Create status badges with images:
+Create status badges with images inside links:
 
 ```sql
--- CI badge with link
-SELECT [
-    db_link(
-        db_inline_image(
-            'https://github.com/' || repo || '/actions/workflows/ci.yml/badge.svg',
-            'CI Status'
-        ).content,
-        'https://github.com/' || repo || '/actions'
-    )
-] FROM repositories;
+SELECT db_paragraph([
+    db_link(github_actions_url, [
+        db_inline_image(ci_badge_url, 'CI Status')
+    ])
+])
+FROM repositories;
+```
+
+### Complex Inline Nesting
+
+```sql
+-- "This is **very _important_** text"
+SELECT db_paragraph([
+    db_text('This is '),
+    db_bold([
+        db_text('very '),
+        db_italic('important')
+    ]),
+    db_text(' text')
+]);
 ```
 
 ---
 
-## Integration with Renderers
+## Integration with Block Builders
 
-The unified `duck_block` type is designed for cross-format compatibility:
+Inline elements are children of block elements:
 
-### Markdown Rendering (duckdb_markdown)
+```sql
+SELECT db_assemble([
+    db_heading(1, [db_text('Welcome to '), db_bold('DuckDB')]),
+    db_paragraph([
+        db_text('Visit '),
+        db_link('https://duckdb.org', 'the website'),
+        db_text(' for more info.')
+    ]),
+    db_list_item([
+        db_link('https://github.com/duckdb', 'GitHub'),
+        db_text(' '),
+        db_inline_image('https://img.shields.io/badge.svg', 'Stars')
+    ])
+]);
+```
 
-When inline elements are rendered to Markdown:
+---
 
-| Element Type | Markdown Output |
-|--------------|-----------------|
+## Rendering Output
+
+When inline elements are rendered:
+
+### Markdown
+
+| Element Type | Output |
+|--------------|--------|
 | `text` | Content as-is |
 | `link` | `[content](href "title")` |
 | `image` | `![alt](src "title")` |
@@ -272,12 +347,10 @@ When inline elements are rendered to Markdown:
 | `code` | `` `content` `` |
 | `strikethrough` | `~~content~~` |
 
-### HTML Rendering (webbed)
+### HTML
 
-When inline elements are rendered to HTML:
-
-| Element Type | HTML Output |
-|--------------|-------------|
+| Element Type | Output |
+|--------------|--------|
 | `text` | Content (escaped) |
 | `link` | `<a href="...">content</a>` |
 | `image` | `<img src="..." alt="...">` |
@@ -290,6 +363,6 @@ When inline elements are rendered to HTML:
 
 ## See Also
 
-- [Block Builder Functions](block_builders.md) - Block-level construction
+- [Block Builders](block_builders.md) - Block-level construction
 - [API Reference](api.md) - Complete function reference
-- [Design Document](design.md) - Architecture overview
+- [V2 API Design](v2_api_design.md) - Design rationale

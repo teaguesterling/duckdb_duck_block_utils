@@ -1,0 +1,416 @@
+# name: test/sql/inline_builders_v2.test
+# description: test duck_block_utils extension - v2 inline builder functions (LIST return, config-first)
+# group: [duck_block_utils]
+
+require duck_block_utils
+
+# ============================================================================
+# Type Tests (v2: all builders return LIST)
+# ============================================================================
+
+# Test return type is LIST(duck_block)
+query I
+SELECT typeof(db_text('hello'));
+----
+duck_block[]
+
+# ============================================================================
+# db_text Tests (v2: returns LIST)
+# ============================================================================
+
+query I
+SELECT db_text('Hello world')[1].element_type;
+----
+text
+
+query I
+SELECT db_text('Hello world')[1].content;
+----
+Hello world
+
+query I
+SELECT db_text('Hello world')[1].level;
+----
+1
+
+query I
+SELECT len(db_text('Hello world'));
+----
+1
+
+# ============================================================================
+# Whitespace Tests (v2: returns LIST)
+# ============================================================================
+
+query I
+SELECT db_space()[1].element_type;
+----
+space
+
+query I
+SELECT len(db_space());
+----
+1
+
+query I
+SELECT db_softbreak()[1].element_type;
+----
+softbreak
+
+query I
+SELECT db_linebreak()[1].element_type;
+----
+linebreak
+
+# ============================================================================
+# db_link Tests (v2: href first)
+# ============================================================================
+
+query I
+SELECT db_link('https://example.com', 'Click here')[1].element_type;
+----
+link
+
+query I
+SELECT db_link('https://example.com', 'Click here')[1].content;
+----
+Click here
+
+query I
+SELECT db_link('https://example.com', 'Click here')[1].attributes['href'];
+----
+https://example.com
+
+# Test db_link with title (href, title, content)
+query I
+SELECT db_link('https://example.com', 'My Title', 'Click here')[1].attributes['title'];
+----
+My Title
+
+# Test db_link with inline children
+query I
+SELECT len(db_link('https://example.com', [db_text('Click '), db_bold('here')]));
+----
+3
+
+query I
+SELECT db_link('https://example.com', [db_text('Click')])[1].content IS NULL;
+----
+true
+
+query I
+SELECT db_link('https://example.com', [db_text('Click')])[2].level;
+----
+2
+
+# ============================================================================
+# db_inline_image Tests (v2: returns LIST)
+# ============================================================================
+
+query I
+SELECT db_inline_image('/path/to/img.png')[1].element_type;
+----
+image
+
+query I
+SELECT db_inline_image('/path/to/img.png')[1].attributes['src'];
+----
+/path/to/img.png
+
+query I
+SELECT db_inline_image('/path/to/img.png', 'Alt text')[1].attributes['alt'];
+----
+Alt text
+
+query I
+SELECT db_inline_image('/path/to/img.png', 'Alt text')[1].content;
+----
+Alt text
+
+query I
+SELECT len(db_inline_image('/path/to/img.png'));
+----
+1
+
+# ============================================================================
+# Formatting Tests (v2: returns LIST)
+# ============================================================================
+
+query I
+SELECT db_bold('Important')[1].element_type;
+----
+bold
+
+query I
+SELECT db_bold('Important')[1].content;
+----
+Important
+
+query I
+SELECT db_italic('Emphasis')[1].element_type;
+----
+italic
+
+query I
+SELECT db_strikethrough('deleted')[1].element_type;
+----
+strikethrough
+
+query I
+SELECT db_superscript('2')[1].element_type;
+----
+superscript
+
+query I
+SELECT db_subscript('n')[1].element_type;
+----
+subscript
+
+query I
+SELECT db_smallcaps('Title')[1].element_type;
+----
+smallcaps
+
+query I
+SELECT db_underline('underlined')[1].element_type;
+----
+underline
+
+# ============================================================================
+# Formatting with Children (v2: content as duck_block_content)
+# ============================================================================
+
+# Test db_bold with children - content is NULL
+query I
+SELECT db_bold([db_text('Hello'), db_text(' world')])[1].content IS NULL;
+----
+true
+
+# Test db_bold with children - returns flattened list
+query I
+SELECT len(db_bold([db_text('Hello'), db_text(' world')]));
+----
+3
+
+# Test db_bold children are at level 2
+query I
+SELECT db_bold([db_text('Hello')])[2].level;
+----
+2
+
+# Test db_italic with children
+query I
+SELECT len(db_italic([db_text('emphasized')]));
+----
+2
+
+# Test db_strikethrough with children
+query I
+SELECT len(db_strikethrough([db_text('deleted')]));
+----
+2
+
+# ============================================================================
+# Semantic Tests (v2: returns LIST)
+# ============================================================================
+
+query I
+SELECT db_inline_code('print(1)')[1].element_type;
+----
+code
+
+query I
+SELECT db_inline_code('print(1)')[1].content;
+----
+print(1)
+
+# db_math: display first when specified
+query I
+SELECT db_math('E=mc^2')[1].element_type;
+----
+math
+
+query I
+SELECT db_math('E=mc^2')[1].attributes['display'];
+----
+inline
+
+query I
+SELECT db_math(true, '\\sum_{i=1}^n')[1].attributes['display'];
+----
+block
+
+# db_quoted: quote_type first when specified
+query I
+SELECT db_quoted('Hello')[1].element_type;
+----
+quoted
+
+query I
+SELECT db_quoted('Hello')[1].attributes['quote_type'];
+----
+double
+
+query I
+SELECT db_quoted('single', 'Hello')[1].attributes['quote_type'];
+----
+single
+
+# db_quoted with children
+query I
+SELECT len(db_quoted([db_text('some words')]));
+----
+2
+
+query I
+SELECT db_quoted([db_text('word')])[1].content IS NULL;
+----
+true
+
+query I
+SELECT db_cite('knuth1984')[1].element_type;
+----
+cite
+
+query I
+SELECT db_cite('knuth1984')[1].attributes['key'];
+----
+knuth1984
+
+query I
+SELECT db_note('Footnote content')[1].element_type;
+----
+note
+
+# db_note with children
+query I
+SELECT len(db_note([db_text('Footnote')]));
+----
+2
+
+# db_span: id first, then class
+query I
+SELECT db_span('text')[1].element_type;
+----
+span
+
+query I
+SELECT db_span('my-id', 'text')[1].attributes['id'];
+----
+my-id
+
+query I
+SELECT db_span('my-id', 'my-class', 'text')[1].attributes['class'];
+----
+my-class
+
+# db_span with children
+query I
+SELECT len(db_span([db_text('content')]));
+----
+2
+
+query I
+SELECT db_span('my-id', [db_text('content')])[1].attributes['id'];
+----
+my-id
+
+# db_raw_inline: format first when specified
+query I
+SELECT db_raw_inline('<br>')[1].element_type;
+----
+raw
+
+query I
+SELECT db_raw_inline('<br>')[1].attributes['format'];
+----
+html
+
+query I
+SELECT db_raw_inline('latex', '\\LaTeX')[1].attributes['format'];
+----
+latex
+
+# ============================================================================
+# Nested Children Tests
+# ============================================================================
+
+# Test deeply nested content
+query I
+SELECT len(db_bold([db_italic([db_text('nested')])]));
+----
+3
+
+# Test levels increment correctly for nested
+query I
+SELECT db_bold([db_italic([db_text('nested')])])[2].level;
+----
+2
+
+# Test element_order is preserved within children
+query III
+SELECT db_bold([db_text('A'), db_text('B'), db_text('C')])[2].element_order,
+       db_bold([db_text('A'), db_text('B'), db_text('C')])[3].element_order,
+       db_bold([db_text('A'), db_text('B'), db_text('C')])[4].element_order;
+----
+0	1	2
+
+# ============================================================================
+# Integration: Composing inline elements
+# ============================================================================
+
+# Test creating a list of inlines with list_flatten
+query I
+SELECT len(list_flatten([
+    db_text('Click '),
+    db_link('https://example.com', 'here'),
+    db_text('!')
+]));
+----
+3
+
+# Test composing link with formatted text
+query I
+SELECT len(db_link('https://example.com', [
+    db_bold('Click'),
+    db_text(' here')
+]));
+----
+3
+
+# ============================================================================
+# Pandoc Conversion Tests (unchanged)
+# ============================================================================
+
+# Test basic Pandoc inline parsing
+query I
+SELECT len(pandoc_inlines_to_db_inlines('[{"t":"Str","c":"Hello"}]'));
+----
+1
+
+query I
+SELECT pandoc_inlines_to_db_inlines('[{"t":"Str","c":"Hello"}]')[1].element_type;
+----
+text
+
+# Test Strong (bold) with nested content - already returns list
+query I
+SELECT len(pandoc_inlines_to_db_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]'));
+----
+2
+
+query I
+SELECT pandoc_inlines_to_db_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]')[1].element_type;
+----
+bold
+
+query I
+SELECT pandoc_inlines_to_db_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]')[2].level;
+----
+2
+
+# Test round-trip conversion
+query I
+SELECT db_inlines_to_pandoc(db_text('Hello'));
+----
+[{"t":"Str","c":"Hello"}]

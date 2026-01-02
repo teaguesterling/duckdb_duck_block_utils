@@ -1,0 +1,231 @@
+# name: test/sql/validation_v2.test
+# description: test duck_block_utils extension - v2 validation functions
+# group: [duck_block_utils]
+
+require duck_block_utils
+
+# ============================================================================
+# db_blocks_validate Tests
+# ============================================================================
+
+# Test valid blocks pass validation (using db_assemble to flatten builder output)
+query I
+SELECT db_blocks_validate(db_assemble([
+    db_heading(1, 'Title'),
+    db_paragraph('Text')
+])).valid;
+----
+true
+
+# Test valid blocks have empty errors
+query I
+SELECT len(db_blocks_validate(db_assemble([
+    db_heading(1, 'Title'),
+    db_paragraph('Text')
+])).errors);
+----
+0
+
+# Test empty list is valid
+query I
+SELECT db_blocks_validate([]).valid;
+----
+true
+
+# Test NULL input returns NULL (standard SQL NULL propagation)
+query I
+SELECT db_blocks_validate(NULL) IS NULL;
+----
+true
+
+# ============================================================================
+# db_blocks_lint Tests
+# ============================================================================
+
+# Test lint with valid document (no warnings)
+query I
+SELECT len(db_blocks_lint(db_assemble([
+    db_heading(1, 'Title'),
+    db_heading(2, 'Section'),
+    db_paragraph('Text')
+])));
+----
+0
+
+# Test lint detects heading level skip
+query I
+SELECT len(db_blocks_lint(db_assemble([
+    db_heading(1, 'Title'),
+    db_heading(3, 'Subsection')
+]))) > 0;
+----
+true
+
+# Test lint warning message contains heading skip info
+query I
+SELECT db_blocks_lint(db_assemble([
+    db_heading(1, 'Title'),
+    db_heading(3, 'Skip')
+]))[1].message LIKE '%skip%';
+----
+true
+
+# Test lint warning severity
+query I
+SELECT db_blocks_lint(db_assemble([
+    db_heading(1, 'Title'),
+    db_heading(3, 'Skip')
+]))[1].severity;
+----
+warning
+
+# Test lint detects code without language
+query I
+SELECT len(db_blocks_lint(db_code('x=1'))) > 0;
+----
+true
+
+# Test empty list returns no warnings
+query I
+SELECT len(db_blocks_lint([]));
+----
+0
+
+# ============================================================================
+# db_blocks_structure Tests
+# ============================================================================
+
+# Test structure block count
+query I
+SELECT db_blocks_structure(db_assemble([
+    db_heading(1, 'Title'),
+    db_paragraph('Text'),
+    db_paragraph('More')
+])).block_count;
+----
+3
+
+# Test structure heading count
+query I
+SELECT db_blocks_structure(db_assemble([
+    db_heading(1, 'H1'),
+    db_paragraph('Text'),
+    db_heading(2, 'H2')
+])).heading_count;
+----
+2
+
+# Test structure paragraph count
+query I
+SELECT db_blocks_structure(db_assemble([
+    db_paragraph('P1'),
+    db_paragraph('P2'),
+    db_paragraph('P3')
+])).paragraph_count;
+----
+3
+
+# Test structure code block count
+query I
+SELECT db_blocks_structure(db_assemble([
+    db_code('py', 'x=1'),
+    db_code('bash', 'echo hi')
+])).code_block_count;
+----
+2
+
+# Test structure max heading level
+query I
+SELECT db_blocks_structure(db_assemble([
+    db_heading(1, 'H1'),
+    db_heading(3, 'H3'),
+    db_heading(2, 'H2')
+])).max_heading_level;
+----
+3
+
+# Test structure min heading level
+query I
+SELECT db_blocks_structure(db_assemble([
+    db_heading(2, 'H2'),
+    db_heading(4, 'H4'),
+    db_heading(3, 'H3')
+])).min_heading_level;
+----
+2
+
+# Test structure with no headings
+query I
+SELECT db_blocks_structure(db_paragraph('Text')).min_heading_level;
+----
+0
+
+# Test structure total content length
+query I
+SELECT db_blocks_structure(db_assemble([
+    db_paragraph('Hello'),
+    db_paragraph('World')
+])).total_content_length;
+----
+10
+
+# Test structure with empty list
+query I
+SELECT db_blocks_structure([]).block_count;
+----
+0
+
+# Test structure inline count
+query I
+SELECT db_blocks_structure(db_assemble([
+    db_text('Hello'),
+    db_bold('World'),
+    db_paragraph('Block')
+])).inline_count;
+----
+2
+
+# Test structure link count
+query I
+SELECT db_blocks_structure(db_assemble([
+    db_link('https://example.com', 'Click'),
+    db_link('https://test.com', 'Here'),
+    db_paragraph('Text')
+])).link_count;
+----
+2
+
+# Test structure image count
+query I
+SELECT db_blocks_structure(db_assemble([
+    db_inline_image('/img.png', 'Alt'),
+    db_image('/photo.jpg', 'Photo', 'Title')
+])).image_count;
+----
+2
+
+# ============================================================================
+# Integration Tests
+# ============================================================================
+
+# Test validation on assembled document
+query I
+SELECT db_blocks_validate(db_assemble([
+    db_heading(1, 'Title'),
+    db_paragraph('Intro'),
+    db_heading(2, 'Section'),
+    db_code('python', 'example')
+])).valid;
+----
+true
+
+# Test structure of assembled document
+query I
+SELECT db_blocks_structure(db_assemble([
+    db_heading(1, 'Title'),
+    db_paragraph('Intro'),
+    db_heading(2, 'Section'),
+    db_code('python', 'example')
+])).heading_count;
+----
+2

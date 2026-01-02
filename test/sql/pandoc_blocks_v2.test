@@ -1,0 +1,201 @@
+# name: test/sql/pandoc_blocks_v2.test
+# description: test duck_block_utils extension - v2 Pandoc block conversion functions
+# group: [duck_block_utils]
+
+require duck_block_utils
+
+# ============================================================================
+# pandoc_ast_to_blocks Tests
+# ============================================================================
+
+# Test parsing Header block
+query I
+SELECT len(pandoc_ast_to_blocks('[{"t":"Header","c":[1,["id",[],[]],[{"t":"Str","c":"Title"}]]}]'));
+----
+1
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"Header","c":[1,["id",[],[]],[{"t":"Str","c":"Title"}]]}]')[1].element_type;
+----
+heading
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"Header","c":[2,["id",[],[]],[{"t":"Str","c":"Section"}]]}]')[1].attributes['heading_level'];
+----
+2
+
+# Test parsing Para block
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"Hello"}]}]')[1].element_type;
+----
+paragraph
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"Hello"}]}]')[1].content;
+----
+Hello
+
+# Test parsing CodeBlock
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"CodeBlock","c":[["",["python"],[]],\"print(1)\"]}]')[1].element_type;
+----
+code
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"CodeBlock","c":[["",["python"],[]],\"print(1)\"]}]')[1].attributes['language'];
+----
+python
+
+# Test parsing HorizontalRule
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"HorizontalRule"}]')[1].element_type;
+----
+hr
+
+# Test parsing multiple blocks
+query I
+SELECT len(pandoc_ast_to_blocks('[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"Title"}]]},{"t":"Para","c":[{"t":"Str","c":"Text"}]}]'));
+----
+2
+
+# Test element_order is assigned sequentially
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"A"}]]},{"t":"Para","c":[{"t":"Str","c":"B"}]}]')[1].element_order;
+----
+0
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"A"}]]},{"t":"Para","c":[{"t":"Str","c":"B"}]}]')[2].element_order;
+----
+1
+
+# Test empty input
+query I
+SELECT len(pandoc_ast_to_blocks('[]'));
+----
+0
+
+# Test NULL input returns empty list (len of NULL is NULL, so check differently)
+query I
+SELECT pandoc_ast_to_blocks(NULL) IS NULL OR len(pandoc_ast_to_blocks(NULL)) = 0;
+----
+true
+
+# Test parsing full AST with blocks key
+query I
+SELECT len(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23],"meta":{},"blocks":[{"t":"Para","c":[{"t":"Str","c":"Test"}]}]}'));
+----
+1
+
+# ============================================================================
+# pandoc_blocks_to_ast Tests (v2: builders return LIST)
+# ============================================================================
+
+# Test converting heading to Pandoc AST (db_heading returns LIST, can pass directly)
+query I
+SELECT pandoc_blocks_to_ast(db_heading(1, 'Title')) LIKE '%Header%';
+----
+true
+
+query I
+SELECT pandoc_blocks_to_ast(db_heading(1, 'Title')) LIKE '%Title%';
+----
+true
+
+# Test converting paragraph to Pandoc AST
+query I
+SELECT pandoc_blocks_to_ast(db_paragraph('Hello')) LIKE '%Para%';
+----
+true
+
+query I
+SELECT pandoc_blocks_to_ast(db_paragraph('Hello')) LIKE '%Hello%';
+----
+true
+
+# Test converting code block to Pandoc AST (v2: language first)
+query I
+SELECT pandoc_blocks_to_ast(db_code('python', 'x=1')) LIKE '%CodeBlock%';
+----
+true
+
+query I
+SELECT pandoc_blocks_to_ast(db_code('python', 'x=1')) LIKE '%python%';
+----
+true
+
+# Test converting hr to Pandoc AST
+query I
+SELECT pandoc_blocks_to_ast(db_hr()) LIKE '%HorizontalRule%';
+----
+true
+
+# Test converting multiple blocks (use db_assemble to flatten)
+query I
+SELECT pandoc_blocks_to_ast(db_assemble([
+    db_heading(1, 'Title'),
+    db_paragraph('Text')
+])) LIKE '%Header%Para%';
+----
+true
+
+# Test empty list returns empty array
+query I
+SELECT pandoc_blocks_to_ast([]);
+----
+[]
+
+# Test NULL input returns NULL (standard SQL NULL propagation)
+query I
+SELECT pandoc_blocks_to_ast(NULL) IS NULL;
+----
+true
+
+# Test inline elements are skipped in block output
+query I
+SELECT pandoc_blocks_to_ast(db_text('inline'));
+----
+[]
+
+# ============================================================================
+# Round-trip Tests
+# ============================================================================
+
+# Test simple round-trip: Para
+query I
+SELECT pandoc_ast_to_blocks(pandoc_blocks_to_ast(db_paragraph('Hello')))[1].element_type;
+----
+paragraph
+
+# Test simple round-trip: Header (v2: level first)
+query I
+SELECT pandoc_ast_to_blocks(pandoc_blocks_to_ast(db_heading(1, 'Title')))[1].element_type;
+----
+heading
+
+# Test simple round-trip: CodeBlock (v2: language first)
+query I
+SELECT pandoc_ast_to_blocks(pandoc_blocks_to_ast(db_code('py', 'x=1')))[1].element_type;
+----
+code
+
+# Test content preserved in round-trip
+query I
+SELECT pandoc_ast_to_blocks(pandoc_blocks_to_ast(db_paragraph('Test content')))[1].content;
+----
+Test content
+
+# ============================================================================
+# Complex Document Round-trip
+# ============================================================================
+
+# Test assembled document round-trip
+query I
+SELECT len(pandoc_ast_to_blocks(pandoc_blocks_to_ast(db_assemble([
+    db_heading(1, 'Title'),
+    db_paragraph('Introduction'),
+    db_code('python', 'print("hello")'),
+    db_hr()
+]))));
+----
+4
