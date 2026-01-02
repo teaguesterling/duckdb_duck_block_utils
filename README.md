@@ -1,18 +1,20 @@
 # DuckDB Document Block Utilities
 
-A DuckDB extension providing format-agnostic utilities for working with document blocks.
+A DuckDB extension providing format-agnostic utilities for working with document elements.
 
 ## Overview
 
-This extension complements format-specific document extensions (markdown, HTML, XML, YAML) by providing common utilities that work with any document represented using the [Document Block Specification](https://github.com/teaguesterling/duckdb_markdown/blob/main/docs/doc_block_spec.md).
+This extension complements format-specific document extensions (markdown, HTML, XML, YAML) by providing common utilities that work with any document represented using the [Duck Blocks Specification](docs/duck_blocks_spec.md).
 
 ## Features
 
+- **Unified doc_element type**: Single type for both block and inline elements with `kind` discriminator
 - **Block builders**: Declarative document construction from SQL queries
-- **Block manipulation**: Filter, transform, merge, and reorder blocks
+- **Inline builders**: Rich text formatting with links, bold, italic, code, and more
+- **Block manipulation**: Filter, transform, merge, and reorder elements
 - **Content extraction**: Extract plain text, headings, and generate TOCs
 - **Validation**: Check schema compliance and lint for common issues
-- **Pandoc AST conversion**: Bidirectional JSON AST ↔ doc_blocks (no Pandoc required)
+- **Pandoc AST conversion**: Bidirectional JSON AST ↔ doc_elements (no Pandoc required)
 - **Conversion helpers**: Normalize blocks and track provenance
 
 ## Installation
@@ -51,6 +53,49 @@ SELECT doc_blocks_validate(
 );
 ```
 
+## The Unified doc_element Type
+
+Both block-level and inline elements use the same unified type, distinguished by the `kind` field:
+
+```sql
+STRUCT(
+    kind VARCHAR,                       -- 'block' or 'inline'
+    element_type VARCHAR,               -- 'heading', 'paragraph', 'text', 'link', etc.
+    content VARCHAR,                    -- Primary content
+    level INTEGER,                      -- Hierarchy level (NULL if N/A)
+    encoding VARCHAR,                   -- 'text', 'json', 'yaml', 'html', 'xml'
+    attributes MAP(VARCHAR, VARCHAR),   -- Type-specific metadata
+    element_order INTEGER               -- Position in document (0-indexed)
+)
+```
+
+### Block Types (kind='block')
+
+| Type | Description | Level Used | Typical Encoding |
+|------|-------------|------------|------------------|
+| `heading` | Section headings (h1-h6) | Yes (1-6) | text |
+| `paragraph` | Body text | No | text |
+| `code` | Code blocks | No | text |
+| `blockquote` | Quoted text | Optional | text |
+| `list` | Ordered/unordered lists | Optional | json |
+| `table` | Tabular data | No | json |
+| `hr` | Horizontal rule | No | text |
+| `metadata` | YAML frontmatter | No | yaml |
+| `image` | Image references | No | text |
+| `raw` | Raw HTML/XML | No | html/xml |
+
+### Inline Types (kind='inline')
+
+| Type | Description | Attributes |
+|------|-------------|------------|
+| `text` | Plain text | none |
+| `link` | Hyperlink | `href`, `title` |
+| `image` | Inline image | `src`, `alt`, `title` |
+| `bold` | Bold/strong text | none |
+| `italic` | Italic/emphasis | none |
+| `code` | Inline code | none |
+| `strikethrough` | Strikethrough | none |
+
 ## Functions
 
 ### Block Manipulation
@@ -61,7 +106,7 @@ SELECT doc_blocks_validate(
 | `doc_blocks_exclude(blocks, types[])` | Exclude specific block types |
 | `doc_blocks_transform(blocks, mappings)` | Apply type/content transformations |
 | `doc_blocks_merge(blocks1, blocks2)` | Merge two block sequences |
-| `doc_blocks_reorder(blocks)` | Renumber block_order sequentially |
+| `doc_blocks_reorder(blocks)` | Renumber element_order sequentially |
 | `doc_blocks_slice(blocks, start, end)` | Extract block range |
 
 ### Content Extraction
@@ -105,14 +150,26 @@ SELECT doc_blocks_validate(
 | `doc_table_from_query(query)` | Convert query result to table block |
 | `doc_from_rows(query, transformer)` | Generate blocks from each row |
 
+### Inline Builders
+
+| Function | Description |
+|----------|-------------|
+| `doc_text(content)` | Create plain text inline |
+| `doc_link(text, href, title)` | Create hyperlink |
+| `doc_bold(content)` | Create bold text |
+| `doc_italic(content)` | Create italic text |
+| `doc_inline_code(content)` | Create inline code |
+| `doc_inline_image(src, alt, title)` | Create inline image |
+
 ### Pandoc AST Conversion
 
 | Function | Description |
 |----------|-------------|
-| `pandoc_ast_to_blocks(ast, mode)` | Convert Pandoc JSON AST to doc_blocks |
-| `pandoc_blocks_to_ast(blocks, meta)` | Convert doc_blocks to Pandoc JSON AST |
+| `pandoc_ast_to_blocks(ast, mode)` | Convert Pandoc JSON AST to doc_elements |
+| `pandoc_blocks_to_ast(blocks, meta)` | Convert doc_elements to Pandoc JSON AST |
 | `pandoc_inlines_to_text(inlines, mode)` | Convert inline elements to text |
-| `pandoc_text_to_inlines(text)` | Convert text to Pandoc inlines |
+| `pandoc_inlines_to_doc_inlines(inlines)` | Convert Pandoc inlines to doc_element inlines |
+| `doc_inlines_to_pandoc(inlines)` | Convert doc_element inlines to Pandoc JSON |
 
 ## Examples
 
@@ -125,7 +182,7 @@ SELECT
 FROM doc_blocks_toc(
     (SELECT list(b) FROM read_markdown_blocks('docs/**/*.md') b)
 )
-ORDER BY doc_order, block_order;
+ORDER BY doc_order, element_order;
 ```
 
 ### Extract Code Examples by Language
@@ -147,8 +204,8 @@ WHERE language = 'python';
 SELECT unnest(doc_blocks_merge(
     doc_blocks_merge(
         (SELECT list(b) FROM read_markdown_blocks('intro.md') b),
-        [{'block_type': 'hr', 'content': '', 'level': NULL,
-          'encoding': 'text', 'attributes': {}, 'block_order': 0}]
+        [{'kind': 'block', 'element_type': 'hr', 'content': '', 'level': NULL,
+          'encoding': 'text', 'attributes': {}, 'element_order': 0}]
     ),
     (SELECT list(b) FROM read_markdown_blocks('main.md') b)
 ));
@@ -161,27 +218,6 @@ SELECT * FROM doc_blocks_lint(
     (SELECT list(b) FROM read_markdown_blocks('doc.md') b)
 )
 WHERE severity = 'error';
-```
-
-### Cross-Format Document Assembly
-
-```sql
--- Combine blocks from multiple formats (with future extensions)
-WITH all_blocks AS (
-    SELECT doc_blocks_set_source(
-        (SELECT list(b) FROM read_markdown_blocks('readme.md') b),
-        'markdown'
-    ) as blocks
-    UNION ALL
-    SELECT doc_blocks_set_source(
-        (SELECT list(b) FROM read_html_blocks('page.html') b),
-        'html'
-    ) as blocks
-)
-SELECT unnest(doc_blocks_merge(
-    (SELECT blocks FROM all_blocks LIMIT 1),
-    (SELECT blocks FROM all_blocks OFFSET 1 LIMIT 1)
-));
 ```
 
 ### Generate Report from Query (Declarative Builders)
@@ -216,11 +252,24 @@ COPY (
 ) TO 'report.md' (FORMAT MARKDOWN, markdown_mode 'blocks');
 ```
 
+### Build Rich Text with Inline Elements
+
+```sql
+-- Create a paragraph with formatted inline content
+SELECT [
+    doc_text('Click '),
+    doc_link('here', 'https://example.com'),
+    doc_text(' to learn more about '),
+    doc_bold('DuckDB'),
+    doc_text('.')
+];
+```
+
 ### Convert Pandoc JSON to Blocks
 
 ```sql
 -- Read Pandoc JSON (from any tool that exports it)
--- and convert to doc_blocks without needing Pandoc installed
+-- and convert to doc_elements without needing Pandoc installed
 SELECT unnest(pandoc_ast_to_blocks(
     read_json_auto('exported_from_pandoc.json')
 ));
@@ -281,8 +330,9 @@ This extension is part of the DuckDB document processing ecosystem:
 - [Design Document](docs/design.md) - Architecture and implementation details
 - [API Reference](docs/api.md) - Complete function reference
 - [Block Builders](docs/block_builders.md) - Declarative document construction
+- [Inline Builders](docs/inline_builders.md) - Rich text inline elements
+- [Duck Blocks Spec](docs/duck_blocks_spec.md) - Unified doc_element type specification
 - [Pandoc AST Spec](docs/pandoc_ast_spec.md) - Pandoc JSON conversion rules
-- [Document Block Specification](https://github.com/teaguesterling/duckdb_markdown/blob/main/docs/doc_block_spec.md) - Cross-extension block format
 
 ## License
 

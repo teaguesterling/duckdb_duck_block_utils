@@ -24,11 +24,11 @@ SELECT doc_assemble([
 ]);
 ```
 
-The `doc_assemble` function takes a list of blocks and assigns sequential `block_order` values (0, 1, 2, ...).
+The `doc_assemble` function takes a list of blocks and assigns sequential `element_order` values (0, 1, 2, ...).
 
-## Understanding doc_block
+## Understanding doc_element
 
-Each block is a struct with these fields:
+Both blocks and inlines use the unified `doc_element` type, distinguished by the `kind` field:
 
 ```sql
 SELECT doc_heading('Hello', 1);
@@ -37,20 +37,22 @@ SELECT doc_heading('Hello', 1);
 Output:
 ```
 {
-  block_type: 'heading',
+  kind: 'block',
+  element_type: 'heading',
   content: 'Hello',
   level: 1,
   encoding: 'text',
   attributes: {},
-  block_order: 0
+  element_order: 0
 }
 ```
 
 You can access fields using dot notation:
 
 ```sql
-SELECT doc_heading('Hello', 1).block_type;  -- 'heading'
-SELECT doc_heading('Hello', 1).level;       -- 1
+SELECT doc_heading('Hello', 1).element_type;  -- 'heading'
+SELECT doc_heading('Hello', 1).level;         -- 1
+SELECT doc_heading('Hello', 1).kind;          -- 'block'
 ```
 
 ## Building Rich Documents
@@ -92,6 +94,36 @@ author: Jane Doe
 date: 2024-01-15');
 ```
 
+## Working with Inline Elements
+
+Inline elements have `kind='inline'` and are used for rich text formatting:
+
+```sql
+SELECT doc_text('Hello world');
+-- Returns: {kind: 'inline', element_type: 'text', content: 'Hello world', level: 1, ...}
+
+SELECT doc_link('Click here', 'https://example.com');
+-- Returns: {kind: 'inline', element_type: 'link', content: 'Click here',
+--           attributes: {href: 'https://example.com'}, ...}
+
+SELECT doc_bold('Important');
+-- Returns: {kind: 'inline', element_type: 'bold', content: 'Important', ...}
+```
+
+### Building Rich Text
+
+Combine inline elements into arrays:
+
+```sql
+SELECT [
+    doc_text('Click '),
+    doc_link('here', 'https://example.com'),
+    doc_text(' to learn more about '),
+    doc_bold('DuckDB'),
+    doc_text('.')
+];
+```
+
 ## Creating Sections
 
 The `doc_section` function creates a heading with child content:
@@ -127,8 +159,8 @@ SELECT doc_blocks_merge(
     [doc_heading('First', 1)],
     [doc_heading('Second', 1)]
 );
--- First block: block_order=0
--- Second block: block_order=1
+-- First block: element_order=0
+-- Second block: element_order=1
 ```
 
 ## Filtering Documents
@@ -161,14 +193,14 @@ SELECT doc_blocks_to_text([
 
 ```sql
 SELECT doc_blocks_headings(my_doc);
--- Returns: [{level: 1, title: 'Title', id: '', block_order: 0}, ...]
+-- Returns: [{level: 1, title: 'Title', id: '', element_order: 0}, ...]
 ```
 
 ### Get Document Statistics
 
 ```sql
 SELECT doc_blocks_stats(my_doc);
--- Returns: [{block_type: 'paragraph', count: 5, ...}, ...]
+-- Returns: [{element_type: 'paragraph', count: 5, ...}, ...]
 ```
 
 ## Working with Tables
@@ -180,12 +212,13 @@ CREATE TABLE documents (
     id INTEGER,
     title VARCHAR,
     blocks LIST(STRUCT(
-        block_type VARCHAR,
+        kind VARCHAR,
+        element_type VARCHAR,
         content VARCHAR,
         level INTEGER,
         encoding VARCHAR,
         attributes MAP(VARCHAR, VARCHAR),
-        block_order INTEGER
+        element_order INTEGER
     ))
 );
 
@@ -227,11 +260,11 @@ SELECT doc_assemble(doc_concat(
 
 ## Validating Blocks
 
-Check if blocks are valid:
+Check if elements are valid:
 
 ```sql
-SELECT duck_block_valid(doc_heading('Title', 1));  -- true
-SELECT duck_block_valid(duck_block('invalid', 'x'));  -- false
+SELECT doc_element_valid(doc_heading('Title', 1));  -- true
+SELECT doc_element_valid(duck_block('invalid', 'x'));  -- false
 ```
 
 ## Next Steps
@@ -239,3 +272,4 @@ SELECT duck_block_valid(duck_block('invalid', 'x'));  -- false
 - See [API Reference](api_reference.md) for all available functions
 - See [Examples](examples.md) for common patterns
 - See [Type Functions](type_functions.md) for integration with other extensions
+- See [Inline Builders](inline_builders.md) for rich text formatting

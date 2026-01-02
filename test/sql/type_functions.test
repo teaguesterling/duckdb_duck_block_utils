@@ -10,7 +10,7 @@ require duck_block_utils
 
 # Test full constructor
 query I
-SELECT duck_block('heading', 'Title', 1, 'text', MAP{}, 0).block_type;
+SELECT duck_block('heading', 'Title', 1, 'text', MAP{}, 0).element_type;
 ----
 heading
 
@@ -26,7 +26,7 @@ SELECT duck_block('heading', 'Title', 1, 'text', MAP{}, 0).level;
 
 # Test simple constructor (block_type, content)
 query I
-SELECT duck_block('paragraph', 'Hello world').block_type;
+SELECT duck_block('paragraph', 'Hello world').element_type;
 ----
 paragraph
 
@@ -41,7 +41,7 @@ SELECT duck_block('paragraph', 'Hello world').encoding;
 text
 
 query I
-SELECT duck_block('paragraph', 'Hello world').block_order;
+SELECT duck_block('paragraph', 'Hello world').element_order;
 ----
 0
 

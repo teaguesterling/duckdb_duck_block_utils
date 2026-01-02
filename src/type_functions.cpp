@@ -12,35 +12,17 @@ static const std::unordered_set<string> VALID_BLOCK_TYPES = {
 
 // Valid encodings
 static const std::unordered_set<string> VALID_ENCODINGS = {
-    "text", "json", "yaml", "html", "xml"
+    "text", "json", "yaml", "html", "xml", "latex", "markdown"
 };
-
-// Helper to get string field from block
-static string GetStringField(const Value &block, idx_t idx) {
-	auto &children = StructValue::GetChildren(block);
-	if (idx >= children.size() || children[idx].IsNull()) {
-		return "";
-	}
-	return children[idx].GetValue<string>();
-}
-
-// Helper to get int field from block
-static int32_t GetIntField(const Value &block, idx_t idx, int32_t default_val = 0) {
-	auto &children = StructValue::GetChildren(block);
-	if (idx >= children.size() || children[idx].IsNull()) {
-		return default_val;
-	}
-	return children[idx].GetValue<int32_t>();
-}
 
 // Helper to create empty attributes map
 static Value CreateEmptyMap() {
 	return Value::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR, vector<Value>(), vector<Value>());
 }
 
-// Helper to get attribute from block
-static string GetAttribute(const Value &block, const string &key) {
-	auto &children = StructValue::GetChildren(block);
+// Helper to get attribute from element
+static string GetAttribute(const Value &element, const string &key) {
+	auto &children = StructValue::GetChildren(element);
 	auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
 	if (attrs.IsNull()) {
 		return "";
@@ -68,15 +50,16 @@ void TypeFunctions::DuckBlockFun(DataChunk &args, ExpressionState &state, Vector
 	auto &block_order_vec = args.data[5];
 
 	auto count = args.size();
-	auto &struct_entries = StructVector::GetEntries(result);
+	auto &entries = StructVector::GetEntries(result);
 
 	for (idx_t i = 0; i < count; i++) {
-		struct_entries[BlockTypes::BLOCK_TYPE_IDX]->SetValue(i, block_type_vec.GetValue(i));
-		struct_entries[BlockTypes::CONTENT_IDX]->SetValue(i, content_vec.GetValue(i));
-		struct_entries[BlockTypes::LEVEL_IDX]->SetValue(i, level_vec.GetValue(i));
-		struct_entries[BlockTypes::ENCODING_IDX]->SetValue(i, encoding_vec.GetValue(i));
-		struct_entries[BlockTypes::ATTRIBUTES_IDX]->SetValue(i, attributes_vec.GetValue(i));
-		struct_entries[BlockTypes::BLOCK_ORDER_IDX]->SetValue(i, block_order_vec.GetValue(i));
+		entries[BlockTypes::KIND_IDX]->SetValue(i, Value(BlockTypes::KIND_BLOCK));
+		entries[BlockTypes::ELEMENT_TYPE_IDX]->SetValue(i, block_type_vec.GetValue(i));
+		entries[BlockTypes::CONTENT_IDX]->SetValue(i, content_vec.GetValue(i));
+		entries[BlockTypes::LEVEL_IDX]->SetValue(i, level_vec.GetValue(i));
+		entries[BlockTypes::ENCODING_IDX]->SetValue(i, encoding_vec.GetValue(i));
+		entries[BlockTypes::ATTRIBUTES_IDX]->SetValue(i, attributes_vec.GetValue(i));
+		entries[BlockTypes::ELEMENT_ORDER_IDX]->SetValue(i, block_order_vec.GetValue(i));
 	}
 }
 
@@ -85,15 +68,16 @@ void TypeFunctions::DuckBlockSimpleFun(DataChunk &args, ExpressionState &state, 
 	auto &content_vec = args.data[1];
 
 	auto count = args.size();
-	auto &struct_entries = StructVector::GetEntries(result);
+	auto &entries = StructVector::GetEntries(result);
 
 	for (idx_t i = 0; i < count; i++) {
-		struct_entries[BlockTypes::BLOCK_TYPE_IDX]->SetValue(i, block_type_vec.GetValue(i));
-		struct_entries[BlockTypes::CONTENT_IDX]->SetValue(i, content_vec.GetValue(i));
-		struct_entries[BlockTypes::LEVEL_IDX]->SetValue(i, Value());  // NULL
-		struct_entries[BlockTypes::ENCODING_IDX]->SetValue(i, Value("text"));
-		struct_entries[BlockTypes::ATTRIBUTES_IDX]->SetValue(i, CreateEmptyMap());
-		struct_entries[BlockTypes::BLOCK_ORDER_IDX]->SetValue(i, Value(0));
+		entries[BlockTypes::KIND_IDX]->SetValue(i, Value(BlockTypes::KIND_BLOCK));
+		entries[BlockTypes::ELEMENT_TYPE_IDX]->SetValue(i, block_type_vec.GetValue(i));
+		entries[BlockTypes::CONTENT_IDX]->SetValue(i, content_vec.GetValue(i));
+		entries[BlockTypes::LEVEL_IDX]->SetValue(i, Value());
+		entries[BlockTypes::ENCODING_IDX]->SetValue(i, Value("text"));
+		entries[BlockTypes::ATTRIBUTES_IDX]->SetValue(i, CreateEmptyMap());
+		entries[BlockTypes::ELEMENT_ORDER_IDX]->SetValue(i, Value(0));
 	}
 }
 
@@ -101,7 +85,7 @@ void TypeFunctions::ToDuckBlockFun(DataChunk &args, ExpressionState &state, Vect
 	auto &input_vec = args.data[0];
 
 	auto count = args.size();
-	auto &struct_entries = StructVector::GetEntries(result);
+	auto &entries = StructVector::GetEntries(result);
 
 	for (idx_t i = 0; i < count; i++) {
 		auto input = input_vec.GetValue(i);
@@ -113,38 +97,40 @@ void TypeFunctions::ToDuckBlockFun(DataChunk &args, ExpressionState &state, Vect
 
 		auto &children = StructValue::GetChildren(input);
 
-		// Extract fields by name if possible, or by position
-		Value block_type, content, level, encoding, attributes, block_order;
+		// Extract fields - now expects 7 fields for doc_element
+		Value kind, element_type, content, level, encoding, attributes, element_order;
 
-		if (children.size() >= 6) {
-			block_type = children[0];
-			content = children[1];
-			level = children[2];
-			encoding = children[3];
-			attributes = children[4];
-			block_order = children[5];
+		if (children.size() >= 7) {
+			kind = children[0];
+			element_type = children[1];
+			content = children[2];
+			level = children[3];
+			encoding = children[4];
+			attributes = children[5];
+			element_order = children[6];
 		} else {
 			// Minimal struct - fill in defaults
-			block_type = children.size() > 0 ? children[0] : Value("paragraph");
+			kind = Value(BlockTypes::KIND_BLOCK);
+			element_type = children.size() > 0 ? children[0] : Value("paragraph");
 			content = children.size() > 1 ? children[1] : Value("");
 			level = Value();
 			encoding = Value("text");
 			attributes = CreateEmptyMap();
-			block_order = Value(0);
+			element_order = Value(0);
 		}
 
-		struct_entries[BlockTypes::BLOCK_TYPE_IDX]->SetValue(i, block_type);
-		struct_entries[BlockTypes::CONTENT_IDX]->SetValue(i, content);
-		struct_entries[BlockTypes::LEVEL_IDX]->SetValue(i, level);
-		struct_entries[BlockTypes::ENCODING_IDX]->SetValue(i, encoding);
-		struct_entries[BlockTypes::ATTRIBUTES_IDX]->SetValue(i, attributes);
-		struct_entries[BlockTypes::BLOCK_ORDER_IDX]->SetValue(i, block_order);
+		entries[BlockTypes::KIND_IDX]->SetValue(i, kind);
+		entries[BlockTypes::ELEMENT_TYPE_IDX]->SetValue(i, element_type);
+		entries[BlockTypes::CONTENT_IDX]->SetValue(i, content);
+		entries[BlockTypes::LEVEL_IDX]->SetValue(i, level);
+		entries[BlockTypes::ENCODING_IDX]->SetValue(i, encoding);
+		entries[BlockTypes::ATTRIBUTES_IDX]->SetValue(i, attributes);
+		entries[BlockTypes::ELEMENT_ORDER_IDX]->SetValue(i, element_order);
 	}
 }
 
 void TypeFunctions::DuckBlockValidFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &block_vec = args.data[0];
-
 	auto count = args.size();
 
 	for (idx_t i = 0; i < count; i++) {
@@ -157,19 +143,19 @@ void TypeFunctions::DuckBlockValidFun(DataChunk &args, ExpressionState &state, V
 
 		auto &children = StructValue::GetChildren(block);
 
-		// Check required structure
-		if (children.size() < 6) {
+		// Check required structure (7 fields for doc_element)
+		if (children.size() < 7) {
 			result.SetValue(i, Value(false));
 			continue;
 		}
 
-		// Check block_type is valid
-		if (children[BlockTypes::BLOCK_TYPE_IDX].IsNull()) {
+		// Check element_type is valid
+		if (children[BlockTypes::ELEMENT_TYPE_IDX].IsNull()) {
 			result.SetValue(i, Value(false));
 			continue;
 		}
-		auto block_type = children[BlockTypes::BLOCK_TYPE_IDX].GetValue<string>();
-		if (VALID_BLOCK_TYPES.find(block_type) == VALID_BLOCK_TYPES.end()) {
+		auto element_type = children[BlockTypes::ELEMENT_TYPE_IDX].GetValue<string>();
+		if (VALID_BLOCK_TYPES.find(element_type) == VALID_BLOCK_TYPES.end()) {
 			result.SetValue(i, Value(false));
 			continue;
 		}
@@ -183,9 +169,9 @@ void TypeFunctions::DuckBlockValidFun(DataChunk &args, ExpressionState &state, V
 			}
 		}
 
-		// Check block_order is non-negative (if not null)
-		if (!children[BlockTypes::BLOCK_ORDER_IDX].IsNull()) {
-			auto order = children[BlockTypes::BLOCK_ORDER_IDX].GetValue<int32_t>();
+		// Check element_order is non-negative (if not null)
+		if (!children[BlockTypes::ELEMENT_ORDER_IDX].IsNull()) {
+			auto order = children[BlockTypes::ELEMENT_ORDER_IDX].GetValue<int32_t>();
 			if (order < 0) {
 				result.SetValue(i, Value(false));
 				continue;
@@ -206,7 +192,7 @@ void TypeFunctions::DuckBlockTypeFun(DataChunk &args, ExpressionState &state, Ve
 			result.SetValue(i, Value());
 			continue;
 		}
-		result.SetValue(i, StructValue::GetChildren(block)[BlockTypes::BLOCK_TYPE_IDX]);
+		result.SetValue(i, StructValue::GetChildren(block)[BlockTypes::ELEMENT_TYPE_IDX]);
 	}
 }
 
@@ -262,7 +248,7 @@ void TypeFunctions::DuckBlockOrderFun(DataChunk &args, ExpressionState &state, V
 			result.SetValue(i, Value());
 			continue;
 		}
-		result.SetValue(i, StructValue::GetChildren(block)[BlockTypes::BLOCK_ORDER_IDX]);
+		result.SetValue(i, StructValue::GetChildren(block)[BlockTypes::ELEMENT_ORDER_IDX]);
 	}
 }
 
@@ -304,8 +290,8 @@ void TypeFunctions::DuckBlockSetOrderFun(DataChunk &args, ExpressionState &state
 		}
 
 		auto children = StructValue::GetChildren(block);
-		children[BlockTypes::BLOCK_ORDER_IDX] = new_order;
-		result.SetValue(i, Value::STRUCT(BlockTypes::DocBlockType(), std::move(children)));
+		children[BlockTypes::ELEMENT_ORDER_IDX] = new_order;
+		result.SetValue(i, Value::STRUCT(BlockTypes::DocElementType(), std::move(children)));
 	}
 }
 
@@ -325,7 +311,7 @@ void TypeFunctions::DuckBlockSetContentFun(DataChunk &args, ExpressionState &sta
 
 		auto children = StructValue::GetChildren(block);
 		children[BlockTypes::CONTENT_IDX] = new_content;
-		result.SetValue(i, Value::STRUCT(BlockTypes::DocBlockType(), std::move(children)));
+		result.SetValue(i, Value::STRUCT(BlockTypes::DocElementType(), std::move(children)));
 	}
 }
 
@@ -345,132 +331,118 @@ void TypeFunctions::DuckBlockSetLevelFun(DataChunk &args, ExpressionState &state
 
 		auto children = StructValue::GetChildren(block);
 		children[BlockTypes::LEVEL_IDX] = new_level;
-		result.SetValue(i, Value::STRUCT(BlockTypes::DocBlockType(), std::move(children)));
+		result.SetValue(i, Value::STRUCT(BlockTypes::DocElementType(), std::move(children)));
 	}
 }
 
 void TypeFunctions::Register(ExtensionLoader &loader) {
-	auto doc_block_type = BlockTypes::DocBlockType();
+	auto doc_element_type = BlockTypes::DocElementType();
 
-	// duck_block(block_type, content, level, encoding, attributes, block_order) -> doc_block
-	auto full_constructor = ScalarFunction(
+	// duck_block(block_type, content, level, encoding, attributes, block_order) -> doc_element
+	loader.RegisterFunction(ScalarFunction(
 	    "duck_block",
 	    {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::INTEGER,
 	     LogicalType::VARCHAR, LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR),
 	     LogicalType::INTEGER},
-	    doc_block_type,
+	    doc_element_type,
 	    DuckBlockFun
-	);
-	loader.RegisterFunction(full_constructor);
+	));
 
-	// duck_block(block_type, content) -> doc_block
-	auto simple_constructor = ScalarFunction(
+	// duck_block(block_type, content) -> doc_element
+	loader.RegisterFunction(ScalarFunction(
 	    "duck_block",
 	    {LogicalType::VARCHAR, LogicalType::VARCHAR},
-	    doc_block_type,
+	    doc_element_type,
 	    DuckBlockSimpleFun
-	);
-	loader.RegisterFunction(simple_constructor);
+	));
 
-	// to_duck_block(struct) -> doc_block
-	// Accept any struct type
-	auto to_block = ScalarFunction(
+	// to_duck_block(struct) -> doc_element
+	loader.RegisterFunction(ScalarFunction(
 	    "to_duck_block",
 	    {LogicalType::ANY},
-	    doc_block_type,
+	    doc_element_type,
 	    ToDuckBlockFun
-	);
-	loader.RegisterFunction(to_block);
+	));
 
-	// duck_block_valid(block) -> BOOLEAN
-	auto valid_func = ScalarFunction(
+	// duck_block_valid(element) -> BOOLEAN
+	loader.RegisterFunction(ScalarFunction(
 	    "duck_block_valid",
-	    {doc_block_type},
+	    {doc_element_type},
 	    LogicalType::BOOLEAN,
 	    DuckBlockValidFun
-	);
-	loader.RegisterFunction(valid_func);
+	));
 
-	// duck_block_type(block) -> VARCHAR
-	auto type_func = ScalarFunction(
+	// duck_block_type(element) -> VARCHAR
+	loader.RegisterFunction(ScalarFunction(
 	    "duck_block_type",
-	    {doc_block_type},
+	    {doc_element_type},
 	    LogicalType::VARCHAR,
 	    DuckBlockTypeFun
-	);
-	loader.RegisterFunction(type_func);
+	));
 
-	// duck_block_content(block) -> VARCHAR
-	auto content_func = ScalarFunction(
+	// duck_block_content(element) -> VARCHAR
+	loader.RegisterFunction(ScalarFunction(
 	    "duck_block_content",
-	    {doc_block_type},
+	    {doc_element_type},
 	    LogicalType::VARCHAR,
 	    DuckBlockContentFun
-	);
-	loader.RegisterFunction(content_func);
+	));
 
-	// duck_block_level(block) -> INTEGER
-	auto level_func = ScalarFunction(
+	// duck_block_level(element) -> INTEGER
+	loader.RegisterFunction(ScalarFunction(
 	    "duck_block_level",
-	    {doc_block_type},
+	    {doc_element_type},
 	    LogicalType::INTEGER,
 	    DuckBlockLevelFun
-	);
-	loader.RegisterFunction(level_func);
+	));
 
-	// duck_block_encoding(block) -> VARCHAR
-	auto encoding_func = ScalarFunction(
+	// duck_block_encoding(element) -> VARCHAR
+	loader.RegisterFunction(ScalarFunction(
 	    "duck_block_encoding",
-	    {doc_block_type},
+	    {doc_element_type},
 	    LogicalType::VARCHAR,
 	    DuckBlockEncodingFun
-	);
-	loader.RegisterFunction(encoding_func);
+	));
 
-	// duck_block_order(block) -> INTEGER
-	auto order_func = ScalarFunction(
+	// duck_block_order(element) -> INTEGER
+	loader.RegisterFunction(ScalarFunction(
 	    "duck_block_order",
-	    {doc_block_type},
+	    {doc_element_type},
 	    LogicalType::INTEGER,
 	    DuckBlockOrderFun
-	);
-	loader.RegisterFunction(order_func);
+	));
 
-	// duck_block_attr(block, key) -> VARCHAR
-	auto attr_func = ScalarFunction(
+	// duck_block_attr(element, key) -> VARCHAR
+	loader.RegisterFunction(ScalarFunction(
 	    "duck_block_attr",
-	    {doc_block_type, LogicalType::VARCHAR},
+	    {doc_element_type, LogicalType::VARCHAR},
 	    LogicalType::VARCHAR,
 	    DuckBlockAttrFun
-	);
-	loader.RegisterFunction(attr_func);
+	));
 
-	// duck_block_set_order(block, new_order) -> doc_block
-	auto set_order_func = ScalarFunction(
+	// duck_block_set_order(element, new_order) -> doc_element
+	loader.RegisterFunction(ScalarFunction(
 	    "duck_block_set_order",
-	    {doc_block_type, LogicalType::INTEGER},
-	    doc_block_type,
+	    {doc_element_type, LogicalType::INTEGER},
+	    doc_element_type,
 	    DuckBlockSetOrderFun
-	);
-	loader.RegisterFunction(set_order_func);
+	));
 
-	// duck_block_set_content(block, new_content) -> doc_block
-	auto set_content_func = ScalarFunction(
+	// duck_block_set_content(element, new_content) -> doc_element
+	loader.RegisterFunction(ScalarFunction(
 	    "duck_block_set_content",
-	    {doc_block_type, LogicalType::VARCHAR},
-	    doc_block_type,
+	    {doc_element_type, LogicalType::VARCHAR},
+	    doc_element_type,
 	    DuckBlockSetContentFun
-	);
-	loader.RegisterFunction(set_content_func);
+	));
 
-	// duck_block_set_level(block, new_level) -> doc_block
-	auto set_level_func = ScalarFunction(
+	// duck_block_set_level(element, new_level) -> doc_element
+	loader.RegisterFunction(ScalarFunction(
 	    "duck_block_set_level",
-	    {doc_block_type, LogicalType::INTEGER},
-	    doc_block_type,
+	    {doc_element_type, LogicalType::INTEGER},
+	    doc_element_type,
 	    DuckBlockSetLevelFun
-	);
-	loader.RegisterFunction(set_level_func);
+	));
 }
 
 } // namespace duckdb

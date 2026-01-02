@@ -11,7 +11,7 @@ require duck_block_utils
 
 # Test doc_heading returns correct structure
 query I
-SELECT doc_heading('Test', 1).block_type;
+SELECT doc_heading('Test', 1).element_type;
 ----
 heading
 
@@ -63,7 +63,7 @@ query I
 SELECT doc_blocks_filter(
     [doc_heading('A', 1), doc_paragraph('B')],
     ['heading']
-)[1].block_order;
+)[1].element_order;
 ----
 0
 
@@ -107,7 +107,7 @@ query I
 SELECT doc_blocks_merge(
     [doc_heading('A', 1)],
     [doc_paragraph('B')]
-)[2].block_order;
+)[2].element_order;
 ----
 1
 
@@ -119,14 +119,14 @@ SELECT doc_blocks_merge(
 query I
 SELECT doc_blocks_reorder(
     [doc_heading('A', 1), doc_paragraph('B')]
-)[1].block_order;
+)[1].element_order;
 ----
 0
 
 query I
 SELECT doc_blocks_reorder(
     [doc_heading('A', 1), doc_paragraph('B')]
-)[2].block_order;
+)[2].element_order;
 ----
 1
 

@@ -2,11 +2,11 @@
 
 ## Overview
 
-`duck_block_utils` is a DuckDB extension providing format-agnostic utilities for manipulating document blocks. It operates on data conforming to the [Document Block Specification](https://github.com/teaguesterling/duckdb_markdown/blob/main/docs/doc_block_spec.md).
+`duck_block_utils` is a DuckDB extension providing format-agnostic utilities for manipulating document elements. It operates on data conforming to the [Document Block Specification](https://github.com/teaguesterling/duckdb_markdown/blob/main/docs/doc_block_spec.md).
 
 ## Goals
 
-1. **Format Independence**: Work with blocks from any source (markdown, HTML, XML, YAML, Pandoc)
+1. **Format Independence**: Work with elements from any source (markdown, HTML, XML, YAML, Pandoc)
 2. **SQL-Native**: Integrate naturally with DuckDB's query patterns
 3. **Composable**: Functions that chain together for complex transformations
 4. **Lightweight**: Minimal dependencies, fast execution
@@ -35,10 +35,10 @@
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
 ├─────────────────────────────────────────────────────────────┤
 │              Pandoc AST Conversion Layer                     │
-│     (JSON AST ↔ doc_blocks, no Pandoc dependency)           │
+│     (JSON AST ↔ doc_elements, no Pandoc dependency)         │
 ├─────────────────────────────────────────────────────────────┤
-│                    Core Block Types                          │
-│              (doc_block STRUCT handling)                     │
+│                    Core Element Types                        │
+│              (doc_element STRUCT handling)                   │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -63,49 +63,57 @@ See [pandoc_ast_spec.md](pandoc_ast_spec.md) for detailed conversion rules.
 
 ## Data Model
 
-### Input Handling
+### Unified doc_element Type
 
-Functions accept blocks in two forms:
-
-1. **LIST of STRUCTs**: `LIST(doc_block)` - for aggregate operations
-2. **Individual rows**: Via table functions that process row-by-row
-
-### Block STRUCT Schema
+Both block-level and inline elements use the same unified `doc_element` type, distinguished by the `kind` field:
 
 ```sql
 STRUCT(
-    block_type VARCHAR,
-    content VARCHAR,
-    level INTEGER,
-    encoding VARCHAR,
-    attributes MAP(VARCHAR, VARCHAR),
-    block_order INTEGER,
-    source_format VARCHAR,  -- optional
-    file_path VARCHAR       -- optional
+    kind VARCHAR,                           -- 'block' or 'inline'
+    element_type VARCHAR,                   -- Element type identifier
+    content VARCHAR,                        -- Text content
+    level INTEGER,                          -- Semantic level (heading level, nesting depth)
+    encoding VARCHAR,                       -- Content encoding hint
+    attributes MAP(VARCHAR, VARCHAR),       -- Key-value metadata
+    element_order INTEGER                   -- Position in sequence
 )
 ```
+
+### Kind Values
+
+- `'block'`: Block-level elements (heading, paragraph, code, list, etc.)
+- `'inline'`: Inline elements (text, bold, italic, link, etc.)
+
+### Input Handling
+
+Functions accept elements in two forms:
+
+1. **LIST of STRUCTs**: `LIST(doc_element)` - for aggregate operations
+2. **Individual rows**: Via table functions that process row-by-row
 
 ### Type Registration
 
 ```sql
--- Register the doc_block type on extension load
-CREATE TYPE doc_block AS STRUCT(
-    block_type VARCHAR,
+-- Register the doc_element type on extension load
+CREATE TYPE doc_element AS STRUCT(
+    kind VARCHAR,
+    element_type VARCHAR,
     content VARCHAR,
     level INTEGER,
     encoding VARCHAR,
     attributes MAP(VARCHAR, VARCHAR),
-    block_order INTEGER
+    element_order INTEGER
 );
 
 -- Extended version with provenance
-CREATE TYPE doc_block_ext AS STRUCT(
-    block_type VARCHAR,
+CREATE TYPE doc_element_ext AS STRUCT(
+    kind VARCHAR,
+    element_type VARCHAR,
     content VARCHAR,
     level INTEGER,
     encoding VARCHAR,
     attributes MAP(VARCHAR, VARCHAR),
-    block_order INTEGER,
+    element_order INTEGER,
     source_format VARCHAR,
     file_path VARCHAR
 );
@@ -115,72 +123,72 @@ CREATE TYPE doc_block_ext AS STRUCT(
 
 ### 1. Manipulation Functions
 
-Transform block sequences without parsing content.
+Transform element sequences without parsing content.
 
 #### doc_blocks_filter
 ```cpp
 // Signature
-LIST(doc_block) doc_blocks_filter(LIST(doc_block) blocks, VARCHAR[] types)
+LIST(doc_element) doc_blocks_filter(LIST(doc_element) blocks, VARCHAR[] types)
 
 // Implementation
 - Iterate through blocks
-- Keep blocks where block_type IN types
-- Preserve block_order values
+- Keep blocks where element_type IN types
+- Preserve element_order values
 ```
 
 #### doc_blocks_exclude
 ```cpp
 // Signature
-LIST(doc_block) doc_blocks_exclude(LIST(doc_block) blocks, VARCHAR[] types)
+LIST(doc_element) doc_blocks_exclude(LIST(doc_element) blocks, VARCHAR[] types)
 
 // Implementation
 - Iterate through blocks
-- Keep blocks where block_type NOT IN types
+- Keep blocks where element_type NOT IN types
 ```
 
 #### doc_blocks_merge
 ```cpp
 // Signature
-LIST(doc_block) doc_blocks_merge(LIST(doc_block) blocks1, LIST(doc_block) blocks2)
+LIST(doc_element) doc_blocks_merge(LIST(doc_element) blocks1, LIST(doc_element) blocks2)
 
 // Implementation
 - Concatenate blocks2 after blocks1
-- Renumber block_order: blocks2 orders += max(blocks1 orders) + 1
+- Renumber element_order: blocks2 orders += max(blocks1 orders) + 1
 ```
 
 #### doc_blocks_reorder
 ```cpp
 // Signature
-LIST(doc_block) doc_blocks_reorder(LIST(doc_block) blocks)
+LIST(doc_element) doc_blocks_reorder(LIST(doc_element) blocks)
 
 // Implementation
-- Sort by current block_order
-- Reassign block_order as 0, 1, 2, ...
+- Sort by current element_order
+- Reassign element_order as 0, 1, 2, ...
 ```
 
 #### doc_blocks_transform
 ```cpp
 // Signature
-LIST(doc_block) doc_blocks_transform(
-    LIST(doc_block) blocks,
+LIST(doc_element) doc_blocks_transform(
+    LIST(doc_element) blocks,
     MAP(VARCHAR, VARCHAR) type_mapping,     -- old_type -> new_type
     MAP(VARCHAR, VARCHAR) content_mapping   -- optional content transforms
 )
 
 // Implementation
 - For each block:
-  - If block_type in type_mapping, replace with mapped value
+  - If element_type in type_mapping, replace with mapped value
   - Apply content transformations if specified
 ```
 
 ### 2. Extraction Functions
 
-Extract specific information from blocks.
+Extract specific information from elements.
 
 #### doc_blocks_to_text
 ```cpp
 // Signature
-VARCHAR doc_blocks_to_text(LIST(doc_block) blocks)
+VARCHAR doc_blocks_to_text(LIST(doc_element) blocks)
 
 // Implementation
 - For each block:
@@ -194,19 +202,19 @@ VARCHAR doc_blocks_to_text(LIST(doc_block) blocks)
 #### doc_blocks_headings
 ```cpp
 // Signature (returns table)
-TABLE(level INT, title VARCHAR, id VARCHAR, block_order INT)
-    doc_blocks_headings(LIST(doc_block) blocks)
+TABLE(level INT, title VARCHAR, id VARCHAR, element_order INT)
+    doc_blocks_headings(LIST(doc_element) blocks)
 
 // Implementation
-- Filter to block_type = 'heading'
-- Return level, content as title, attributes['id'], block_order
+- Filter to element_type = 'heading'
+- Return level, content as title, attributes['id'], element_order
 ```
 
 #### doc_blocks_toc
 ```cpp
 // Signature (returns table)
-TABLE(level INT, title VARCHAR, id VARCHAR, indent VARCHAR, block_order INT)
-    doc_blocks_toc(LIST(doc_block) blocks)
+TABLE(level INT, title VARCHAR, id VARCHAR, indent VARCHAR, element_order INT)
+    doc_blocks_toc(LIST(doc_element) blocks)
 
 // Implementation
 - Call doc_blocks_headings
@@ -217,11 +225,11 @@ TABLE(level INT, title VARCHAR, id VARCHAR, indent VARCHAR, block_order INT)
 #### doc_blocks_code_blocks
 ```cpp
 // Signature (returns table)
-TABLE(language VARCHAR, content VARCHAR, info_string VARCHAR, block_order INT, file_path VARCHAR)
-    doc_blocks_code_blocks(LIST(doc_block) blocks)
+TABLE(language VARCHAR, content VARCHAR, info_string VARCHAR, element_order INT, file_path VARCHAR)
+    doc_blocks_code_blocks(LIST(doc_element) blocks)
 
 // Implementation
-- Filter to block_type = 'code'
+- Filter to element_type = 'code'
 - Extract language from attributes['language']
 - Include file_path if present
 ```
@@ -229,8 +237,8 @@ TABLE(language VARCHAR, content VARCHAR, info_string VARCHAR, block_order INT, f
 #### doc_blocks_links
 ```cpp
 // Signature (returns table)
-TABLE(text VARCHAR, url VARCHAR, title VARCHAR, block_order INT)
-    doc_blocks_links(LIST(doc_block) blocks)
+TABLE(text VARCHAR, url VARCHAR, title VARCHAR, element_order INT)
+    doc_blocks_links(LIST(doc_element) blocks)
 
 // Implementation
 - Scan content of 'paragraph', 'list' blocks for markdown links
@@ -245,15 +253,16 @@ Check conformance and quality.
 #### doc_blocks_validate
 ```cpp
 // Signature
-STRUCT(valid BOOL, errors LIST(VARCHAR)) doc_blocks_validate(LIST(doc_block) blocks)
+STRUCT(valid BOOL, errors LIST(VARCHAR)) doc_blocks_validate(LIST(doc_element) blocks)
 
 // Implementation
 - Check each block:
-  - block_type is non-empty VARCHAR
-  - encoding is one of: 'text', 'json', 'yaml', 'html', 'xml'
+  - kind is 'block' or 'inline'
+  - element_type is non-empty VARCHAR
+  - encoding is one of: 'text', 'json', 'yaml', 'html', 'xml', 'latex', 'markdown'
   - If encoding = 'json', content is valid JSON
   - If encoding = 'yaml', content is valid YAML
-  - block_order is non-negative integer
+  - element_order is non-negative integer
   - level is NULL or positive integer (0 for metadata)
 - Return aggregated results
 ```
@@ -261,27 +270,27 @@ STRUCT(valid BOOL, errors LIST(VARCHAR)) doc_blocks_validate(LIST(doc_block) blo
 #### doc_blocks_lint
 ```cpp
 // Signature (returns table)
-TABLE(severity VARCHAR, message VARCHAR, block_order INT, suggestion VARCHAR)
-    doc_blocks_lint(LIST(doc_block) blocks)
+TABLE(severity VARCHAR, message VARCHAR, element_order INT, suggestion VARCHAR)
+    doc_blocks_lint(LIST(doc_element) blocks)
 
 // Implementation
 Checks:
 - 'warning': Heading levels skip (h1 -> h3)
 - 'warning': Empty content in non-hr blocks
-- 'warning': Unknown block_type (not core, not namespaced)
-- 'error': Duplicate block_order values
+- 'warning': Unknown element_type (not core, not namespaced)
+- 'error': Duplicate element_order values
 - 'warning': Missing language on code blocks
-- 'info': Large block_order gaps
+- 'info': Large element_order gaps
 ```
 
 #### doc_blocks_stats
 ```cpp
 // Signature
-TABLE(block_type VARCHAR, count INT, avg_content_length FLOAT)
-    doc_blocks_stats(LIST(doc_block) blocks)
+TABLE(element_type VARCHAR, count INT, avg_content_length FLOAT)
+    doc_blocks_stats(LIST(doc_element) blocks)
 
 // Implementation
-- Group by block_type
+- Group by element_type
 - Count occurrences
 - Calculate average content length
 ```
@@ -293,17 +302,17 @@ Facilitate format conversion workflows.
 #### doc_blocks_set_source
 ```cpp
 // Signature
-LIST(doc_block_ext) doc_blocks_set_source(LIST(doc_block) blocks, VARCHAR format)
+LIST(doc_element_ext) doc_blocks_set_source(LIST(doc_element) blocks, VARCHAR format)
 
 // Implementation
 - Add/set source_format field on all blocks
-- Return extended block type
+- Return extended element type
 ```
 
 #### doc_blocks_normalize
 ```cpp
 // Signature
-LIST(doc_block) doc_blocks_normalize(LIST(doc_block) blocks)
+LIST(doc_element) doc_blocks_normalize(LIST(doc_element) blocks)
 
 // Implementation
 - Convert namespaced types to nearest core type:
@@ -317,13 +326,13 @@ LIST(doc_block) doc_blocks_normalize(LIST(doc_block) blocks)
 #### doc_blocks_map_types
 ```cpp
 // Signature
-LIST(doc_block) doc_blocks_map_types(
-    LIST(doc_block) blocks,
+LIST(doc_element) doc_blocks_map_types(
+    LIST(doc_element) blocks,
     MAP(VARCHAR, VARCHAR) mapping
 )
 
 // Implementation
-- Apply type mapping: if block_type in mapping keys, replace with mapped value
+- Apply type mapping: if element_type in mapping keys, replace with mapped value
 - Leave unmapped types unchanged
 ```
 
@@ -331,7 +340,7 @@ LIST(doc_block) doc_blocks_map_types(
 
 ### Phase 1: Core Infrastructure
 - Extension scaffolding
-- Type registration (doc_block, doc_block_ext)
+- Type registration (doc_element, doc_element_ext)
 - Basic manipulation: filter, exclude, merge, reorder
 
 ### Phase 2: Extraction Functions

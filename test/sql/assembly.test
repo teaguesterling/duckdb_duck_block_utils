@@ -14,7 +14,7 @@ SELECT doc_assemble([
     doc_heading('Title', 1),
     doc_paragraph('Text'),
     doc_code('x=1', 'py')
-])[1].block_order;
+])[1].element_order;
 ----
 0
 
@@ -23,7 +23,7 @@ SELECT doc_assemble([
     doc_heading('Title', 1),
     doc_paragraph('Text'),
     doc_code('x=1', 'py')
-])[2].block_order;
+])[2].element_order;
 ----
 1
 
@@ -32,7 +32,7 @@ SELECT doc_assemble([
     doc_heading('Title', 1),
     doc_paragraph('Text'),
     doc_code('x=1', 'py')
-])[3].block_order;
+])[3].element_order;
 ----
 2
 
@@ -62,7 +62,7 @@ query I
 SELECT doc_document([
     doc_heading('Title', 1),
     doc_paragraph('Text')
-])[2].block_order;
+])[2].element_order;
 ----
 1
 
@@ -81,7 +81,7 @@ SELECT len(doc_section('Introduction', 2, [
 
 # Test doc_section first block is heading
 query I
-SELECT doc_section('Introduction', 2, [doc_paragraph('Text')])[1].block_type;
+SELECT doc_section('Introduction', 2, [doc_paragraph('Text')])[1].element_type;
 ----
 heading
 
@@ -97,7 +97,7 @@ SELECT doc_section('Introduction', 2, [doc_paragraph('Text')])[1].level;
 
 # Test doc_section children follow heading
 query I
-SELECT doc_section('Introduction', 2, [doc_paragraph('First')])[2].block_type;
+SELECT doc_section('Introduction', 2, [doc_paragraph('First')])[2].element_type;
 ----
 paragraph
 
@@ -108,17 +108,17 @@ First
 
 # Test doc_section assigns sequential block_order
 query I
-SELECT doc_section('Title', 2, [doc_paragraph('A'), doc_paragraph('B')])[1].block_order;
+SELECT doc_section('Title', 2, [doc_paragraph('A'), doc_paragraph('B')])[1].element_order;
 ----
 0
 
 query I
-SELECT doc_section('Title', 2, [doc_paragraph('A'), doc_paragraph('B')])[2].block_order;
+SELECT doc_section('Title', 2, [doc_paragraph('A'), doc_paragraph('B')])[2].element_order;
 ----
 1
 
 query I
-SELECT doc_section('Title', 2, [doc_paragraph('A'), doc_paragraph('B')])[3].block_order;
+SELECT doc_section('Title', 2, [doc_paragraph('A'), doc_paragraph('B')])[3].element_order;
 ----
 2
 
@@ -129,7 +129,7 @@ SELECT len(doc_section('Just a Heading', 3));
 1
 
 query I
-SELECT doc_section('Just a Heading', 3)[1].block_type;
+SELECT doc_section('Just a Heading', 3)[1].element_type;
 ----
 heading
 
@@ -168,7 +168,7 @@ SELECT doc_rebase_levels([doc_heading('Title', 5)], 10)[1].level;
 
 # Test doc_rebase_levels doesn't affect non-heading blocks
 query I
-SELECT doc_rebase_levels([doc_paragraph('Text')], 1)[1].block_type;
+SELECT doc_rebase_levels([doc_paragraph('Text')], 1)[1].element_type;
 ----
 paragraph
 
@@ -223,7 +223,7 @@ query I
 SELECT doc_concat(
     [doc_heading('A', 1)],
     [doc_paragraph('B')]
-)[1].block_order;
+)[1].element_order;
 ----
 0
 
@@ -231,7 +231,7 @@ query I
 SELECT doc_concat(
     [doc_heading('A', 1)],
     [doc_paragraph('B')]
-)[2].block_order;
+)[2].element_order;
 ----
 0
 
@@ -271,7 +271,7 @@ SELECT doc_assemble(
         doc_section('Chapter 1', 1, [doc_paragraph('Content 1')]),
         doc_section('Chapter 2', 1, [doc_paragraph('Content 2')])
     )
-)[1].block_type;
+)[1].element_type;
 ----
 heading
 
@@ -281,7 +281,7 @@ SELECT doc_assemble(
         doc_section('Chapter 1', 1, [doc_paragraph('Content 1')]),
         doc_section('Chapter 2', 1, [doc_paragraph('Content 2')])
     )
-)[2].block_type;
+)[2].element_type;
 ----
 paragraph
 
@@ -291,7 +291,7 @@ SELECT doc_assemble(
         doc_section('Chapter 1', 1, [doc_paragraph('Content 1')]),
         doc_section('Chapter 2', 1, [doc_paragraph('Content 2')])
     )
-)[3].block_type;
+)[3].element_type;
 ----
 heading
 

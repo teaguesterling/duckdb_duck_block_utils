@@ -10,7 +10,7 @@ require duck_block_utils
 
 # Test doc_heading creates correct block_type
 query I
-SELECT doc_heading('My Title', 1).block_type;
+SELECT doc_heading('My Title', 1).element_type;
 ----
 heading
 
@@ -34,7 +34,7 @@ text
 
 # Test doc_heading initializes block_order to 0
 query I
-SELECT doc_heading('My Title', 1).block_order;
+SELECT doc_heading('My Title', 1).element_order;
 ----
 0
 
@@ -44,7 +44,7 @@ SELECT doc_heading('My Title', 1).block_order;
 
 # Test doc_paragraph creates paragraph block
 query I
-SELECT doc_paragraph('Hello world').block_type;
+SELECT doc_paragraph('Hello world').element_type;
 ----
 paragraph
 
@@ -66,7 +66,7 @@ true
 
 # Test doc_code with language
 query I
-SELECT doc_code('print(1)', 'python').block_type;
+SELECT doc_code('print(1)', 'python').element_type;
 ----
 code
 
@@ -82,7 +82,7 @@ python
 
 # Test doc_code without language (single arg)
 query I
-SELECT doc_code('print(1)').block_type;
+SELECT doc_code('print(1)').element_type;
 ----
 code
 
@@ -92,7 +92,7 @@ code
 
 # Test doc_blockquote with level
 query I
-SELECT doc_blockquote('Quote text', 2).block_type;
+SELECT doc_blockquote('Quote text', 2).element_type;
 ----
 blockquote
 
@@ -113,7 +113,7 @@ SELECT doc_blockquote('Quote text').level;
 
 # Test doc_list_block unordered
 query I
-SELECT doc_list_block(['First', 'Second', 'Third']).block_type;
+SELECT doc_list_block(['First', 'Second', 'Third']).element_type;
 ----
 list
 
@@ -145,7 +145,7 @@ SELECT doc_list_block(['A', 'B']).content;
 
 # Test doc_hr creates hr block
 query I
-SELECT doc_hr().block_type;
+SELECT doc_hr().element_type;
 ----
 hr
 
@@ -160,7 +160,7 @@ SELECT doc_hr().content;
 
 # Test doc_metadata creates metadata block
 query I
-SELECT doc_metadata('title: Test').block_type;
+SELECT doc_metadata('title: Test').element_type;
 ----
 metadata
 
@@ -185,7 +185,7 @@ SELECT doc_metadata('title: Test').level;
 
 # Test doc_image with all args
 query I
-SELECT doc_image('/path/to/img.png', 'Alt text', 'Title').block_type;
+SELECT doc_image('/path/to/img.png', 'Alt text', 'Title').element_type;
 ----
 image
 
@@ -222,7 +222,7 @@ SELECT doc_image('/path/to/img.png').attributes['src'];
 
 # Test doc_raw with format
 query I
-SELECT doc_raw('<div>HTML</div>', 'html').block_type;
+SELECT doc_raw('<div>HTML</div>', 'html').element_type;
 ----
 raw
 
@@ -280,6 +280,6 @@ SELECT doc_blocks_reorder([
     doc_heading('Title', 1),
     doc_paragraph('Text'),
     doc_code('code', 'py')
-])[2].block_order;
+])[2].element_order;
 ----
 1

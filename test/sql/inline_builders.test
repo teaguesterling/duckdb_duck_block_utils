@@ -12,14 +12,14 @@ require duck_block_utils
 query I
 SELECT typeof(doc_text('hello'));
 ----
-STRUCT(inline_type VARCHAR, "content" VARCHAR, "level" INTEGER, attributes MAP(VARCHAR, VARCHAR), inline_order INTEGER)
+STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR, VARCHAR), element_order INTEGER)
 
 # ============================================================================
 # doc_text Tests
 # ============================================================================
 
 query I
-SELECT doc_text('Hello world').inline_type;
+SELECT doc_text('Hello world').element_type;
 ----
 text
 
@@ -34,7 +34,7 @@ SELECT doc_text('Hello world').level;
 1
 
 query I
-SELECT doc_text('Hello world').inline_order;
+SELECT doc_text('Hello world').element_order;
 ----
 0
 
@@ -43,7 +43,7 @@ SELECT doc_text('Hello world').inline_order;
 # ============================================================================
 
 query I
-SELECT doc_space().inline_type;
+SELECT doc_space().element_type;
 ----
 space
 
@@ -53,12 +53,12 @@ SELECT doc_space().content;
 (empty)
 
 query I
-SELECT doc_softbreak().inline_type;
+SELECT doc_softbreak().element_type;
 ----
 softbreak
 
 query I
-SELECT doc_linebreak().inline_type;
+SELECT doc_linebreak().element_type;
 ----
 linebreak
 
@@ -72,7 +72,7 @@ SELECT doc_linebreak().content;
 # ============================================================================
 
 query I
-SELECT doc_link('Click here', 'https://example.com').inline_type;
+SELECT doc_link('Click here', 'https://example.com').element_type;
 ----
 link
 
@@ -96,7 +96,7 @@ My Title
 # ============================================================================
 
 query I
-SELECT doc_inline_image('/path/to/img.png').inline_type;
+SELECT doc_inline_image('/path/to/img.png').element_type;
 ----
 image
 
@@ -120,37 +120,37 @@ Alt text
 # ============================================================================
 
 query I
-SELECT doc_bold('Important').inline_type;
+SELECT doc_bold('Important').element_type;
 ----
 bold
 
 query I
-SELECT doc_italic('Emphasis').inline_type;
+SELECT doc_italic('Emphasis').element_type;
 ----
 italic
 
 query I
-SELECT doc_strikethrough('deleted').inline_type;
+SELECT doc_strikethrough('deleted').element_type;
 ----
 strikethrough
 
 query I
-SELECT doc_superscript('2').inline_type;
+SELECT doc_superscript('2').element_type;
 ----
 superscript
 
 query I
-SELECT doc_subscript('n').inline_type;
+SELECT doc_subscript('n').element_type;
 ----
 subscript
 
 query I
-SELECT doc_smallcaps('Title').inline_type;
+SELECT doc_smallcaps('Title').element_type;
 ----
 smallcaps
 
 query I
-SELECT doc_underline('underlined').inline_type;
+SELECT doc_underline('underlined').element_type;
 ----
 underline
 
@@ -159,12 +159,12 @@ underline
 # ============================================================================
 
 query I
-SELECT doc_inline_code('print(1)').inline_type;
+SELECT doc_inline_code('print(1)').element_type;
 ----
 code
 
 query I
-SELECT doc_math('E=mc^2').inline_type;
+SELECT doc_math('E=mc^2').element_type;
 ----
 math
 
@@ -179,7 +179,7 @@ SELECT doc_math('\\sum_{i=1}^n', true).attributes['display'];
 block
 
 query I
-SELECT doc_quoted('Hello').inline_type;
+SELECT doc_quoted('Hello').element_type;
 ----
 quoted
 
@@ -194,7 +194,7 @@ SELECT doc_quoted('Hello', 'single').attributes['quote_type'];
 single
 
 query I
-SELECT doc_cite('knuth1984').inline_type;
+SELECT doc_cite('knuth1984').element_type;
 ----
 cite
 
@@ -204,12 +204,12 @@ SELECT doc_cite('knuth1984').attributes['key'];
 knuth1984
 
 query I
-SELECT doc_note('Footnote content').inline_type;
+SELECT doc_note('Footnote content').element_type;
 ----
 note
 
 query I
-SELECT doc_span('text', 'my-id').inline_type;
+SELECT doc_span('text', 'my-id').element_type;
 ----
 span
 
@@ -219,7 +219,7 @@ SELECT doc_span('text', 'my-id').attributes['id'];
 my-id
 
 query I
-SELECT doc_raw_inline('<br>').inline_type;
+SELECT doc_raw_inline('<br>').element_type;
 ----
 raw
 
@@ -243,12 +243,12 @@ SELECT len([doc_text('Hello '), doc_bold('world'), doc_text('!')]);
 3
 
 query I
-SELECT [doc_text('Hello '), doc_bold('world')][1].inline_type;
+SELECT [doc_text('Hello '), doc_bold('world')][1].element_type;
 ----
 text
 
 query I
-SELECT [doc_text('Hello '), doc_bold('world')][2].inline_type;
+SELECT [doc_text('Hello '), doc_bold('world')][2].element_type;
 ----
 bold
 
@@ -263,7 +263,7 @@ SELECT len(pandoc_inlines_to_doc_inlines('[{"t":"Str","c":"Hello"}]'));
 1
 
 query I
-SELECT pandoc_inlines_to_doc_inlines('[{"t":"Str","c":"Hello"}]')[1].inline_type;
+SELECT pandoc_inlines_to_doc_inlines('[{"t":"Str","c":"Hello"}]')[1].element_type;
 ----
 text
 
@@ -274,12 +274,12 @@ Hello
 
 # Test Space and LineBreak
 query I
-SELECT pandoc_inlines_to_doc_inlines('[{"t":"Space"}]')[1].inline_type;
+SELECT pandoc_inlines_to_doc_inlines('[{"t":"Space"}]')[1].element_type;
 ----
 space
 
 query I
-SELECT pandoc_inlines_to_doc_inlines('[{"t":"LineBreak"}]')[1].inline_type;
+SELECT pandoc_inlines_to_doc_inlines('[{"t":"LineBreak"}]')[1].element_type;
 ----
 linebreak
 
@@ -290,7 +290,7 @@ SELECT len(pandoc_inlines_to_doc_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bo
 2
 
 query I
-SELECT pandoc_inlines_to_doc_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]')[1].inline_type;
+SELECT pandoc_inlines_to_doc_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]')[1].element_type;
 ----
 bold
 
@@ -300,7 +300,7 @@ SELECT pandoc_inlines_to_doc_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}
 1
 
 query I
-SELECT pandoc_inlines_to_doc_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]')[2].inline_type;
+SELECT pandoc_inlines_to_doc_inlines('[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]')[2].element_type;
 ----
 text
 

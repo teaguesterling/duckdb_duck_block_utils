@@ -8,34 +8,29 @@
 
 namespace duckdb {
 
-// Helper to create an empty MAP(VARCHAR, VARCHAR)
-static Value CreateEmptyAttributesMap() {
-	return Value::MAP(LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR), vector<Value>());
+// Helper to create an element Value with updated element_order
+static Value CreateElementWithOrder(const Value &element, int32_t new_order) {
+	auto children = StructValue::GetChildren(element);
+	children[BlockTypes::ELEMENT_ORDER_IDX] = Value(new_order);
+	return Value::STRUCT(BlockTypes::DocElementType(), std::move(children));
 }
 
-// Helper to create a block Value with updated block_order
-static Value CreateBlockWithOrder(const Value &block, int32_t new_order) {
-	auto children = StructValue::GetChildren(block);
-	children[BlockTypes::BLOCK_ORDER_IDX] = Value(new_order);
-	return Value::STRUCT(BlockTypes::DocBlockType(), std::move(children));
-}
-
-// Helper to get block_type from a block struct
-static string GetBlockType(const Value &block) {
-	auto &children = StructValue::GetChildren(block);
-	if (children[BlockTypes::BLOCK_TYPE_IDX].IsNull()) {
+// Helper to get element_type from an element struct
+static string GetElementType(const Value &element) {
+	auto &children = StructValue::GetChildren(element);
+	if (children[BlockTypes::ELEMENT_TYPE_IDX].IsNull()) {
 		return "";
 	}
-	return children[BlockTypes::BLOCK_TYPE_IDX].GetValue<string>();
+	return children[BlockTypes::ELEMENT_TYPE_IDX].GetValue<string>();
 }
 
-// Helper to get block_order from a block struct
-static int32_t GetBlockOrder(const Value &block) {
-	auto &children = StructValue::GetChildren(block);
-	if (children[BlockTypes::BLOCK_ORDER_IDX].IsNull()) {
+// Helper to get element_order from an element struct
+static int32_t GetElementOrder(const Value &element) {
+	auto &children = StructValue::GetChildren(element);
+	if (children[BlockTypes::ELEMENT_ORDER_IDX].IsNull()) {
 		return 0;
 	}
-	return children[BlockTypes::BLOCK_ORDER_IDX].GetValue<int32_t>();
+	return children[BlockTypes::ELEMENT_ORDER_IDX].GetValue<int32_t>();
 }
 
 void ManipulationFunctions::DocBlocksFilterFun(DataChunk &args, ExpressionState &state, Vector &result) {
@@ -50,7 +45,7 @@ void ManipulationFunctions::DocBlocksFilterFun(DataChunk &args, ExpressionState 
 
 		// Handle NULL inputs
 		if (blocks_val.IsNull() || types_val.IsNull()) {
-			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DocBlockType())));
+			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DocElementType())));
 			continue;
 		}
 
@@ -71,13 +66,13 @@ void ManipulationFunctions::DocBlocksFilterFun(DataChunk &args, ExpressionState 
 			if (block.IsNull()) {
 				continue;
 			}
-			auto block_type = GetBlockType(block);
+			auto block_type = GetElementType(block);
 			if (type_set.count(block_type)) {
 				filtered.push_back(block);
 			}
 		}
 
-		result.SetValue(i, Value::LIST(BlockTypes::DocBlockType(), std::move(filtered)));
+		result.SetValue(i, Value::LIST(BlockTypes::DocElementType(), std::move(filtered)));
 	}
 }
 
@@ -93,7 +88,7 @@ void ManipulationFunctions::DocBlocksExcludeFun(DataChunk &args, ExpressionState
 
 		// Handle NULL inputs
 		if (blocks_val.IsNull() || types_val.IsNull()) {
-			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DocBlockType())));
+			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DocElementType())));
 			continue;
 		}
 
@@ -114,13 +109,13 @@ void ManipulationFunctions::DocBlocksExcludeFun(DataChunk &args, ExpressionState
 			if (block.IsNull()) {
 				continue;
 			}
-			auto block_type = GetBlockType(block);
+			auto block_type = GetElementType(block);
 			if (!type_set.count(block_type)) {
 				filtered.push_back(block);
 			}
 		}
 
-		result.SetValue(i, Value::LIST(BlockTypes::DocBlockType(), std::move(filtered)));
+		result.SetValue(i, Value::LIST(BlockTypes::DocElementType(), std::move(filtered)));
 	}
 }
 
@@ -136,7 +131,7 @@ void ManipulationFunctions::DocBlocksMergeFun(DataChunk &args, ExpressionState &
 
 		// Handle NULL inputs
 		if (blocks1_val.IsNull() && blocks2_val.IsNull()) {
-			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DocBlockType())));
+			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DocElementType())));
 			continue;
 		}
 
@@ -149,7 +144,7 @@ void ManipulationFunctions::DocBlocksMergeFun(DataChunk &args, ExpressionState &
 			for (auto &block : blocks1_list) {
 				if (!block.IsNull()) {
 					merged.push_back(block);
-					auto order = GetBlockOrder(block);
+					auto order = GetElementOrder(block);
 					if (order > max_order) {
 						max_order = order;
 					}
@@ -157,19 +152,19 @@ void ManipulationFunctions::DocBlocksMergeFun(DataChunk &args, ExpressionState &
 			}
 		}
 
-		// Process second list with adjusted block_order
+		// Process second list with adjusted element_order
 		if (!blocks2_val.IsNull()) {
 			auto &blocks2_list = ListValue::GetChildren(blocks2_val);
 			int32_t offset = max_order + 1;
 			for (auto &block : blocks2_list) {
 				if (!block.IsNull()) {
-					auto old_order = GetBlockOrder(block);
-					merged.push_back(CreateBlockWithOrder(block, old_order + offset));
+					auto old_order = GetElementOrder(block);
+					merged.push_back(CreateElementWithOrder(block, old_order + offset));
 				}
 			}
 		}
 
-		result.SetValue(i, Value::LIST(BlockTypes::DocBlockType(), std::move(merged)));
+		result.SetValue(i, Value::LIST(BlockTypes::DocElementType(), std::move(merged)));
 	}
 }
 
@@ -183,17 +178,17 @@ void ManipulationFunctions::DocBlocksReorderFun(DataChunk &args, ExpressionState
 
 		// Handle NULL input
 		if (blocks_val.IsNull()) {
-			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DocBlockType())));
+			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DocElementType())));
 			continue;
 		}
 
 		auto &blocks_list = ListValue::GetChildren(blocks_val);
 
-		// Sort blocks by current block_order, then reassign sequentially
+		// Sort blocks by current element_order, then reassign sequentially
 		vector<std::pair<int32_t, Value>> ordered_blocks;
 		for (auto &block : blocks_list) {
 			if (!block.IsNull()) {
-				ordered_blocks.push_back({GetBlockOrder(block), block});
+				ordered_blocks.push_back({GetElementOrder(block), block});
 			}
 		}
 
@@ -202,14 +197,14 @@ void ManipulationFunctions::DocBlocksReorderFun(DataChunk &args, ExpressionState
 			          return a.first < b.first;
 		          });
 
-		// Reassign block_order as 0, 1, 2, ...
+		// Reassign element_order as 0, 1, 2, ...
 		vector<Value> reordered;
 		int32_t new_order = 0;
 		for (idx_t j = 0; j < ordered_blocks.size(); j++) {
-			reordered.push_back(CreateBlockWithOrder(ordered_blocks[j].second, new_order++));
+			reordered.push_back(CreateElementWithOrder(ordered_blocks[j].second, new_order++));
 		}
 
-		result.SetValue(i, Value::LIST(BlockTypes::DocBlockType(), std::move(reordered)));
+		result.SetValue(i, Value::LIST(BlockTypes::DocElementType(), std::move(reordered)));
 	}
 }
 
@@ -227,7 +222,7 @@ void ManipulationFunctions::DocBlocksSliceFun(DataChunk &args, ExpressionState &
 
 		// Handle NULL inputs
 		if (blocks_val.IsNull() || start_val.IsNull() || end_val.IsNull()) {
-			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DocBlockType())));
+			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DocElementType())));
 			continue;
 		}
 
@@ -241,61 +236,61 @@ void ManipulationFunctions::DocBlocksSliceFun(DataChunk &args, ExpressionState &
 			if (block.IsNull()) {
 				continue;
 			}
-			auto order = GetBlockOrder(block);
+			auto order = GetElementOrder(block);
 			if (order >= start_order && order <= end_order) {
 				sliced.push_back(block);
 			}
 		}
 
-		result.SetValue(i, Value::LIST(BlockTypes::DocBlockType(), std::move(sliced)));
+		result.SetValue(i, Value::LIST(BlockTypes::DocElementType(), std::move(sliced)));
 	}
 }
 
 void ManipulationFunctions::Register(ExtensionLoader &loader) {
-	auto doc_block_type = BlockTypes::DocBlockType();
-	auto doc_block_list_type = BlockTypes::DocBlockListType();
+	auto doc_element_type = BlockTypes::DocElementType();
+	auto doc_element_list_type = BlockTypes::DocElementListType();
 
-	// doc_blocks_filter(blocks LIST(doc_block), types VARCHAR[]) -> LIST(doc_block)
+	// doc_blocks_filter(blocks LIST(doc_element), types VARCHAR[]) -> LIST(doc_element)
 	auto filter_func = ScalarFunction(
 	    "doc_blocks_filter",
-	    {doc_block_list_type, LogicalType::LIST(LogicalType::VARCHAR)},
-	    doc_block_list_type,
+	    {doc_element_list_type, LogicalType::LIST(LogicalType::VARCHAR)},
+	    doc_element_list_type,
 	    DocBlocksFilterFun
 	);
 	loader.RegisterFunction(filter_func);
 
-	// doc_blocks_exclude(blocks LIST(doc_block), types VARCHAR[]) -> LIST(doc_block)
+	// doc_blocks_exclude(blocks LIST(doc_element), types VARCHAR[]) -> LIST(doc_element)
 	auto exclude_func = ScalarFunction(
 	    "doc_blocks_exclude",
-	    {doc_block_list_type, LogicalType::LIST(LogicalType::VARCHAR)},
-	    doc_block_list_type,
+	    {doc_element_list_type, LogicalType::LIST(LogicalType::VARCHAR)},
+	    doc_element_list_type,
 	    DocBlocksExcludeFun
 	);
 	loader.RegisterFunction(exclude_func);
 
-	// doc_blocks_merge(blocks1 LIST(doc_block), blocks2 LIST(doc_block)) -> LIST(doc_block)
+	// doc_blocks_merge(blocks1 LIST(doc_element), blocks2 LIST(doc_element)) -> LIST(doc_element)
 	auto merge_func = ScalarFunction(
 	    "doc_blocks_merge",
-	    {doc_block_list_type, doc_block_list_type},
-	    doc_block_list_type,
+	    {doc_element_list_type, doc_element_list_type},
+	    doc_element_list_type,
 	    DocBlocksMergeFun
 	);
 	loader.RegisterFunction(merge_func);
 
-	// doc_blocks_reorder(blocks LIST(doc_block)) -> LIST(doc_block)
+	// doc_blocks_reorder(blocks LIST(doc_element)) -> LIST(doc_element)
 	auto reorder_func = ScalarFunction(
 	    "doc_blocks_reorder",
-	    {doc_block_list_type},
-	    doc_block_list_type,
+	    {doc_element_list_type},
+	    doc_element_list_type,
 	    DocBlocksReorderFun
 	);
 	loader.RegisterFunction(reorder_func);
 
-	// doc_blocks_slice(blocks LIST(doc_block), start INTEGER, end INTEGER) -> LIST(doc_block)
+	// doc_blocks_slice(blocks LIST(doc_element), start INTEGER, end INTEGER) -> LIST(doc_element)
 	auto slice_func = ScalarFunction(
 	    "doc_blocks_slice",
-	    {doc_block_list_type, LogicalType::INTEGER, LogicalType::INTEGER},
-	    doc_block_list_type,
+	    {doc_element_list_type, LogicalType::INTEGER, LogicalType::INTEGER},
+	    doc_element_list_type,
 	    DocBlocksSliceFun
 	);
 	loader.RegisterFunction(slice_func);

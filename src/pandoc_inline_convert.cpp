@@ -18,15 +18,17 @@ static Value CreateAttrsMap(const map<string, string> &attrs) {
 	return Value::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR, keys, values);
 }
 
-// Helper to create a single doc_inline Value
+// Helper to create a single doc_element Value (for inline)
 static Value CreateDocInline(const string &inline_type, const string &content,
                              int32_t level, const map<string, string> &attrs, int32_t order) {
 	child_list_t<Value> struct_values;
-	struct_values.push_back(make_pair("inline_type", Value(inline_type)));
+	struct_values.push_back(make_pair("kind", Value(BlockTypes::KIND_INLINE)));
+	struct_values.push_back(make_pair("element_type", Value(inline_type)));
 	struct_values.push_back(make_pair("content", Value(content)));
 	struct_values.push_back(make_pair("level", Value(level)));
+	struct_values.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_TEXT)));
 	struct_values.push_back(make_pair("attributes", CreateAttrsMap(attrs)));
-	struct_values.push_back(make_pair("inline_order", Value(order)));
+	struct_values.push_back(make_pair("element_order", Value(order)));
 	return Value::STRUCT(std::move(struct_values));
 }
 
@@ -418,7 +420,7 @@ void PandocInlineConvert::PandocInlinesToDocInlinesFun(DataChunk &args, Expressi
 		auto json_val = json_vec.GetValue(i);
 
 		if (json_val.IsNull()) {
-			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DocInlineType())));
+			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DocElementType())));
 			continue;
 		}
 
@@ -428,7 +430,7 @@ void PandocInlineConvert::PandocInlinesToDocInlinesFun(DataChunk &args, Expressi
 
 		FlattenPandocInlines(json, 1, order, inlines);
 
-		result.SetValue(i, Value::LIST(BlockTypes::DocInlineType(), inlines));
+		result.SetValue(i, Value::LIST(BlockTypes::DocElementType(), inlines));
 	}
 }
 
@@ -444,9 +446,9 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 		auto &inline_val = inlines[i];
 		auto children = StructValue::GetChildren(inline_val);
 
-		string inline_type = children[BlockTypes::INLINE_TYPE_IDX].GetValue<string>();
-		string content = children[BlockTypes::INLINE_CONTENT_IDX].GetValue<string>();
-		int32_t level = children[BlockTypes::INLINE_LEVEL_IDX].GetValue<int32_t>();
+		string inline_type = children[BlockTypes::ELEMENT_TYPE_IDX].GetValue<string>();
+		string content = children[BlockTypes::CONTENT_IDX].IsNull() ? "" : children[BlockTypes::CONTENT_IDX].GetValue<string>();
+		int32_t level = children[BlockTypes::LEVEL_IDX].IsNull() ? 1 : children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
 
 		// If this inline is at a lower level, we've exited the current scope
 		if (level < target_level) {
@@ -516,12 +518,12 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 		} else if (inline_type == BlockTypes::INLINE_CODE) {
 			json << "{\"t\":\"Code\",\"c\":[[\"\",[],[]],\"" << escaped_content << "\"]}";
 		} else if (inline_type == BlockTypes::INLINE_MATH) {
-			auto &attrs = children[BlockTypes::INLINE_ATTRIBUTES_IDX];
+			auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
 			string display = "InlineMath";
 			// Check attributes for display mode
 			json << "{\"t\":\"Math\",\"c\":[{\"t\":\"" << display << "\"},\"" << escaped_content << "\"]}";
 		} else if (inline_type == BlockTypes::INLINE_LINK) {
-			auto &attrs = children[BlockTypes::INLINE_ATTRIBUTES_IDX];
+			auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
 			string href = "";
 			// Extract href from attributes
 			if (!attrs.IsNull()) {
@@ -545,7 +547,7 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			json << "{\"t\":\"Link\",\"c\":[[\"\",[],[]]," << nested << ",[\"" << href << "\",\"\"]]}";
 			i = nested_end - 1;
 		} else if (inline_type == BlockTypes::INLINE_IMAGE) {
-			auto &attrs = children[BlockTypes::INLINE_ATTRIBUTES_IDX];
+			auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
 			string src = "";
 			if (!attrs.IsNull()) {
 				auto &map_children = StructValue::GetChildren(attrs);
@@ -562,7 +564,7 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			}
 			json << "{\"t\":\"Image\",\"c\":[[\"\",[],[]],[],[\"" << src << "\",\"\"]]}";
 		} else if (inline_type == BlockTypes::INLINE_RAW) {
-			auto &attrs = children[BlockTypes::INLINE_ATTRIBUTES_IDX];
+			auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
 			string format = "html";
 			if (!attrs.IsNull()) {
 				auto &map_children = StructValue::GetChildren(attrs);
@@ -579,7 +581,7 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			}
 			json << "{\"t\":\"RawInline\",\"c\":[\"" << format << "\",\"" << escaped_content << "\"]}";
 		} else if (inline_type == BlockTypes::INLINE_QUOTED) {
-			auto &attrs = children[BlockTypes::INLINE_ATTRIBUTES_IDX];
+			auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
 			string quote_type = "DoubleQuote";
 			if (!attrs.IsNull()) {
 				auto &map_children = StructValue::GetChildren(attrs);
@@ -788,18 +790,20 @@ void PandocInlineConvert::PandocInlinesToTextFun(DataChunk &args, ExpressionStat
 }
 
 void PandocInlineConvert::Register(ExtensionLoader &loader) {
-	// pandoc_inlines_to_doc_inlines(json VARCHAR) -> LIST(doc_inline)
+	auto doc_element_list_type = BlockTypes::DocElementListType();
+
+	// pandoc_inlines_to_doc_inlines(json VARCHAR) -> LIST(doc_element)
 	loader.RegisterFunction(ScalarFunction(
 	    "pandoc_inlines_to_doc_inlines",
 	    {LogicalType::VARCHAR},
-	    BlockTypes::DocInlineListType(),
+	    doc_element_list_type,
 	    PandocInlinesToDocInlinesFun
 	));
 
-	// doc_inlines_to_pandoc(LIST(doc_inline)) -> VARCHAR (JSON)
+	// doc_inlines_to_pandoc(LIST(doc_element)) -> VARCHAR (JSON)
 	loader.RegisterFunction(ScalarFunction(
 	    "doc_inlines_to_pandoc",
-	    {BlockTypes::DocInlineListType()},
+	    {doc_element_list_type},
 	    LogicalType::VARCHAR,
 	    DocInlinesToPandocFun
 	));

@@ -96,7 +96,7 @@ SELECT doc_blocks_headings(doc_assemble([
     doc_heading('First', 1),
     doc_paragraph('Text'),
     doc_heading('Second', 2)
-]))[2].block_order;
+]))[2].element_order;
 ----
 2
 

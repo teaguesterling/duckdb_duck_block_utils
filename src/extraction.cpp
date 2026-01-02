@@ -6,27 +6,27 @@
 
 namespace duckdb {
 
-// Helper to get a string field from a block struct
-static string GetBlockStringField(const Value &block, idx_t field_idx) {
-	auto &children = StructValue::GetChildren(block);
+// Helper to get a string field from an element struct
+static string GetElementStringField(const Value &element, idx_t field_idx) {
+	auto &children = StructValue::GetChildren(element);
 	if (children[field_idx].IsNull()) {
 		return "";
 	}
 	return children[field_idx].GetValue<string>();
 }
 
-// Helper to get an int field from a block struct
-static int32_t GetBlockIntField(const Value &block, idx_t field_idx, int32_t default_val = 0) {
-	auto &children = StructValue::GetChildren(block);
+// Helper to get an int field from an element struct
+static int32_t GetElementIntField(const Value &element, idx_t field_idx, int32_t default_val = 0) {
+	auto &children = StructValue::GetChildren(element);
 	if (children[field_idx].IsNull()) {
 		return default_val;
 	}
 	return children[field_idx].GetValue<int32_t>();
 }
 
-// Helper to get attribute value from a block
-static string GetBlockAttribute(const Value &block, const string &key) {
-	auto &children = StructValue::GetChildren(block);
+// Helper to get attribute value from an element
+static string GetElementAttribute(const Value &element, const string &key) {
+	auto &children = StructValue::GetChildren(element);
 	auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
 	if (attrs.IsNull()) {
 		return "";
@@ -76,11 +76,11 @@ void ExtractionFunctions::DocBlocksToTextFun(DataChunk &args, ExpressionState &s
 				continue;
 			}
 
-			auto block_type = GetBlockStringField(block, BlockTypes::BLOCK_TYPE_IDX);
-			auto content = GetBlockStringField(block, BlockTypes::CONTENT_IDX);
+			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
+			auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
 
 			// Skip blocks that don't have meaningful text content
-			if (block_type == BlockTypes::TYPE_HR || block_type == BlockTypes::TYPE_RAW) {
+			if (element_type == BlockTypes::TYPE_HR || element_type == BlockTypes::TYPE_RAW) {
 				continue;
 			}
 
@@ -108,7 +108,7 @@ void ExtractionFunctions::DocBlocksHeadingsFun(DataChunk &args, ExpressionState 
 	heading_struct_children.push_back(make_pair("level", LogicalType::INTEGER));
 	heading_struct_children.push_back(make_pair("title", LogicalType::VARCHAR));
 	heading_struct_children.push_back(make_pair("id", LogicalType::VARCHAR));
-	heading_struct_children.push_back(make_pair("block_order", LogicalType::INTEGER));
+	heading_struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
 	auto heading_struct_type = LogicalType::STRUCT(std::move(heading_struct_children));
 
 	auto count = args.size();
@@ -130,22 +130,22 @@ void ExtractionFunctions::DocBlocksHeadingsFun(DataChunk &args, ExpressionState 
 				continue;
 			}
 
-			auto block_type = GetBlockStringField(block, BlockTypes::BLOCK_TYPE_IDX);
+			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
 
-			if (block_type != BlockTypes::TYPE_HEADING) {
+			if (element_type != BlockTypes::TYPE_HEADING) {
 				continue;
 			}
 
-			auto level = GetBlockIntField(block, BlockTypes::LEVEL_IDX, 1);
-			auto title = GetBlockStringField(block, BlockTypes::CONTENT_IDX);
-			auto id = GetBlockAttribute(block, "id");
-			auto block_order = GetBlockIntField(block, BlockTypes::BLOCK_ORDER_IDX, 0);
+			auto level = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
+			auto title = GetElementStringField(block, BlockTypes::CONTENT_IDX);
+			auto id = GetElementAttribute(block, "id");
+			auto element_order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
 
 			child_list_t<Value> heading_values;
 			heading_values.push_back(make_pair("level", Value(level)));
 			heading_values.push_back(make_pair("title", Value(title)));
 			heading_values.push_back(make_pair("id", Value(id)));
-			heading_values.push_back(make_pair("block_order", Value(block_order)));
+			heading_values.push_back(make_pair("element_order", Value(element_order)));
 
 			headings.push_back(Value::STRUCT(std::move(heading_values)));
 		}
@@ -161,7 +161,7 @@ void ExtractionFunctions::DocBlocksCodeBlocksFun(DataChunk &args, ExpressionStat
 	child_list_t<LogicalType> code_struct_children;
 	code_struct_children.push_back(make_pair("language", LogicalType::VARCHAR));
 	code_struct_children.push_back(make_pair("content", LogicalType::VARCHAR));
-	code_struct_children.push_back(make_pair("block_order", LogicalType::INTEGER));
+	code_struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
 	auto code_struct_type = LogicalType::STRUCT(std::move(code_struct_children));
 
 	auto count = args.size();
@@ -183,20 +183,20 @@ void ExtractionFunctions::DocBlocksCodeBlocksFun(DataChunk &args, ExpressionStat
 				continue;
 			}
 
-			auto block_type = GetBlockStringField(block, BlockTypes::BLOCK_TYPE_IDX);
+			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
 
-			if (block_type != BlockTypes::TYPE_CODE) {
+			if (element_type != BlockTypes::TYPE_CODE) {
 				continue;
 			}
 
-			auto language = GetBlockAttribute(block, "language");
-			auto content = GetBlockStringField(block, BlockTypes::CONTENT_IDX);
-			auto block_order = GetBlockIntField(block, BlockTypes::BLOCK_ORDER_IDX, 0);
+			auto language = GetElementAttribute(block, "language");
+			auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
+			auto element_order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
 
 			child_list_t<Value> code_values;
 			code_values.push_back(make_pair("language", Value(language)));
 			code_values.push_back(make_pair("content", Value(content)));
-			code_values.push_back(make_pair("block_order", Value(block_order)));
+			code_values.push_back(make_pair("element_order", Value(element_order)));
 
 			code_blocks.push_back(Value::STRUCT(std::move(code_values)));
 		}
@@ -210,7 +210,7 @@ void ExtractionFunctions::DocBlocksStatsFun(DataChunk &args, ExpressionState &st
 
 	// Define the return type for stats
 	child_list_t<LogicalType> stats_struct_children;
-	stats_struct_children.push_back(make_pair("block_type", LogicalType::VARCHAR));
+	stats_struct_children.push_back(make_pair("element_type", LogicalType::VARCHAR));
 	stats_struct_children.push_back(make_pair("count", LogicalType::INTEGER));
 	stats_struct_children.push_back(make_pair("total_content_length", LogicalType::BIGINT));
 	stats_struct_children.push_back(make_pair("avg_content_length", LogicalType::DOUBLE));
@@ -229,7 +229,7 @@ void ExtractionFunctions::DocBlocksStatsFun(DataChunk &args, ExpressionState &st
 
 		auto &blocks_list = ListValue::GetChildren(blocks_val);
 
-		// Accumulate stats by block type
+		// Accumulate stats by element type
 		std::map<string, std::pair<int32_t, int64_t>> type_stats;  // type -> (count, total_length)
 
 		for (auto &block : blocks_list) {
@@ -237,10 +237,10 @@ void ExtractionFunctions::DocBlocksStatsFun(DataChunk &args, ExpressionState &st
 				continue;
 			}
 
-			auto block_type = GetBlockStringField(block, BlockTypes::BLOCK_TYPE_IDX);
-			auto content = GetBlockStringField(block, BlockTypes::CONTENT_IDX);
+			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
+			auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
 
-			auto &stats = type_stats[block_type];
+			auto &stats = type_stats[element_type];
 			stats.first++;  // count
 			stats.second += static_cast<int64_t>(content.length());  // total length
 		}
@@ -254,7 +254,7 @@ void ExtractionFunctions::DocBlocksStatsFun(DataChunk &args, ExpressionState &st
 			double avg_length = count_val > 0 ? static_cast<double>(total_length) / count_val : 0.0;
 
 			child_list_t<Value> stat_values;
-			stat_values.push_back(make_pair("block_type", Value(type_name)));
+			stat_values.push_back(make_pair("element_type", Value(type_name)));
 			stat_values.push_back(make_pair("count", Value(count_val)));
 			stat_values.push_back(make_pair("total_content_length", Value(total_length)));
 			stat_values.push_back(make_pair("avg_content_length", Value(avg_length)));
@@ -267,12 +267,12 @@ void ExtractionFunctions::DocBlocksStatsFun(DataChunk &args, ExpressionState &st
 }
 
 void ExtractionFunctions::Register(ExtensionLoader &loader) {
-	auto doc_block_list_type = BlockTypes::DocBlockListType();
+	auto doc_element_list_type = BlockTypes::DocElementListType();
 
-	// doc_blocks_to_text(blocks LIST(doc_block), separator VARCHAR) -> VARCHAR
+	// doc_blocks_to_text(blocks LIST(doc_element), separator VARCHAR) -> VARCHAR
 	auto to_text_func = ScalarFunction(
 	    "doc_blocks_to_text",
-	    {doc_block_list_type, LogicalType::VARCHAR},
+	    {doc_element_list_type, LogicalType::VARCHAR},
 	    LogicalType::VARCHAR,
 	    DocBlocksToTextFun
 	);
@@ -281,7 +281,7 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	// Single-arg version with default separator
 	auto to_text_func_simple = ScalarFunction(
 	    "doc_blocks_to_text",
-	    {doc_block_list_type},
+	    {doc_element_list_type},
 	    LogicalType::VARCHAR,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &blocks_vec = args.data[0];
@@ -304,10 +304,10 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 					    continue;
 				    }
 
-				    auto block_type = GetBlockStringField(block, BlockTypes::BLOCK_TYPE_IDX);
-				    auto content = GetBlockStringField(block, BlockTypes::CONTENT_IDX);
+				    auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
+				    auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
 
-				    if (block_type == BlockTypes::TYPE_HR || block_type == BlockTypes::TYPE_RAW) {
+				    if (element_type == BlockTypes::TYPE_HR || element_type == BlockTypes::TYPE_RAW) {
 					    continue;
 				    }
 
@@ -333,13 +333,13 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	heading_struct_children.push_back(make_pair("level", LogicalType::INTEGER));
 	heading_struct_children.push_back(make_pair("title", LogicalType::VARCHAR));
 	heading_struct_children.push_back(make_pair("id", LogicalType::VARCHAR));
-	heading_struct_children.push_back(make_pair("block_order", LogicalType::INTEGER));
+	heading_struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
 	auto heading_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(heading_struct_children)));
 
-	// doc_blocks_headings(blocks LIST(doc_block)) -> LIST(STRUCT)
+	// doc_blocks_headings(blocks LIST(doc_element)) -> LIST(STRUCT)
 	auto headings_func = ScalarFunction(
 	    "doc_blocks_headings",
-	    {doc_block_list_type},
+	    {doc_element_list_type},
 	    heading_list_type,
 	    DocBlocksHeadingsFun
 	);
@@ -349,13 +349,13 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	child_list_t<LogicalType> code_struct_children;
 	code_struct_children.push_back(make_pair("language", LogicalType::VARCHAR));
 	code_struct_children.push_back(make_pair("content", LogicalType::VARCHAR));
-	code_struct_children.push_back(make_pair("block_order", LogicalType::INTEGER));
+	code_struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
 	auto code_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(code_struct_children)));
 
-	// doc_blocks_code_blocks(blocks LIST(doc_block)) -> LIST(STRUCT)
+	// doc_blocks_code_blocks(blocks LIST(doc_element)) -> LIST(STRUCT)
 	auto code_blocks_func = ScalarFunction(
 	    "doc_blocks_code_blocks",
-	    {doc_block_list_type},
+	    {doc_element_list_type},
 	    code_list_type,
 	    DocBlocksCodeBlocksFun
 	);
@@ -363,16 +363,16 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 
 	// Define return types for stats
 	child_list_t<LogicalType> stats_struct_children;
-	stats_struct_children.push_back(make_pair("block_type", LogicalType::VARCHAR));
+	stats_struct_children.push_back(make_pair("element_type", LogicalType::VARCHAR));
 	stats_struct_children.push_back(make_pair("count", LogicalType::INTEGER));
 	stats_struct_children.push_back(make_pair("total_content_length", LogicalType::BIGINT));
 	stats_struct_children.push_back(make_pair("avg_content_length", LogicalType::DOUBLE));
 	auto stats_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(stats_struct_children)));
 
-	// doc_blocks_stats(blocks LIST(doc_block)) -> LIST(STRUCT)
+	// doc_blocks_stats(blocks LIST(doc_element)) -> LIST(STRUCT)
 	auto stats_func = ScalarFunction(
 	    "doc_blocks_stats",
-	    {doc_block_list_type},
+	    {doc_element_list_type},
 	    stats_list_type,
 	    DocBlocksStatsFun
 	);

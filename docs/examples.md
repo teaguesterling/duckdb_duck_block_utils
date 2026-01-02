@@ -92,8 +92,8 @@ SELECT doc_assemble(doc_concat(
 ```sql
 SELECT
     repeat('  ', level - 1) || '- ' || title as toc_line
-FROM UNNEST(doc_blocks_headings(my_doc)) AS t(level, title, id, block_order)
-ORDER BY block_order;
+FROM UNNEST(doc_blocks_headings(my_doc)) AS t(level, title, id, element_order)
+ORDER BY element_order;
 ```
 
 ### Find Code Examples by Language
@@ -102,7 +102,7 @@ ORDER BY block_order;
 SELECT
     language,
     content,
-    block_order
+    element_order
 FROM UNNEST(doc_blocks_code_blocks(my_doc))
 WHERE language = 'python';
 ```
@@ -111,7 +111,7 @@ WHERE language = 'python';
 
 ```sql
 SELECT
-    block_type,
+    element_type,
     count,
     round(avg_content_length, 1) as avg_length,
     total_content_length
@@ -137,7 +137,7 @@ SELECT doc_blocks_reorder(
     list_filter(
         my_doc,
         block -> NOT (
-            block.block_type = 'paragraph'
+            block.element_type = 'paragraph'
             AND block.content = ''
         )
     )
@@ -162,8 +162,8 @@ SELECT doc_blocks_exclude(my_doc, ['metadata', 'hr', 'raw']);
 SELECT list_transform(
     my_doc,
     block -> CASE
-        WHEN block.block_type = 'code'
-        THEN duck_block_set_content(block, '# Python\n' || block.content)
+        WHEN block.element_type = 'code'
+        THEN doc_element_set_content(block, '# Python\n' || block.content)
         ELSE block
     END
 );
@@ -245,6 +245,35 @@ SELECT doc_assemble([
 FROM users;
 ```
 
+## Working with Inline Elements
+
+### Build Rich Text Links
+
+```sql
+-- Create a paragraph with formatted inline content
+SELECT [
+    doc_text('Visit '),
+    doc_link('our website', 'https://example.com'),
+    doc_text(' or email '),
+    doc_link('support@example.com', 'mailto:support@example.com'),
+    doc_text('.')
+];
+```
+
+### Generate Badge Links
+
+```sql
+SELECT [
+    doc_link(
+        doc_inline_image(
+            'https://github.com/' || repo || '/actions/workflows/ci.yml/badge.svg',
+            'CI Status'
+        ).content,
+        'https://github.com/' || repo || '/actions'
+    )
+] FROM repositories;
+```
+
 ## Integration Patterns
 
 ### Export for Markdown Conversion
@@ -252,12 +281,12 @@ FROM users;
 ```sql
 -- Structure suitable for conversion to Markdown
 SELECT
-    block_order,
-    block_type,
+    element_order,
+    element_type,
     level,
     content
 FROM UNNEST(doc_assemble(my_blocks))
-ORDER BY block_order;
+ORDER BY element_order;
 ```
 
 ### Create from JSON Import
@@ -287,7 +316,7 @@ INSERT INTO documents (id, title, blocks)
 SELECT id, title, blocks
 FROM new_documents
 WHERE (
-    SELECT bool_and(duck_block_valid(block))
+    SELECT bool_and(doc_element_valid(block))
     FROM UNNEST(blocks) AS t(block)
 );
 ```

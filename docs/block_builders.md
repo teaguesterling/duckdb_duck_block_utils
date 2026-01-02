@@ -1,6 +1,6 @@
 # Block Builder Functions
 
-Declarative functions for constructing doc_block structures. These enable:
+Declarative functions for constructing doc_element structures. These enable:
 
 1. **Programmatic document generation** from query results
 2. **Nested/hierarchical authoring** that flattens automatically
@@ -10,9 +10,9 @@ Declarative functions for constructing doc_block structures. These enable:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  Nested/Declarative Construction          Flat doc_blocks Output        │
+│  Nested/Declarative Construction          Flat doc_elements Output        │
 │                                                                         │
-│  doc_document(                            block_type │ content │ level  │
+│  doc_document(                            element_type │ content │ level  │
 │    doc_heading('Title', 1),                heading   │ Title   │ 1      │
 │    doc_section('Intro', 2,                 heading   │ Intro   │ 2      │
 │      doc_paragraph('Hello'),               paragraph │ Hello   │ NULL   │
@@ -24,7 +24,7 @@ Declarative functions for constructing doc_block structures. These enable:
 
 ## Atomic Constructors
 
-These return a single `doc_block` struct.
+These return a single `doc_element` struct.
 
 ### doc_heading
 
@@ -33,14 +33,14 @@ doc_heading(
     content VARCHAR,
     level INTEGER DEFAULT 1,
     id VARCHAR DEFAULT NULL
-) → doc_block
+) → doc_element
 ```
 
 **Example:**
 ```sql
 SELECT doc_heading('Introduction', 2, 'intro');
--- Returns: {block_type: 'heading', content: 'Introduction', level: 2,
---           encoding: 'text', attributes: {'id': 'intro'}, block_order: 0}
+-- Returns: {element_type: 'heading', content: 'Introduction', level: 2,
+--           encoding: 'text', attributes: {'id': 'intro'}, element_order: 0}
 ```
 
 ### doc_paragraph
@@ -48,7 +48,7 @@ SELECT doc_heading('Introduction', 2, 'intro');
 ```sql
 doc_paragraph(
     content VARCHAR
-) → doc_block
+) → doc_element
 ```
 
 **Example:**
@@ -62,7 +62,7 @@ SELECT doc_paragraph('This is some **markdown** text.');
 doc_code(
     content VARCHAR,
     language VARCHAR DEFAULT NULL
-) → doc_block
+) → doc_element
 ```
 
 **Example:**
@@ -70,13 +70,13 @@ doc_code(
 SELECT doc_code('def hello():\n    print("hi")', 'python');
 ```
 
-### doc_blockquote
+### doc_elementquote
 
 ```sql
-doc_blockquote(
+doc_elementquote(
     content VARCHAR,
     level INTEGER DEFAULT 1
-) → doc_block
+) → doc_element
 ```
 
 ### doc_list_block
@@ -86,13 +86,13 @@ doc_list_block(
     items VARCHAR[],
     ordered BOOLEAN DEFAULT false,
     start INTEGER DEFAULT 1
-) → doc_block
+) → doc_element
 ```
 
 **Example:**
 ```sql
 SELECT doc_list_block(['First', 'Second', 'Third'], ordered := true);
--- Returns: {block_type: 'list', content: '["First","Second","Third"]',
+-- Returns: {element_type: 'list', content: '["First","Second","Third"]',
 --           level: 1, encoding: 'json', attributes: {'ordered': 'true', 'start': '1'}}
 ```
 
@@ -102,7 +102,7 @@ SELECT doc_list_block(['First', 'Second', 'Third'], ordered := true);
 doc_table_block(
     headers VARCHAR[],
     rows VARCHAR[][]
-) → doc_block
+) → doc_element
 ```
 
 **Example:**
@@ -116,7 +116,7 @@ SELECT doc_table_block(
 ### doc_hr
 
 ```sql
-doc_hr() → doc_block
+doc_hr() → doc_element
 ```
 
 ### doc_metadata
@@ -124,12 +124,12 @@ doc_hr() → doc_block
 ```sql
 doc_metadata(
     yaml_content VARCHAR
-) → doc_block
+) → doc_element
 
 -- Or from key-value pairs
 doc_metadata_map(
     meta MAP(VARCHAR, VARCHAR)
-) → doc_block
+) → doc_element
 ```
 
 **Example:**
@@ -146,7 +146,7 @@ doc_image(
     src VARCHAR,
     alt VARCHAR DEFAULT '',
     title VARCHAR DEFAULT NULL
-) → doc_block
+) → doc_element
 ```
 
 ### doc_raw
@@ -155,7 +155,7 @@ doc_image(
 doc_raw(
     content VARCHAR,
     format VARCHAR DEFAULT 'html'
-) → doc_block
+) → doc_element
 ```
 
 ---
@@ -172,8 +172,8 @@ Create a section with a heading and nested content.
 doc_section(
     title VARCHAR,
     level INTEGER,
-    children VARIADIC doc_block_or_list...
-) → LIST(doc_block)
+    children VARIADIC doc_element_or_list...
+) → LIST(doc_element)
 ```
 
 **Example:**
@@ -192,12 +192,12 @@ SELECT doc_section('Getting Started', 2,
 
 ### doc_document
 
-Assemble a complete document with automatic block_order assignment.
+Assemble a complete document with automatic element_order assignment.
 
 ```sql
 doc_document(
-    children VARIADIC doc_block_or_list...
-) → LIST(doc_block)
+    children VARIADIC doc_element_or_list...
+) → LIST(doc_element)
 ```
 
 **Example:**
@@ -225,7 +225,7 @@ Create nested list structures.
 doc_nested_list(
     items LIST(STRUCT(text VARCHAR, children LIST(...))),
     ordered BOOLEAN DEFAULT false
-) → doc_block
+) → doc_element
 ```
 
 **Example:**
@@ -250,7 +250,7 @@ Convert any query result to a table block.
 doc_table_from_query(
     query_result ANY,
     include_types BOOLEAN DEFAULT false
-) → doc_block
+) → doc_element
 ```
 
 **Example:**
@@ -277,7 +277,7 @@ doc_list_from_column(
     values ANY[],
     ordered BOOLEAN DEFAULT false,
     format_template VARCHAR DEFAULT NULL
-) → doc_block
+) → doc_element
 ```
 
 **Example:**
@@ -303,7 +303,7 @@ doc_heading_from_value(
     value ANY,
     level INTEGER DEFAULT 2,
     format_template VARCHAR DEFAULT '{}'
-) → doc_block
+) → doc_element
 ```
 
 **Example:**
@@ -319,7 +319,7 @@ Generate a summary section from numeric columns.
 doc_summary_stats(
     query_result ANY,
     title VARCHAR DEFAULT 'Summary Statistics'
-) → LIST(doc_block)
+) → LIST(doc_element)
 ```
 
 **Example:**
@@ -345,7 +345,7 @@ Transform each row into document blocks using a template function.
 doc_from_rows(
     query_result ANY,
     row_transformer LAMBDA
-) → LIST(doc_block)
+) → LIST(doc_element)
 ```
 
 **Example:**
@@ -371,7 +371,7 @@ doc_grouped_sections(
     group_column VARCHAR,
     group_level INTEGER DEFAULT 2,
     row_transformer LAMBDA
-) → LIST(doc_block)
+) → LIST(doc_element)
 ```
 
 **Example:**
@@ -397,12 +397,12 @@ SELECT doc_grouped_sections(
 
 ### doc_assemble
 
-Combine multiple block sources and assign sequential block_order.
+Combine multiple block sources and assign sequential element_order.
 
 ```sql
 doc_assemble(
-    parts VARIADIC (doc_block | LIST(doc_block))...
-) → LIST(doc_block)
+    parts VARIADIC (doc_element | LIST(doc_element))...
+) → LIST(doc_element)
 ```
 
 **Example:**
@@ -430,8 +430,8 @@ Concatenate multiple block lists.
 
 ```sql
 doc_concat(
-    lists VARIADIC LIST(doc_block)...
-) → LIST(doc_block)
+    lists VARIADIC LIST(doc_element)...
+) → LIST(doc_element)
 ```
 
 ### doc_rebase_levels
@@ -440,9 +440,9 @@ Adjust all heading levels by an offset.
 
 ```sql
 doc_rebase_levels(
-    blocks LIST(doc_block),
+    blocks LIST(doc_element),
     offset INTEGER
-) → LIST(doc_block)
+) → LIST(doc_element)
 ```
 
 **Example:**
@@ -463,12 +463,12 @@ Insert a table of contents based on headings.
 
 ```sql
 doc_with_toc(
-    blocks LIST(doc_block),
+    blocks LIST(doc_element),
     toc_title VARCHAR DEFAULT 'Table of Contents',
     min_level INTEGER DEFAULT 1,
     max_level INTEGER DEFAULT 3,
     position INTEGER DEFAULT 1  -- Insert after block N (0 = beginning)
-) → LIST(doc_block)
+) → LIST(doc_element)
 ```
 
 **Example:**
@@ -605,24 +605,24 @@ SELECT unnest(doc_assemble(
 
 ```sql
 -- Block or list of blocks (for variadic functions)
-CREATE TYPE doc_block_or_list AS UNION(
-    single doc_block,
-    multiple LIST(doc_block)
+CREATE TYPE doc_element_or_list AS UNION(
+    single doc_element,
+    multiple LIST(doc_element)
 );
 
 -- Row transformer function type
-CREATE TYPE doc_row_transformer AS LAMBDA(row STRUCT(...)) → doc_block_or_list;
+CREATE TYPE doc_row_transformer AS LAMBDA(row STRUCT(...)) → doc_element_or_list;
 ```
 
 ### Flattening Rules
 
 When assembling blocks:
 
-1. **Single doc_block**: Added directly to output
-2. **LIST(doc_block)**: Each element added in order
+1. **Single doc_element**: Added directly to output
+2. **LIST(doc_element)**: Each element added in order
 3. **Nested doc_section**: Heading added, then children flattened recursively
 4. **NULL values**: Skipped silently
-5. **block_order**: Assigned sequentially (0, 1, 2, ...) during final assembly
+5. **element_order**: Assigned sequentially (0, 1, 2, ...) during final assembly
 
 ---
 
@@ -638,7 +638,7 @@ vector<DocBlock> FlattenBlocks(const vector<DocBlockOrList>& inputs) {
     function<void(const DocBlockOrList&)> flatten = [&](const DocBlockOrList& item) {
         if (holds_alternative<DocBlock>(item)) {
             DocBlock block = get<DocBlock>(item);
-            block.block_order = order++;
+            block.element_order = order++;
             result.push_back(block);
         } else if (holds_alternative<vector<DocBlockOrList>>(item)) {
             for (const auto& child : get<vector<DocBlockOrList>>(item)) {
@@ -684,4 +684,4 @@ ListValue DocSection(string title, int level, vector<Value> children) {
 
 - [API Reference](api.md) - All function signatures
 - [Design Document](design.md) - Architecture overview
-- [Document Block Spec](https://github.com/teaguesterling/duckdb_markdown/blob/main/docs/doc_block_spec.md) - Block schema
+- [Document Block Spec](https://github.com/teaguesterling/duckdb_markdown/blob/main/docs/doc_element_spec.md) - Block schema

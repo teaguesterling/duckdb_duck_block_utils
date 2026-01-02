@@ -246,7 +246,7 @@ Metadata values have their own type system:
 
 ### pandoc_ast_to_blocks
 
-Convert Pandoc JSON AST to doc_blocks.
+Convert Pandoc JSON AST to doc_elements.
 
 **Signature:**
 ```sql
@@ -254,7 +254,7 @@ pandoc_ast_to_blocks(
     ast JSON,
     inline_mode VARCHAR DEFAULT 'text',    -- 'text', 'markdown', 'json'
     flatten_nested BOOLEAN DEFAULT true     -- Flatten nested structures
-) → LIST(doc_block)
+) → LIST(doc_element)
 ```
 
 **Parameters:**
@@ -281,12 +281,12 @@ SELECT unnest(pandoc_ast_to_blocks(
 
 ### pandoc_blocks_to_ast
 
-Convert doc_blocks to Pandoc JSON AST.
+Convert doc_elements to Pandoc JSON AST.
 
 **Signature:**
 ```sql
 pandoc_blocks_to_ast(
-    blocks LIST(doc_block),
+    blocks LIST(doc_element),
     meta JSON DEFAULT '{}',
     api_version INTEGER[] DEFAULT [1, 23, 1]
 ) → JSON
@@ -391,9 +391,9 @@ SELECT pandoc_yaml_to_meta('title: My Doc\nauthor: Jane');
 
 ## Block Type Mapping
 
-### Pandoc → doc_block
+### Pandoc → doc_element
 
-| Pandoc Type | doc_block type | level | encoding | Notes |
+| Pandoc Type | element_type | level | encoding | Notes |
 |-------------|----------------|-------|----------|-------|
 | `Header` | `heading` | 1-6 | text | id from Attr |
 | `Para` | `paragraph` | NULL | text/json | Based on inline_mode |
@@ -411,9 +411,9 @@ SELECT pandoc_yaml_to_meta('title: My Doc\nauthor: Jane');
 | `Figure` | `pandoc:figure` | NULL | json | Pandoc 3.0+ |
 | `Null` | (skipped) | - | - | Empty block |
 
-### doc_block → Pandoc
+### doc_element → Pandoc
 
-| doc_block type | Pandoc Type | Notes |
+| element_type | Pandoc Type | Notes |
 |----------------|-------------|-------|
 | `heading` | `Header` | level → int, id from attrs |
 | `paragraph` | `Para` | Content parsed for inlines |
@@ -443,8 +443,9 @@ Nested structures become multiple blocks with depth tracking:
 
 **Output (flattened):**
 ```sql
--- Single blockquote block with combined content
-block_type: 'blockquote'
+-- Single blockquote element with combined content
+kind: 'block'
+element_type: 'blockquote'
 content: 'Quoted text\n\nMore quoted'
 level: 1
 encoding: 'text'
@@ -455,7 +456,8 @@ encoding: 'text'
 Nested structures preserved as JSON:
 
 ```sql
-block_type: 'blockquote'
+kind: 'block'
+element_type: 'blockquote'
 content: '[{"t":"Para","c":[...]},{"t":"Para","c":[...]}]'
 level: 1
 encoding: 'json'
@@ -477,7 +479,8 @@ attributes: {'nested': 'true'}
 
 **Output (flatten_nested = true):**
 ```sql
-block_type: 'list'
+kind: 'block'
+element_type: 'list'
 content: '[{"text": "Item 1"}, {"text": "Item 2", "children": [{"text": "Sub-item"}]}]'
 level: 1
 encoding: 'json'

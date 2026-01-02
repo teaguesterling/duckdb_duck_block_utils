@@ -4,60 +4,46 @@ Complete reference for all functions provided by the `duck_block_utils` extensio
 
 ## Type Definitions
 
-### doc_block
+### doc_element (Unified Type)
 
-The core document block type used throughout this extension.
+The core document element type used throughout this extension. Both block-level and inline elements use the same type, distinguished by the `kind` field:
 
 ```sql
 STRUCT(
-    block_type VARCHAR,                    -- Block type identifier
-    content VARCHAR,                       -- Primary content
-    level INTEGER,                         -- Hierarchy level (NULL if not applicable)
-    encoding VARCHAR,                      -- Content encoding: 'text', 'json', 'yaml', 'html', 'xml'
-    attributes MAP(VARCHAR, VARCHAR),      -- Type-specific metadata
-    block_order INTEGER                    -- Position in document (0-indexed)
+    kind VARCHAR,                       -- 'block' or 'inline'
+    element_type VARCHAR,               -- Element type identifier
+    content VARCHAR,                    -- Primary content
+    level INTEGER,                      -- Hierarchy level (NULL if not applicable)
+    encoding VARCHAR,                   -- Content encoding: 'text', 'json', 'yaml', 'html', 'xml'
+    attributes MAP(VARCHAR, VARCHAR),   -- Type-specific metadata
+    element_order INTEGER               -- Position in document (0-indexed)
 )
 ```
 
-### doc_block_ext
+### Kind Values
 
-Extended block type with provenance tracking.
+| Kind | Description |
+|------|-------------|
+| `block` | Block-level elements (heading, paragraph, code, list, etc.) |
+| `inline` | Inline elements (text, bold, italic, link, etc.) |
+
+### doc_element_ext
+
+Extended element type with provenance tracking.
 
 ```sql
 STRUCT(
-    block_type VARCHAR,
+    kind VARCHAR,
+    element_type VARCHAR,
     content VARCHAR,
     level INTEGER,
     encoding VARCHAR,
     attributes MAP(VARCHAR, VARCHAR),
-    block_order INTEGER,
-    source_format VARCHAR,                 -- Origin format: 'markdown', 'html', etc.
-    file_path VARCHAR                      -- Source file path
+    element_order INTEGER,
+    source_format VARCHAR,              -- Origin format: 'markdown', 'html', etc.
+    file_path VARCHAR                   -- Source file path
 )
 ```
-
-### doc_inline
-
-Inline element type for rich text formatting within block content.
-
-```sql
-STRUCT(
-    inline_type VARCHAR,                   -- Element type: 'text', 'link', 'bold', etc.
-    content VARCHAR,                       -- Text content or alt text
-    attributes MAP(VARCHAR, VARCHAR)       -- Type-specific attributes (href, src, title, etc.)
-)
-```
-
-**Inline type identifiers:**
-| inline_type | Description | Attributes |
-|-------------|-------------|------------|
-| `text` | Plain text | none |
-| `link` | Hyperlink | `href`, `title` |
-| `image` | Inline image | `src`, `alt`, `title` |
-| `bold` | Bold/strong text | none |
-| `italic` | Italic/emphasis text | none |
-| `code` | Inline code | none |
-| `strikethrough` | Strikethrough text | none |
 
 ---
 
@@ -65,23 +51,23 @@ STRUCT(
 
 ### doc_blocks_filter
 
-Filter blocks to include only specified types.
+Filter elements to include only specified types.
 
 **Signature:**
 ```sql
 doc_blocks_filter(
-    blocks LIST(doc_block),
+    blocks LIST(doc_element),
     types VARCHAR[]
-) → LIST(doc_block)
+) → LIST(doc_element)
 ```
 
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks` | LIST(doc_block) | Input block sequence |
-| `types` | VARCHAR[] | Block types to include |
+| `blocks` | LIST(doc_element) | Input element sequence |
+| `types` | VARCHAR[] | Element types to include |
 
-**Returns:** Filtered list containing only blocks with matching types.
+**Returns:** Filtered list containing only elements with matching types.
 
 **Example:**
 ```sql
@@ -96,21 +82,21 @@ SELECT doc_blocks_filter(
 
 ### doc_blocks_exclude
 
-Filter blocks to exclude specified types.
+Filter elements to exclude specified types.
 
 **Signature:**
 ```sql
 doc_blocks_exclude(
-    blocks LIST(doc_block),
+    blocks LIST(doc_element),
     types VARCHAR[]
-) → LIST(doc_block)
+) → LIST(doc_element)
 ```
 
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks` | LIST(doc_block) | Input block sequence |
-| `types` | VARCHAR[] | Block types to exclude |
+| `blocks` | LIST(doc_element) | Input element sequence |
+| `types` | VARCHAR[] | Element types to exclude |
 
 **Returns:** Filtered list with specified types removed.
 
@@ -127,23 +113,23 @@ SELECT doc_blocks_exclude(
 
 ### doc_blocks_merge
 
-Combine two block sequences into one.
+Combine two element sequences into one.
 
 **Signature:**
 ```sql
 doc_blocks_merge(
-    blocks1 LIST(doc_block),
-    blocks2 LIST(doc_block)
-) → LIST(doc_block)
+    blocks1 LIST(doc_element),
+    blocks2 LIST(doc_element)
+) → LIST(doc_element)
 ```
 
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks1` | LIST(doc_block) | First block sequence |
-| `blocks2` | LIST(doc_block) | Second block sequence (appended) |
+| `blocks1` | LIST(doc_element) | First element sequence |
+| `blocks2` | LIST(doc_element) | Second element sequence (appended) |
 
-**Returns:** Combined list with `block_order` values adjusted for continuity.
+**Returns:** Combined list with `element_order` values adjusted for continuity.
 
 **Example:**
 ```sql
@@ -158,25 +144,25 @@ SELECT doc_blocks_merge(
 
 ### doc_blocks_reorder
 
-Renumber block_order values sequentially from 0.
+Renumber element_order values sequentially from 0.
 
 **Signature:**
 ```sql
 doc_blocks_reorder(
-    blocks LIST(doc_block)
-) → LIST(doc_block)
+    blocks LIST(doc_element)
+) → LIST(doc_element)
 ```
 
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks` | LIST(doc_block) | Input block sequence |
+| `blocks` | LIST(doc_element) | Input element sequence |
 
-**Returns:** Blocks with block_order renumbered as 0, 1, 2, ...
+**Returns:** Elements with element_order renumbered as 0, 1, 2, ...
 
 **Example:**
 ```sql
--- Fix gaps in block_order after filtering
+-- Fix gaps in element_order after filtering
 SELECT doc_blocks_reorder(
     doc_blocks_filter(blocks, ['heading', 'paragraph'])
 );
@@ -186,29 +172,29 @@ SELECT doc_blocks_reorder(
 
 ### doc_blocks_slice
 
-Extract a contiguous range of blocks.
+Extract a contiguous range of elements.
 
 **Signature:**
 ```sql
 doc_blocks_slice(
-    blocks LIST(doc_block),
+    blocks LIST(doc_element),
     start_order INTEGER,
     end_order INTEGER
-) → LIST(doc_block)
+) → LIST(doc_element)
 ```
 
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks` | LIST(doc_block) | Input block sequence |
-| `start_order` | INTEGER | Starting block_order (inclusive) |
-| `end_order` | INTEGER | Ending block_order (inclusive) |
+| `blocks` | LIST(doc_element) | Input element sequence |
+| `start_order` | INTEGER | Starting element_order (inclusive) |
+| `end_order` | INTEGER | Ending element_order (inclusive) |
 
-**Returns:** Blocks within the specified range.
+**Returns:** Elements within the specified range.
 
 **Example:**
 ```sql
--- Extract blocks 5 through 10
+-- Extract elements 5 through 10
 SELECT doc_blocks_slice(blocks, 5, 10);
 ```
 
@@ -216,25 +202,25 @@ SELECT doc_blocks_slice(blocks, 5, 10);
 
 ### doc_blocks_transform
 
-Apply transformations to block types and content.
+Apply transformations to element types and content.
 
 **Signature:**
 ```sql
 doc_blocks_transform(
-    blocks LIST(doc_block),
+    blocks LIST(doc_element),
     type_mapping MAP(VARCHAR, VARCHAR),
     content_fn VARCHAR DEFAULT NULL
-) → LIST(doc_block)
+) → LIST(doc_element)
 ```
 
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks` | LIST(doc_block) | Input block sequence |
+| `blocks` | LIST(doc_element) | Input element sequence |
 | `type_mapping` | MAP(VARCHAR, VARCHAR) | Map of old_type → new_type |
 | `content_fn` | VARCHAR | Optional: SQL expression for content transformation |
 
-**Returns:** Blocks with transformed types and optionally transformed content.
+**Returns:** Elements with transformed types and optionally transformed content.
 
 **Example:**
 ```sql
@@ -251,12 +237,12 @@ SELECT doc_blocks_transform(
 
 ### doc_blocks_to_text
 
-Extract plain text content from blocks.
+Extract plain text content from elements.
 
 **Signature:**
 ```sql
 doc_blocks_to_text(
-    blocks LIST(doc_block),
+    blocks LIST(doc_element),
     separator VARCHAR DEFAULT '\n\n'
 ) → VARCHAR
 ```
@@ -264,7 +250,7 @@ doc_blocks_to_text(
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks` | LIST(doc_block) | Input block sequence |
+| `blocks` | LIST(doc_element) | Input element sequence |
 | `separator` | VARCHAR | Text between blocks (default: double newline) |
 
 **Returns:** Concatenated plain text content.
@@ -286,14 +272,14 @@ Extract heading information as a table.
 **Signature:**
 ```sql
 doc_blocks_headings(
-    blocks LIST(doc_block)
-) → TABLE(level INTEGER, title VARCHAR, id VARCHAR, block_order INTEGER)
+    blocks LIST(doc_element)
+) → TABLE(level INTEGER, title VARCHAR, id VARCHAR, element_order INTEGER)
 ```
 
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks` | LIST(doc_block) | Input block sequence |
+| `blocks` | LIST(doc_element) | Input element sequence |
 
 **Returns:** Table of headings with level, title, id attribute, and position.
 
@@ -306,8 +292,8 @@ SELECT * FROM doc_blocks_headings(
 ```
 
 **Output:**
-| level | title | id | block_order |
-|-------|-------|-----|-------------|
+| level | title | id | element_order |
+|-------|-------|-----|---------------|
 | 1 | Introduction | introduction | 0 |
 | 2 | Getting Started | getting-started | 3 |
 | 2 | Examples | examples | 8 |
@@ -321,16 +307,16 @@ Generate a table of contents from headings.
 **Signature:**
 ```sql
 doc_blocks_toc(
-    blocks LIST(doc_block),
+    blocks LIST(doc_element),
     min_level INTEGER DEFAULT 1,
     max_level INTEGER DEFAULT 6
-) → TABLE(level INTEGER, title VARCHAR, id VARCHAR, indent VARCHAR, block_order INTEGER)
+) → TABLE(level INTEGER, title VARCHAR, id VARCHAR, indent VARCHAR, element_order INTEGER)
 ```
 
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks` | LIST(doc_block) | Input block sequence |
+| `blocks` | LIST(doc_element) | Input element sequence |
 | `min_level` | INTEGER | Minimum heading level to include |
 | `max_level` | INTEGER | Maximum heading level to include |
 
@@ -354,14 +340,14 @@ Extract code blocks with metadata.
 **Signature:**
 ```sql
 doc_blocks_code_blocks(
-    blocks LIST(doc_block)
-) → TABLE(language VARCHAR, content VARCHAR, info_string VARCHAR, block_order INTEGER)
+    blocks LIST(doc_element)
+) → TABLE(language VARCHAR, content VARCHAR, info_string VARCHAR, element_order INTEGER)
 ```
 
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks` | LIST(doc_block) | Input block sequence |
+| `blocks` | LIST(doc_element) | Input element sequence |
 
 **Returns:** Table of code blocks with language and content.
 
@@ -382,14 +368,14 @@ Extract links from block content.
 **Signature:**
 ```sql
 doc_blocks_links(
-    blocks LIST(doc_block)
-) → TABLE(text VARCHAR, url VARCHAR, title VARCHAR, block_order INTEGER)
+    blocks LIST(doc_element)
+) → TABLE(text VARCHAR, url VARCHAR, title VARCHAR, element_order INTEGER)
 ```
 
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks` | LIST(doc_block) | Input block sequence |
+| `blocks` | LIST(doc_element) | Input element sequence |
 
 **Returns:** Table of links extracted from text content.
 
@@ -406,29 +392,30 @@ WHERE url LIKE 'http%';
 
 ### doc_blocks_validate
 
-Check blocks for schema compliance.
+Check elements for schema compliance.
 
 **Signature:**
 ```sql
 doc_blocks_validate(
-    blocks LIST(doc_block)
+    blocks LIST(doc_element)
 ) → STRUCT(valid BOOLEAN, errors LIST(VARCHAR))
 ```
 
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks` | LIST(doc_block) | Input block sequence |
+| `blocks` | LIST(doc_element) | Input element sequence |
 
 **Returns:** Struct with validation result and list of errors.
 
 **Validation checks:**
-- block_type is non-empty
+- kind is 'block' or 'inline'
+- element_type is non-empty
 - encoding is valid ('text', 'json', 'yaml', 'html', 'xml')
 - JSON content is valid when encoding='json'
 - YAML content is valid when encoding='yaml'
-- block_order is non-negative
-- level is NULL or non-negative
+- element_order is non-negative
+- level is NULL or non-negative (for blocks), >= 1 (for inlines)
 
 **Example:**
 ```sql
@@ -444,14 +431,14 @@ Check for common issues and best practices.
 **Signature:**
 ```sql
 doc_blocks_lint(
-    blocks LIST(doc_block)
-) → TABLE(severity VARCHAR, message VARCHAR, block_order INTEGER, suggestion VARCHAR)
+    blocks LIST(doc_element)
+) → TABLE(severity VARCHAR, message VARCHAR, element_order INTEGER, suggestion VARCHAR)
 ```
 
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks` | LIST(doc_block) | Input block sequence |
+| `blocks` | LIST(doc_element) | Input element sequence |
 
 **Returns:** Table of issues with severity, message, location, and suggestions.
 
@@ -463,12 +450,12 @@ doc_blocks_lint(
 **Checks performed:**
 | Severity | Issue |
 |----------|-------|
-| error | Duplicate block_order values |
+| error | Duplicate element_order values |
 | warning | Heading level skipped (e.g., h1 → h3) |
 | warning | Empty content in non-hr/non-image blocks |
-| warning | Unknown block_type (not core, not namespaced) |
+| warning | Unknown element_type (not core, not namespaced) |
 | warning | Code block without language |
-| info | Large gaps in block_order |
+| info | Large gaps in element_order |
 
 **Example:**
 ```sql
@@ -481,21 +468,21 @@ WHERE severity IN ('error', 'warning');
 
 ### doc_blocks_stats
 
-Get block type statistics.
+Get element type statistics.
 
 **Signature:**
 ```sql
 doc_blocks_stats(
-    blocks LIST(doc_block)
-) → TABLE(block_type VARCHAR, count INTEGER, avg_content_length DOUBLE, total_content_length BIGINT)
+    blocks LIST(doc_element)
+) → TABLE(element_type VARCHAR, count INTEGER, avg_content_length DOUBLE, total_content_length BIGINT)
 ```
 
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks` | LIST(doc_block) | Input block sequence |
+| `blocks` | LIST(doc_element) | Input element sequence |
 
-**Returns:** Aggregated statistics per block type.
+**Returns:** Aggregated statistics per element type.
 
 **Example:**
 ```sql
@@ -513,7 +500,7 @@ Analyze document structure.
 **Signature:**
 ```sql
 doc_blocks_structure(
-    blocks LIST(doc_block)
+    blocks LIST(doc_element)
 ) → STRUCT(
     block_count INTEGER,
     heading_count INTEGER,
@@ -528,7 +515,7 @@ doc_blocks_structure(
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks` | LIST(doc_block) | Input block sequence |
+| `blocks` | LIST(doc_element) | Input element sequence |
 
 **Returns:** Struct summarizing document structure.
 
@@ -543,23 +530,23 @@ SELECT (doc_blocks_structure(blocks)).*;
 
 ### doc_blocks_set_source
 
-Add or update source_format on all blocks.
+Add or update source_format on all elements.
 
 **Signature:**
 ```sql
 doc_blocks_set_source(
-    blocks LIST(doc_block),
+    blocks LIST(doc_element),
     format VARCHAR
-) → LIST(doc_block_ext)
+) → LIST(doc_element_ext)
 ```
 
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks` | LIST(doc_block) | Input block sequence |
+| `blocks` | LIST(doc_element) | Input element sequence |
 | `format` | VARCHAR | Source format identifier |
 
-**Returns:** Extended blocks with source_format set.
+**Returns:** Extended elements with source_format set.
 
 **Example:**
 ```sql
@@ -574,21 +561,21 @@ SELECT doc_blocks_set_source(
 
 ### doc_blocks_normalize
 
-Convert all blocks to core types only.
+Convert all elements to core types only.
 
 **Signature:**
 ```sql
 doc_blocks_normalize(
-    blocks LIST(doc_block)
-) → LIST(doc_block)
+    blocks LIST(doc_element)
+) → LIST(doc_element)
 ```
 
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks` | LIST(doc_block) | Input block sequence |
+| `blocks` | LIST(doc_element) | Input element sequence |
 
-**Returns:** Blocks with namespaced types converted to nearest core type.
+**Returns:** Elements with namespaced types converted to nearest core type.
 
 **Normalization rules:**
 | Original Type | Normalized Type | Notes |
@@ -617,18 +604,18 @@ Apply custom type mapping.
 **Signature:**
 ```sql
 doc_blocks_map_types(
-    blocks LIST(doc_block),
+    blocks LIST(doc_element),
     mapping MAP(VARCHAR, VARCHAR)
-) → LIST(doc_block)
+) → LIST(doc_element)
 ```
 
 **Parameters:**
 | Name | Type | Description |
 |------|------|-------------|
-| `blocks` | LIST(doc_block) | Input block sequence |
+| `blocks` | LIST(doc_element) | Input element sequence |
 | `mapping` | MAP(VARCHAR, VARCHAR) | Type transformation map |
 
-**Returns:** Blocks with mapped types (unmapped types unchanged).
+**Returns:** Elements with mapped types (unmapped types unchanged).
 
 **Example:**
 ```sql
@@ -649,26 +636,26 @@ SELECT doc_blocks_map_types(
 
 ### doc_blocks_agg
 
-Aggregate rows into a block list (for use with GROUP BY).
+Aggregate rows into an element list (for use with GROUP BY).
 
 **Signature:**
 ```sql
 doc_blocks_agg(
-    block_type VARCHAR,
+    element_type VARCHAR,
     content VARCHAR,
     level INTEGER,
     encoding VARCHAR,
     attributes MAP(VARCHAR, VARCHAR),
-    block_order INTEGER
-) → LIST(doc_block)
+    element_order INTEGER
+) → LIST(doc_element)
 ```
 
 **Example:**
 ```sql
--- Collect blocks by file
+-- Collect elements by file
 SELECT
     file_path,
-    doc_blocks_agg(block_type, content, level, encoding, attributes, block_order) as blocks
+    doc_blocks_agg(element_type, content, level, encoding, attributes, element_order) as blocks
 FROM read_markdown_blocks('docs/**/*.md', include_filepath := true)
 GROUP BY file_path;
 ```
@@ -678,5 +665,5 @@ GROUP BY file_path;
 ## See Also
 
 - [Design Document](design.md) - Architecture and implementation details
-- [Document Block Specification](https://github.com/teaguesterling/duckdb_markdown/blob/main/docs/doc_block_spec.md) - Core block schema
+- [Duck Blocks Specification](duck_blocks_spec.md) - Unified doc_element type schema
 - [DuckDB Markdown Extension](https://github.com/teaguesterling/duckdb_markdown) - Reference implementation

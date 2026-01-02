@@ -1,40 +1,41 @@
 # Duck Block Utils
 
-A DuckDB extension for structured document block manipulation.
+A DuckDB extension for structured document element manipulation.
 
 ## Overview
 
-`duck_block_utils` provides a comprehensive toolkit for working with document blocks in DuckDB. It implements a flat, depth-first tree representation of documents (similar to Pandoc's AST), enabling powerful document manipulation, assembly, and extraction operations directly in SQL.
+`duck_block_utils` provides a comprehensive toolkit for working with document elements in DuckDB. It implements a flat, depth-first tree representation of documents (similar to Pandoc's AST), enabling powerful document manipulation, assembly, and extraction operations directly in SQL.
 
 ## Key Features
 
-- **Structured Document Types**: The `doc_block` struct for document elements and `doc_inline` for rich text formatting
+- **Unified doc_element Type**: A single type for both block and inline elements with `kind` discriminator
 - **Block Builder Functions**: Create headings, paragraphs, code blocks, lists, and more with simple function calls
 - **Inline Builder Functions**: Create links, bold, italic, code spans, and images for cross-format rich text
 - **Assembly Functions**: Combine blocks into documents with automatic ordering and level management
-- **Manipulation Functions**: Filter, merge, slice, and reorder block collections
+- **Manipulation Functions**: Filter, merge, slice, and reorder element collections
 - **Extraction Functions**: Extract text, headings, code blocks, and statistics from documents
 - **Type Functions**: Standard constructors, validators, and accessors for integration with other extensions
 
-## The doc_block Type
+## The Unified doc_element Type
 
-The core data type is a struct with six fields:
+Both block-level and inline elements use the same type, distinguished by the `kind` field:
 
 ```sql
 STRUCT(
-    block_type VARCHAR,                    -- 'heading', 'paragraph', 'code', etc.
-    content VARCHAR,                       -- Primary text content
-    level INTEGER,                         -- Hierarchy level (NULL if N/A)
-    encoding VARCHAR,                      -- 'text', 'json', 'yaml', 'html', 'xml'
-    attributes MAP(VARCHAR, VARCHAR),      -- Type-specific metadata
-    block_order INTEGER                    -- Position in document (0-indexed)
+    kind VARCHAR,                       -- 'block' or 'inline'
+    element_type VARCHAR,               -- 'heading', 'paragraph', 'text', 'link', etc.
+    content VARCHAR,                    -- Primary text content
+    level INTEGER,                      -- Hierarchy level (NULL if N/A)
+    encoding VARCHAR,                   -- 'text', 'json', 'yaml', 'html', 'xml'
+    attributes MAP(VARCHAR, VARCHAR),   -- Type-specific metadata
+    element_order INTEGER               -- Position in document (0-indexed)
 )
 ```
 
-### Supported Block Types
+### Block Types (kind='block')
 
-| Block Type | Description | Level Used | Typical Encoding |
-|------------|-------------|------------|------------------|
+| Type | Description | Level Used | Typical Encoding |
+|------|-------------|------------|------------------|
 | `heading` | Section headings (h1-h6) | Yes (1-6) | text |
 | `paragraph` | Body text | No | text |
 | `code` | Code blocks | No | text |
@@ -46,22 +47,10 @@ STRUCT(
 | `image` | Image references | No | text |
 | `raw` | Raw HTML/XML | No | html/xml |
 
-## The doc_inline Type
+### Inline Types (kind='inline')
 
-For rich text formatting within blocks, the `doc_inline` type represents inline elements:
-
-```sql
-STRUCT(
-    inline_type VARCHAR,                   -- 'text', 'link', 'bold', etc.
-    content VARCHAR,                       -- Text content or alt text
-    attributes MAP(VARCHAR, VARCHAR)       -- Type-specific attributes
-)
-```
-
-### Supported Inline Types
-
-| Inline Type | Description | Attributes |
-|-------------|-------------|------------|
+| Type | Description | Attributes |
+|------|-------------|------------|
 | `text` | Plain text | none |
 | `link` | Hyperlink | `href`, `title` |
 | `image` | Inline image | `src`, `alt`, `title` |
@@ -97,6 +86,13 @@ SELECT doc_blocks_to_text([
     doc_heading('Title', 1),
     doc_paragraph('Hello world')
 ]);
+
+-- Create rich text with inline elements
+SELECT [
+    doc_text('Click '),
+    doc_link('here', 'https://example.com'),
+    doc_text(' to learn more.')
+];
 ```
 
 ## Documentation

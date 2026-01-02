@@ -9,49 +9,50 @@ static Value CreateAttributesMap(const vector<Value> &keys, const vector<Value> 
 	return Value::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR, keys, values);
 }
 
-// Helper to create a block Value with updated block_order
-static Value CreateBlockWithOrder(const Value &block, int32_t new_order) {
-	auto children = StructValue::GetChildren(block);
-	children[BlockTypes::BLOCK_ORDER_IDX] = Value(new_order);
-	return Value::STRUCT(BlockTypes::DocBlockType(), std::move(children));
+// Helper to create an element Value with updated element_order
+static Value CreateElementWithOrder(const Value &element, int32_t new_order) {
+	auto children = StructValue::GetChildren(element);
+	children[BlockTypes::ELEMENT_ORDER_IDX] = Value(new_order);
+	return Value::STRUCT(BlockTypes::DocElementType(), std::move(children));
 }
 
 // Helper to create a heading block
-static Value CreateHeadingBlock(const string &title, int32_t level, int32_t block_order) {
+static Value CreateHeadingBlock(const string &title, int32_t level, int32_t element_order) {
 	child_list_t<Value> struct_values;
-	struct_values.push_back(make_pair("block_type", Value(BlockTypes::TYPE_HEADING)));
+	struct_values.push_back(make_pair("kind", Value(BlockTypes::KIND_BLOCK)));
+	struct_values.push_back(make_pair("element_type", Value(BlockTypes::TYPE_HEADING)));
 	struct_values.push_back(make_pair("content", Value(title)));
 	struct_values.push_back(make_pair("level", Value(level)));
 	struct_values.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_TEXT)));
 	struct_values.push_back(make_pair("attributes", CreateAttributesMap({}, {})));
-	struct_values.push_back(make_pair("block_order", Value(block_order)));
+	struct_values.push_back(make_pair("element_order", Value(element_order)));
 
 	return Value::STRUCT(std::move(struct_values));
 }
 
-// Helper to get the level from a block (returns -1 if NULL or not applicable)
-static int32_t GetBlockLevel(const Value &block) {
-	auto &children = StructValue::GetChildren(block);
+// Helper to get the level from an element (returns -1 if NULL or not applicable)
+static int32_t GetElementLevel(const Value &element) {
+	auto &children = StructValue::GetChildren(element);
 	if (children[BlockTypes::LEVEL_IDX].IsNull()) {
 		return -1;
 	}
 	return children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
 }
 
-// Helper to get block_type from a block
-static string GetBlockType(const Value &block) {
-	auto &children = StructValue::GetChildren(block);
-	if (children[BlockTypes::BLOCK_TYPE_IDX].IsNull()) {
+// Helper to get element_type from an element
+static string GetElementType(const Value &element) {
+	auto &children = StructValue::GetChildren(element);
+	if (children[BlockTypes::ELEMENT_TYPE_IDX].IsNull()) {
 		return "";
 	}
-	return children[BlockTypes::BLOCK_TYPE_IDX].GetValue<string>();
+	return children[BlockTypes::ELEMENT_TYPE_IDX].GetValue<string>();
 }
 
-// Helper to create a block with adjusted level
-static Value CreateBlockWithLevel(const Value &block, int32_t new_level) {
-	auto children = StructValue::GetChildren(block);
+// Helper to create an element with adjusted level
+static Value CreateElementWithLevel(const Value &element, int32_t new_level) {
+	auto children = StructValue::GetChildren(element);
 	children[BlockTypes::LEVEL_IDX] = Value(new_level);
-	return Value::STRUCT(BlockTypes::DocBlockType(), std::move(children));
+	return Value::STRUCT(BlockTypes::DocElementType(), std::move(children));
 }
 
 void AssemblyFunctions::DocAssembleFun(DataChunk &args, ExpressionState &state, Vector &result) {
@@ -64,22 +65,22 @@ void AssemblyFunctions::DocAssembleFun(DataChunk &args, ExpressionState &state, 
 
 		// Handle NULL input
 		if (blocks_val.IsNull()) {
-			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DocBlockType())));
+			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DocElementType())));
 			continue;
 		}
 
 		auto &blocks_list = ListValue::GetChildren(blocks_val);
 
-		// Assign sequential block_order values
+		// Assign sequential element_order values
 		vector<Value> assembled;
 		int32_t order = 0;
 		for (auto &block : blocks_list) {
 			if (!block.IsNull()) {
-				assembled.push_back(CreateBlockWithOrder(block, order++));
+				assembled.push_back(CreateElementWithOrder(block, order++));
 			}
 		}
 
-		result.SetValue(i, Value::LIST(BlockTypes::DocBlockType(), std::move(assembled)));
+		result.SetValue(i, Value::LIST(BlockTypes::DocElementType(), std::move(assembled)));
 	}
 }
 
@@ -109,12 +110,12 @@ void AssemblyFunctions::DocSectionFun(DataChunk &args, ExpressionState &state, V
 			int32_t order = 1;
 			for (auto &child : children_list) {
 				if (!child.IsNull()) {
-					section_blocks.push_back(CreateBlockWithOrder(child, order++));
+					section_blocks.push_back(CreateElementWithOrder(child, order++));
 				}
 			}
 		}
 
-		result.SetValue(i, Value::LIST(BlockTypes::DocBlockType(), std::move(section_blocks)));
+		result.SetValue(i, Value::LIST(BlockTypes::DocElementType(), std::move(section_blocks)));
 	}
 }
 
@@ -130,7 +131,7 @@ void AssemblyFunctions::DocRebaseLevelsFun(DataChunk &args, ExpressionState &sta
 
 		// Handle NULL input
 		if (blocks_val.IsNull()) {
-			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DocBlockType())));
+			result.SetValue(i, Value(LogicalType::LIST(BlockTypes::DocElementType())));
 			continue;
 		}
 
@@ -143,22 +144,22 @@ void AssemblyFunctions::DocRebaseLevelsFun(DataChunk &args, ExpressionState &sta
 				continue;
 			}
 
-			auto block_type = GetBlockType(block);
-			auto level = GetBlockLevel(block);
+			auto element_type = GetElementType(block);
+			auto level = GetElementLevel(block);
 
 			// Only adjust level for headings (and other blocks that have levels)
-			if (block_type == BlockTypes::TYPE_HEADING && level > 0) {
+			if (element_type == BlockTypes::TYPE_HEADING && level > 0) {
 				int32_t new_level = level + offset;
 				// Clamp to valid heading levels (1-6)
 				if (new_level < 1) new_level = 1;
 				if (new_level > 6) new_level = 6;
-				rebased.push_back(CreateBlockWithLevel(block, new_level));
+				rebased.push_back(CreateElementWithLevel(block, new_level));
 			} else {
 				rebased.push_back(block);
 			}
 		}
 
-		result.SetValue(i, Value::LIST(BlockTypes::DocBlockType(), std::move(rebased)));
+		result.SetValue(i, Value::LIST(BlockTypes::DocElementType(), std::move(rebased)));
 	}
 }
 
@@ -184,7 +185,7 @@ void AssemblyFunctions::DocConcatFun(DataChunk &args, ExpressionState &state, Ve
 			}
 		}
 
-		// Add second list (no block_order adjustment, unlike merge)
+		// Add second list (no element_order adjustment, unlike merge)
 		if (!blocks2_val.IsNull()) {
 			auto &blocks2_list = ListValue::GetChildren(blocks2_val);
 			for (auto &block : blocks2_list) {
@@ -194,19 +195,19 @@ void AssemblyFunctions::DocConcatFun(DataChunk &args, ExpressionState &state, Ve
 			}
 		}
 
-		result.SetValue(i, Value::LIST(BlockTypes::DocBlockType(), std::move(concatenated)));
+		result.SetValue(i, Value::LIST(BlockTypes::DocElementType(), std::move(concatenated)));
 	}
 }
 
 void AssemblyFunctions::Register(ExtensionLoader &loader) {
-	auto doc_block_type = BlockTypes::DocBlockType();
-	auto doc_block_list_type = BlockTypes::DocBlockListType();
+	auto doc_element_type = BlockTypes::DocElementType();
+	auto doc_element_list_type = BlockTypes::DocElementListType();
 
-	// doc_assemble(blocks LIST(doc_block)) -> LIST(doc_block)
+	// doc_assemble(blocks LIST(doc_element)) -> LIST(doc_element)
 	auto assemble_func = ScalarFunction(
 	    "doc_assemble",
-	    {doc_block_list_type},
-	    doc_block_list_type,
+	    {doc_element_list_type},
+	    doc_element_list_type,
 	    DocAssembleFun
 	);
 	loader.RegisterFunction(assemble_func);
@@ -214,27 +215,27 @@ void AssemblyFunctions::Register(ExtensionLoader &loader) {
 	// Also register as doc_document (alias for clarity in document construction)
 	auto document_func = ScalarFunction(
 	    "doc_document",
-	    {doc_block_list_type},
-	    doc_block_list_type,
+	    {doc_element_list_type},
+	    doc_element_list_type,
 	    DocAssembleFun
 	);
 	loader.RegisterFunction(document_func);
 
-	// doc_section(title VARCHAR, level INTEGER, children LIST(doc_block)) -> LIST(doc_block)
+	// doc_section(title VARCHAR, level INTEGER, children LIST(doc_element)) -> LIST(doc_element)
 	auto section_func = ScalarFunction(
 	    "doc_section",
-	    {LogicalType::VARCHAR, LogicalType::INTEGER, doc_block_list_type},
-	    doc_block_list_type,
+	    {LogicalType::VARCHAR, LogicalType::INTEGER, doc_element_list_type},
+	    doc_element_list_type,
 	    DocSectionFun
 	);
 	loader.RegisterFunction(section_func);
 
-	// Two-arg version: doc_section(title VARCHAR, level INTEGER) -> LIST(doc_block)
+	// Two-arg version: doc_section(title VARCHAR, level INTEGER) -> LIST(doc_element)
 	// Creates a section with just a heading (no children)
 	auto section_func_2 = ScalarFunction(
 	    "doc_section",
 	    {LogicalType::VARCHAR, LogicalType::INTEGER},
-	    doc_block_list_type,
+	    doc_element_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &title_vec = args.data[0];
 		    auto &level_vec = args.data[1];
@@ -250,26 +251,26 @@ void AssemblyFunctions::Register(ExtensionLoader &loader) {
 			    vector<Value> section_blocks;
 			    section_blocks.push_back(CreateHeadingBlock(title_str, level_val, 0));
 
-			    result.SetValue(i, Value::LIST(BlockTypes::DocBlockType(), std::move(section_blocks)));
+			    result.SetValue(i, Value::LIST(BlockTypes::DocElementType(), std::move(section_blocks)));
 		    }
 	    }
 	);
 	loader.RegisterFunction(section_func_2);
 
-	// doc_rebase_levels(blocks LIST(doc_block), offset INTEGER) -> LIST(doc_block)
+	// doc_rebase_levels(blocks LIST(doc_element), offset INTEGER) -> LIST(doc_element)
 	auto rebase_func = ScalarFunction(
 	    "doc_rebase_levels",
-	    {doc_block_list_type, LogicalType::INTEGER},
-	    doc_block_list_type,
+	    {doc_element_list_type, LogicalType::INTEGER},
+	    doc_element_list_type,
 	    DocRebaseLevelsFun
 	);
 	loader.RegisterFunction(rebase_func);
 
-	// doc_concat(blocks1 LIST(doc_block), blocks2 LIST(doc_block)) -> LIST(doc_block)
+	// doc_concat(blocks1 LIST(doc_element), blocks2 LIST(doc_element)) -> LIST(doc_element)
 	auto concat_func = ScalarFunction(
 	    "doc_concat",
-	    {doc_block_list_type, doc_block_list_type},
-	    doc_block_list_type,
+	    {doc_element_list_type, doc_element_list_type},
+	    doc_element_list_type,
 	    DocConcatFun
 	);
 	loader.RegisterFunction(concat_func);

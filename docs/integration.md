@@ -6,19 +6,21 @@ How to integrate `duck_block_utils` with other DuckDB extensions and external sy
 
 ### Standard Type Interface
 
-The extension provides a standard interface for working with `doc_block` values:
+The extension provides a standard interface for working with `doc_element` values:
 
 | Function | Purpose |
 |----------|---------|
-| `duck_block(...)` | Create a block from components |
-| `to_duck_block(struct)` | Convert compatible struct to doc_block |
-| `duck_block_valid(block)` | Validate a block |
-| `duck_block_type(block)` | Extract block_type field |
-| `duck_block_content(block)` | Extract content field |
-| `duck_block_level(block)` | Extract level field |
-| `duck_block_attr(block, key)` | Extract attribute value |
+| `duck_block(...)` | Create a block element from components |
+| `duck_inline(...)` | Create an inline element from components |
+| `to_doc_element(struct)` | Convert compatible struct to doc_element |
+| `doc_element_valid(elem)` | Validate an element |
+| `doc_element_kind(elem)` | Extract kind field ('block' or 'inline') |
+| `doc_element_type(elem)` | Extract element_type field |
+| `doc_element_content(elem)` | Extract content field |
+| `doc_element_level(elem)` | Extract level field |
+| `doc_element_attr(elem, key)` | Extract attribute value |
 
-### Creating Blocks from Your Extension
+### Creating Elements from Your Extension
 
 If your extension produces document content, use the constructors:
 
@@ -28,12 +30,13 @@ If your extension produces document content, use the constructors:
 
 Value CreateHeadingBlock(const string& title, int level) {
     child_list_t<Value> values;
-    values.push_back(make_pair("block_type", Value("heading")));
+    values.push_back(make_pair("kind", Value("block")));
+    values.push_back(make_pair("element_type", Value("heading")));
     values.push_back(make_pair("content", Value(title)));
     values.push_back(make_pair("level", Value(level)));
     values.push_back(make_pair("encoding", Value("text")));
     values.push_back(make_pair("attributes", Value::MAP(...)));
-    values.push_back(make_pair("block_order", Value(0)));
+    values.push_back(make_pair("element_order", Value(0)));
     return Value::STRUCT(std::move(values));
 }
 ```
@@ -44,18 +47,23 @@ Or use SQL:
 -- Create blocks using the constructor
 SELECT duck_block('heading', my_title, my_level, 'text', MAP{}, 0)
 FROM my_table;
+
+-- Create inline elements
+SELECT duck_inline('link', my_text, 1, 'text', MAP{'href': my_url}, 0)
+FROM my_table;
 ```
 
-### Consuming Blocks in Your Extension
+### Consuming Elements in Your Extension
 
-Read block fields using the accessors:
+Read element fields using the accessors:
 
 ```sql
 SELECT
-    duck_block_type(block) as type,
-    duck_block_content(block) as content,
-    duck_block_level(block) as level
-FROM UNNEST(my_blocks) AS t(block);
+    doc_element_kind(elem) as kind,
+    doc_element_type(elem) as type,
+    doc_element_content(elem) as content,
+    doc_element_level(elem) as level
+FROM UNNEST(my_elements) AS t(elem);
 ```
 
 ## Working with Markdown Extensions
@@ -67,27 +75,27 @@ If using a Markdown parsing extension, convert parsed blocks:
 ```sql
 -- Assuming markdown extension returns similar struct
 SELECT doc_assemble(list(
-    to_duck_block(parsed_block)
+    to_doc_element(parsed_block)
 ))
 FROM markdown_parse(my_markdown_text);
 ```
 
 ### Exporting to Markdown
 
-Convert blocks to a format suitable for Markdown rendering:
+Convert elements to a format suitable for Markdown rendering:
 
 ```sql
 SELECT
-    CASE block_type
+    CASE element_type
         WHEN 'heading' THEN repeat('#', level) || ' ' || content
         WHEN 'paragraph' THEN content
-        WHEN 'code' THEN '```' || COALESCE(duck_block_attr(block, 'language'), '') || E'\n' || content || E'\n```'
+        WHEN 'code' THEN '```' || COALESCE(doc_element_attr(elem, 'language'), '') || E'\n' || content || E'\n```'
         WHEN 'hr' THEN '---'
         WHEN 'blockquote' THEN '> ' || content
         ELSE content
     END as markdown_line
-FROM UNNEST(my_blocks) AS t(block)
-ORDER BY block_order;
+FROM UNNEST(my_blocks) AS t(elem)
+ORDER BY element_order;
 ```
 
 ## JSON Import/Export
@@ -96,11 +104,12 @@ ORDER BY block_order;
 
 ```sql
 SELECT json_group_array(json_object(
-    'type', block_type,
+    'kind', kind,
+    'type', element_type,
     'content', content,
     'level', level,
     'encoding', encoding,
-    'order', block_order
+    'order', element_order
 ))
 FROM UNNEST(my_blocks);
 ```
@@ -127,13 +136,13 @@ FROM parsed;
 
 ## Pandoc AST Integration
 
-The `doc_block` structure is designed to be compatible with Pandoc's AST. Here's how to map between them:
+The `doc_element` structure is designed to be compatible with Pandoc's AST. Here's how to map between them:
 
-### Pandoc Block Types to doc_block
+### Pandoc Block Types to doc_element
 
-| Pandoc Type | doc_block type | Notes |
-|-------------|----------------|-------|
-| Header | heading | Level in first element |
+| Pandoc Type | element_type | Notes |
+|-------------|--------------|-------|
+| Header | heading | Level in level field |
 | Para | paragraph | |
 | CodeBlock | code | Language in attributes |
 | BlockQuote | blockquote | |
@@ -171,31 +180,32 @@ FROM json_each(pandoc_ast->'blocks') AS block;
 ### Normalized Storage
 
 ```sql
--- Store blocks in a normalized table
-CREATE TABLE document_blocks (
+-- Store elements in a normalized table
+CREATE TABLE document_elements (
     doc_id INTEGER REFERENCES documents(id),
-    block_order INTEGER,
-    block_type VARCHAR NOT NULL,
+    element_order INTEGER,
+    kind VARCHAR NOT NULL,
+    element_type VARCHAR NOT NULL,
     content VARCHAR,
     level INTEGER,
     encoding VARCHAR DEFAULT 'text',
     attributes JSON,
-    PRIMARY KEY (doc_id, block_order)
+    PRIMARY KEY (doc_id, element_order)
 );
 
 -- Reconstruct document
 SELECT doc_assemble(list(
     duck_block(
-        block_type,
+        element_type,
         content,
         level,
         encoding,
         json_to_map(attributes),
-        block_order
+        element_order
     )
-    ORDER BY block_order
+    ORDER BY element_order
 ))
-FROM document_blocks
+FROM document_elements
 WHERE doc_id = ?;
 ```
 
@@ -207,12 +217,13 @@ CREATE TABLE documents (
     id INTEGER PRIMARY KEY,
     title VARCHAR,
     blocks LIST(STRUCT(
-        block_type VARCHAR,
+        kind VARCHAR,
+        element_type VARCHAR,
         content VARCHAR,
         level INTEGER,
         encoding VARCHAR,
         attributes MAP(VARCHAR, VARCHAR),
-        block_order INTEGER
+        element_order INTEGER
     )),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -226,26 +237,26 @@ CREATE TABLE document_events (
     event_id INTEGER PRIMARY KEY,
     doc_id INTEGER,
     event_type VARCHAR,  -- 'insert', 'update', 'delete'
-    block_order INTEGER,
-    block_data JSON,
+    element_order INTEGER,
+    element_data JSON,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Reconstruct document from events
-WITH current_blocks AS (
-    SELECT DISTINCT ON (block_order)
-        block_order,
-        block_data
+WITH current_elements AS (
+    SELECT DISTINCT ON (element_order)
+        element_order,
+        element_data
     FROM document_events
     WHERE doc_id = ?
         AND event_type != 'delete'
-    ORDER BY block_order, timestamp DESC
+    ORDER BY element_order, timestamp DESC
 )
 SELECT doc_assemble(list(
-    to_duck_block(json_to_struct(block_data))
-    ORDER BY block_order
+    to_doc_element(json_to_struct(element_data))
+    ORDER BY element_order
 ))
-FROM current_blocks;
+FROM current_elements;
 ```
 
 ## REST API Integration
@@ -258,7 +269,8 @@ SELECT json_object(
     'title', title,
     'blocks', (
         SELECT json_group_array(json_object(
-            'type', block_type,
+            'kind', kind,
+            'type', element_type,
             'content', content,
             'level', level,
             'attributes', attributes
@@ -282,9 +294,9 @@ WHERE id = ?;
 ```sql
 -- Create a validation function for use in triggers or checks
 CREATE MACRO validate_document(blocks) AS (
-    (SELECT bool_and(duck_block_valid(block)) FROM UNNEST(blocks) AS t(block))
+    (SELECT bool_and(doc_element_valid(block)) FROM UNNEST(blocks) AS t(block))
     AND len(blocks) > 0
-    AND (SELECT COUNT(*) FROM UNNEST(blocks) WHERE block_type = 'heading' AND level = 1) <= 1
+    AND (SELECT COUNT(*) FROM UNNEST(blocks) WHERE element_type = 'heading' AND level = 1) <= 1
 );
 
 -- Use in a check constraint
