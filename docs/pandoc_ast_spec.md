@@ -246,7 +246,7 @@ Metadata values have their own type system:
 
 ### pandoc_ast_to_blocks
 
-Convert Pandoc JSON AST to doc_elements.
+Convert Pandoc JSON AST to duck_blocks.
 
 **Signature:**
 ```sql
@@ -254,7 +254,7 @@ pandoc_ast_to_blocks(
     ast JSON,
     inline_mode VARCHAR DEFAULT 'text',    -- 'text', 'markdown', 'json'
     flatten_nested BOOLEAN DEFAULT true     -- Flatten nested structures
-) → LIST(doc_element)
+) → LIST(duck_block)
 ```
 
 **Parameters:**
@@ -281,12 +281,12 @@ SELECT unnest(pandoc_ast_to_blocks(
 
 ### pandoc_blocks_to_ast
 
-Convert doc_elements to Pandoc JSON AST.
+Convert duck_blocks to Pandoc JSON AST.
 
 **Signature:**
 ```sql
 pandoc_blocks_to_ast(
-    blocks LIST(doc_element),
+    blocks LIST(duck_block),
     meta JSON DEFAULT '{}',
     api_version INTEGER[] DEFAULT [1, 23, 1]
 ) → JSON
@@ -334,13 +334,13 @@ SELECT pandoc_inlines_to_text(
 -- Returns: 'Hello **world**'
 ```
 
-### pandoc_text_to_inlines
+### pandb_text_to_inlines
 
 Convert text (with optional markup) to Pandoc inlines.
 
 **Signature:**
 ```sql
-pandoc_text_to_inlines(
+pandb_text_to_inlines(
     text VARCHAR,
     parse_markdown BOOLEAN DEFAULT true
 ) → JSON
@@ -354,7 +354,7 @@ pandoc_text_to_inlines(
 
 **Example:**
 ```sql
-SELECT pandoc_text_to_inlines('Hello **world**', true);
+SELECT pandb_text_to_inlines('Hello **world**', true);
 -- Returns: [{"t":"Str","c":"Hello"},{"t":"Space"},{"t":"Strong","c":[{"t":"Str","c":"world"}]}]
 ```
 
@@ -391,7 +391,7 @@ SELECT pandoc_yaml_to_meta('title: My Doc\nauthor: Jane');
 
 ## Block Type Mapping
 
-### Pandoc → doc_element
+### Pandoc → duck_block
 
 | Pandoc Type | element_type | level | encoding | Notes |
 |-------------|----------------|-------|----------|-------|
@@ -411,7 +411,7 @@ SELECT pandoc_yaml_to_meta('title: My Doc\nauthor: Jane');
 | `Figure` | `pandoc:figure` | NULL | json | Pandoc 3.0+ |
 | `Null` | (skipped) | - | - | Empty block |
 
-### doc_element → Pandoc
+### duck_block → Pandoc
 
 | element_type | Pandoc Type | Notes |
 |----------------|-------------|-------|

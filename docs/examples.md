@@ -8,10 +8,10 @@ Practical examples and common patterns for using `duck_block_utils`.
 
 ```sql
 -- Create documentation for each table
-SELECT doc_assemble([
-    doc_heading(table_name, 2),
-    doc_paragraph('Columns: ' || column_count::VARCHAR),
-    doc_code(
+SELECT db_assemble([
+    db_heading(table_name, 2),
+    db_paragraph('Columns: ' || column_count::VARCHAR),
+    db_code(
         'SELECT * FROM ' || table_name || ' LIMIT 10;',
         'sql'
     )
@@ -33,13 +33,13 @@ WITH endpoints AS (
     UNION ALL
     SELECT 'GET /users/:id', 'Get user by ID'
 )
-SELECT doc_assemble(list(block ORDER BY ord))
+SELECT db_assemble(list(block ORDER BY ord))
 FROM (
-    SELECT 1 as ord, doc_heading('API Reference', 1) as block
+    SELECT 1 as ord, db_heading('API Reference', 1) as block
     UNION ALL
     SELECT
         row_number() OVER () + 1,
-        doc_section(endpoint, 3, [doc_paragraph(description)])
+        db_section(endpoint, 3, [db_paragraph(description)])
     FROM endpoints
 );
 ```
@@ -57,10 +57,10 @@ WITH chapters AS (
     UNION ALL
     SELECT 3, blocks FROM chapter3
 )
-SELECT doc_assemble(
+SELECT db_assemble(
     list(
-        doc_concat(
-            doc_section('Chapter ' || chapter_num::VARCHAR, 1, []),
+        db_concat(
+            db_section('Chapter ' || chapter_num::VARCHAR, 1, []),
             content
         )
     )
@@ -73,14 +73,14 @@ ORDER BY chapter_num;
 
 ```sql
 -- Main document with embedded subdocuments
-SELECT doc_assemble(doc_concat(
+SELECT db_assemble(db_concat(
     [
-        doc_heading('Main Report', 1),
-        doc_paragraph('This report contains multiple sections.')
+        db_heading('Main Report', 1),
+        db_paragraph('This report contains multiple sections.')
     ],
-    doc_concat(
-        doc_rebase_levels(section1_blocks, 1),  -- h1→h2, h2→h3
-        doc_rebase_levels(section2_blocks, 1)
+    db_concat(
+        db_rebase_levels(section1_blocks, 1),  -- h1→h2, h2→h3
+        db_rebase_levels(section2_blocks, 1)
     )
 ));
 ```
@@ -92,7 +92,7 @@ SELECT doc_assemble(doc_concat(
 ```sql
 SELECT
     repeat('  ', level - 1) || '- ' || title as toc_line
-FROM UNNEST(doc_blocks_headings(my_doc)) AS t(level, title, id, element_order)
+FROM UNNEST(db_blocks_headings(my_doc)) AS t(level, title, id, element_order)
 ORDER BY element_order;
 ```
 
@@ -103,7 +103,7 @@ SELECT
     language,
     content,
     element_order
-FROM UNNEST(doc_blocks_code_blocks(my_doc))
+FROM UNNEST(db_blocks_code_blocks(my_doc))
 WHERE language = 'python';
 ```
 
@@ -115,7 +115,7 @@ SELECT
     count,
     round(avg_content_length, 1) as avg_length,
     total_content_length
-FROM UNNEST(doc_blocks_stats(my_doc))
+FROM UNNEST(db_blocks_stats(my_doc))
 ORDER BY count DESC;
 ```
 
@@ -124,7 +124,7 @@ ORDER BY count DESC;
 ```sql
 SELECT
     array_length(
-        string_split(doc_blocks_to_text(my_doc), ' ')
+        string_split(db_blocks_to_text(my_doc), ' ')
     ) as word_count;
 ```
 
@@ -133,7 +133,7 @@ SELECT
 ### Remove Empty Paragraphs
 
 ```sql
-SELECT doc_blocks_reorder(
+SELECT db_blocks_reorder(
     list_filter(
         my_doc,
         block -> NOT (
@@ -147,13 +147,13 @@ SELECT doc_blocks_reorder(
 ### Extract Only Text Content
 
 ```sql
-SELECT doc_blocks_filter(my_doc, ['heading', 'paragraph', 'blockquote']);
+SELECT db_blocks_filter(my_doc, ['heading', 'paragraph', 'blockquote']);
 ```
 
 ### Remove Metadata and Horizontal Rules
 
 ```sql
-SELECT doc_blocks_exclude(my_doc, ['metadata', 'hr', 'raw']);
+SELECT db_blocks_exclude(my_doc, ['metadata', 'hr', 'raw']);
 ```
 
 ### Update All Code Block Languages
@@ -163,7 +163,7 @@ SELECT list_transform(
     my_doc,
     block -> CASE
         WHEN block.element_type = 'code'
-        THEN doc_element_set_content(block, '# Python\n' || block.content)
+        THEN duck_block_set_content(block, '# Python\n' || block.content)
         ELSE block
     END
 );
@@ -178,7 +178,7 @@ SELECT id, title
 FROM documents
 WHERE EXISTS (
     SELECT 1
-    FROM UNNEST(doc_blocks_headings(blocks)) AS h
+    FROM UNNEST(db_blocks_headings(blocks)) AS h
     WHERE h.title ILIKE '%introduction%'
 );
 ```
@@ -190,7 +190,7 @@ SELECT id, title
 FROM documents
 WHERE EXISTS (
     SELECT 1
-    FROM UNNEST(doc_blocks_code_blocks(blocks)) AS c
+    FROM UNNEST(db_blocks_code_blocks(blocks)) AS c
     WHERE c.language = 'python'
 );
 ```
@@ -201,7 +201,7 @@ WHERE EXISTS (
 SELECT
     id,
     title,
-    len(doc_blocks_headings(blocks)) as heading_count
+    len(db_blocks_headings(blocks)) as heading_count
 FROM documents
 ORDER BY heading_count DESC;
 ```
@@ -216,15 +216,15 @@ WITH sales_data AS (
     FROM sales
     GROUP BY region
 )
-SELECT doc_assemble([
-    doc_heading('Sales Report', 1),
-    doc_metadata('generated: ' || current_date::VARCHAR),
-    doc_heading('Summary', 2),
-    doc_paragraph('Total regions: ' || COUNT(*)::VARCHAR),
-    doc_heading('By Region', 2)
+SELECT db_assemble([
+    db_heading('Sales Report', 1),
+    db_metadata('generated: ' || current_date::VARCHAR),
+    db_heading('Summary', 2),
+    db_paragraph('Total regions: ' || COUNT(*)::VARCHAR),
+    db_heading('By Region', 2)
 ] || list(
-    doc_section(region, 3, [
-        doc_paragraph('Total: $' || total::VARCHAR)
+    db_section(region, 3, [
+        db_paragraph('Total: $' || total::VARCHAR)
     ])
 ))
 FROM sales_data;
@@ -233,12 +233,12 @@ FROM sales_data;
 ### Convert Table to Document
 
 ```sql
-SELECT doc_assemble([
-    doc_heading('User Directory', 1)
+SELECT db_assemble([
+    db_heading('User Directory', 1)
 ] || list(
-    doc_section(name, 2, [
-        doc_paragraph('Email: ' || email),
-        doc_paragraph('Role: ' || role)
+    db_section(name, 2, [
+        db_paragraph('Email: ' || email),
+        db_paragraph('Role: ' || role)
     ])
     ORDER BY name
 ))
@@ -252,11 +252,11 @@ FROM users;
 ```sql
 -- Create a paragraph with formatted inline content
 SELECT [
-    doc_text('Visit '),
-    doc_link('our website', 'https://example.com'),
-    doc_text(' or email '),
-    doc_link('support@example.com', 'mailto:support@example.com'),
-    doc_text('.')
+    db_text('Visit '),
+    db_link('our website', 'https://example.com'),
+    db_text(' or email '),
+    db_link('support@example.com', 'mailto:support@example.com'),
+    db_text('.')
 ];
 ```
 
@@ -264,8 +264,8 @@ SELECT [
 
 ```sql
 SELECT [
-    doc_link(
-        doc_inline_image(
+    db_link(
+        db_inline_image(
             'https://github.com/' || repo || '/actions/workflows/ci.yml/badge.svg',
             'CI Status'
         ).content,
@@ -285,7 +285,7 @@ SELECT
     element_type,
     level,
     content
-FROM UNNEST(doc_assemble(my_blocks))
+FROM UNNEST(db_assemble(my_blocks))
 ORDER BY element_order;
 ```
 
@@ -293,14 +293,14 @@ ORDER BY element_order;
 
 ```sql
 -- Assuming JSON with {type, text, heading_level} structure
-SELECT doc_assemble(list(
+SELECT db_assemble(list(
     CASE json_data->>'type'
-        WHEN 'heading' THEN doc_heading(
+        WHEN 'heading' THEN db_heading(
             json_data->>'text',
             (json_data->>'heading_level')::INTEGER
         )
-        WHEN 'paragraph' THEN doc_paragraph(json_data->>'text')
-        WHEN 'code' THEN doc_code(
+        WHEN 'paragraph' THEN db_paragraph(json_data->>'text')
+        WHEN 'code' THEN db_code(
             json_data->>'text',
             json_data->>'language'
         )
@@ -316,7 +316,7 @@ INSERT INTO documents (id, title, blocks)
 SELECT id, title, blocks
 FROM new_documents
 WHERE (
-    SELECT bool_and(doc_element_valid(block))
+    SELECT bool_and(duck_block_valid(block))
     FROM UNNEST(blocks) AS t(block)
 );
 ```
@@ -331,7 +331,7 @@ SELECT
     doc_id,
     h.*
 FROM documents,
-LATERAL UNNEST(doc_blocks_headings(blocks)) AS h;
+LATERAL UNNEST(db_blocks_headings(blocks)) AS h;
 
 -- Query headings efficiently
 SELECT * FROM document_headings WHERE doc_id = 123;
@@ -342,5 +342,5 @@ SELECT * FROM document_headings WHERE doc_id = 123;
 ```sql
 -- Add computed columns for common queries
 ALTER TABLE documents ADD COLUMN heading_count INTEGER;
-UPDATE documents SET heading_count = len(doc_blocks_headings(blocks));
+UPDATE documents SET heading_count = len(db_blocks_headings(blocks));
 ```

@@ -1,8 +1,8 @@
 # Type Functions
 
-Standard type functions for the `doc_element` type, designed for integration with other DuckDB extensions.
+Standard type functions for the `duck_block` type, designed for integration with other DuckDB extensions.
 
-## The Unified doc_element Type
+## The Unified duck_block Type
 
 Both block-level and inline elements use the same type, distinguished by the `kind` field:
 
@@ -22,7 +22,7 @@ STRUCT(
 
 ### duck_block (Full Constructor)
 
-Creates a `doc_element` with kind='block' and all fields specified.
+Creates a `duck_block` with kind='block' and all fields specified.
 
 ```sql
 duck_block(
@@ -32,7 +32,7 @@ duck_block(
     encoding VARCHAR,
     attributes MAP(VARCHAR, VARCHAR),
     element_order INTEGER
-) → doc_element
+) → duck_block
 ```
 
 **Example:**
@@ -50,10 +50,10 @@ SELECT duck_block(
 
 ### duck_block (Simple Constructor)
 
-Creates a `doc_element` with kind='block' and minimal fields, using defaults for the rest.
+Creates a `duck_block` with kind='block' and minimal fields, using defaults for the rest.
 
 ```sql
-duck_block(element_type VARCHAR, content VARCHAR) → doc_element
+duck_block(element_type VARCHAR, content VARCHAR) → duck_block
 ```
 
 **Defaults:**
@@ -70,7 +70,7 @@ SELECT duck_block('paragraph', 'Hello world');
 
 ### duck_inline (Full Constructor)
 
-Creates a `doc_element` with kind='inline' and all fields specified.
+Creates a `duck_block` with kind='inline' and all fields specified.
 
 ```sql
 duck_inline(
@@ -80,7 +80,7 @@ duck_inline(
     encoding VARCHAR,
     attributes MAP(VARCHAR, VARCHAR),
     element_order INTEGER
-) → doc_element
+) → duck_block
 ```
 
 **Example:**
@@ -97,10 +97,10 @@ SELECT duck_inline(
 
 ### duck_inline (Simple Constructor)
 
-Creates a `doc_element` with kind='inline' and minimal fields.
+Creates a `duck_block` with kind='inline' and minimal fields.
 
 ```sql
-duck_inline(element_type VARCHAR, content VARCHAR) → doc_element
+duck_inline(element_type VARCHAR, content VARCHAR) → duck_block
 ```
 
 **Defaults:**
@@ -110,12 +110,12 @@ duck_inline(element_type VARCHAR, content VARCHAR) → doc_element
 - `attributes`: empty map
 - `element_order`: 0
 
-### to_doc_element
+### to_duck_block
 
-Converts a compatible struct to a `doc_element`.
+Converts a compatible struct to a `duck_block`.
 
 ```sql
-to_doc_element(input STRUCT) → doc_element
+to_duck_block(input STRUCT) → duck_block
 ```
 
 **Notes:**
@@ -126,7 +126,7 @@ to_doc_element(input STRUCT) → doc_element
 
 **Example:**
 ```sql
-SELECT to_doc_element({'element_type': 'paragraph', 'content': 'Text'});
+SELECT to_duck_block({'element_type': 'paragraph', 'content': 'Text'});
 -- Returns: {kind: 'block', element_type: 'paragraph', content: 'Text', ...}
 ```
 
@@ -134,12 +134,12 @@ SELECT to_doc_element({'element_type': 'paragraph', 'content': 'Text'});
 
 ## Validation
 
-### doc_element_valid
+### duck_block_valid
 
 Checks if an element has valid structure and values.
 
 ```sql
-doc_element_valid(elem doc_element) → BOOLEAN
+duck_block_valid(elem duck_block) → BOOLEAN
 ```
 
 **Validation Rules:**
@@ -154,137 +154,137 @@ doc_element_valid(elem doc_element) → BOOLEAN
 
 **Example:**
 ```sql
-SELECT doc_element_valid(doc_heading('Title', 1));
+SELECT duck_block_valid(db_heading('Title', 1));
 -- Returns: true
 
-SELECT doc_element_valid(duck_block('invalid_type', 'content'));
+SELECT duck_block_valid(duck_block('invalid_type', 'content'));
 -- Returns: false
 ```
 
 ### duck_block_valid
 
-Alias for `doc_element_valid` for blocks.
+Alias for `duck_block_valid` for blocks.
 
 ```sql
-duck_block_valid(block doc_element) → BOOLEAN
+duck_block_valid(block duck_block) → BOOLEAN
 ```
 
 ---
 
 ## Field Accessors
 
-These functions extract individual fields from a `doc_element`. They're useful when you can't use the `.field` syntax (e.g., in certain aggregation contexts).
+These functions extract individual fields from a `duck_block`. They're useful when you can't use the `.field` syntax (e.g., in certain aggregation contexts).
 
-### doc_element_kind
+### duck_block_kind
 
 ```sql
-doc_element_kind(elem doc_element) → VARCHAR
+duck_block_kind(elem duck_block) → VARCHAR
 ```
 
 Returns the `kind` field ('block' or 'inline').
 
-### doc_element_type
+### duck_block_type
 
 ```sql
-doc_element_type(elem doc_element) → VARCHAR
+duck_block_type(elem duck_block) → VARCHAR
 ```
 
 Returns the `element_type` field.
 
 ### duck_block_type
 
-Alias for `doc_element_type`.
+Alias for `duck_block_type`.
 
 ```sql
-duck_block_type(block doc_element) → VARCHAR
+duck_block_type(block duck_block) → VARCHAR
 ```
 
-### doc_element_content
+### duck_block_content
 
 ```sql
-doc_element_content(elem doc_element) → VARCHAR
+duck_block_content(elem duck_block) → VARCHAR
 ```
 
 Returns the `content` field.
 
 ### duck_block_content
 
-Alias for `doc_element_content`.
+Alias for `duck_block_content`.
 
 ```sql
-duck_block_content(block doc_element) → VARCHAR
+duck_block_content(block duck_block) → VARCHAR
 ```
 
-### doc_element_level
+### duck_block_level
 
 ```sql
-doc_element_level(elem doc_element) → INTEGER
+duck_block_level(elem duck_block) → INTEGER
 ```
 
 Returns the `level` field (may be NULL for blocks, >= 1 for inlines).
 
 ### duck_block_level
 
-Alias for `doc_element_level`.
+Alias for `duck_block_level`.
 
 ```sql
-duck_block_level(block doc_element) → INTEGER
+duck_block_level(block duck_block) → INTEGER
 ```
 
-### doc_element_encoding
+### duck_block_encoding
 
 ```sql
-doc_element_encoding(elem doc_element) → VARCHAR
+duck_block_encoding(elem duck_block) → VARCHAR
 ```
 
 Returns the `encoding` field.
 
 ### duck_block_encoding
 
-Alias for `doc_element_encoding`.
+Alias for `duck_block_encoding`.
 
 ```sql
-duck_block_encoding(block doc_element) → VARCHAR
+duck_block_encoding(block duck_block) → VARCHAR
 ```
 
-### doc_element_order
+### duck_block_order
 
 ```sql
-doc_element_order(elem doc_element) → INTEGER
+duck_block_order(elem duck_block) → INTEGER
 ```
 
 Returns the `element_order` field.
 
 ### duck_block_order
 
-Alias for `doc_element_order`.
+Alias for `duck_block_order`.
 
 ```sql
-duck_block_order(block doc_element) → INTEGER
+duck_block_order(block duck_block) → INTEGER
 ```
 
-### doc_element_attr
+### duck_block_attr
 
 ```sql
-doc_element_attr(elem doc_element, key VARCHAR) → VARCHAR
+duck_block_attr(elem duck_block, key VARCHAR) → VARCHAR
 ```
 
 Returns the value of an attribute, or NULL if not found.
 
 ### duck_block_attr
 
-Alias for `doc_element_attr`.
+Alias for `duck_block_attr`.
 
 ```sql
-duck_block_attr(block doc_element, key VARCHAR) → VARCHAR
+duck_block_attr(block duck_block, key VARCHAR) → VARCHAR
 ```
 
 **Example:**
 ```sql
-SELECT duck_block_attr(doc_code('x=1', 'python'), 'language');
+SELECT duck_block_attr(db_code('x=1', 'python'), 'language');
 -- Returns: 'python'
 
-SELECT doc_element_attr(doc_link('Click', 'https://example.com'), 'href');
+SELECT duck_block_attr(db_link('Click', 'https://example.com'), 'href');
 -- Returns: 'https://example.com'
 ```
 
@@ -292,71 +292,71 @@ SELECT doc_element_attr(doc_link('Click', 'https://example.com'), 'href');
 
 ## Field Setters
 
-These functions return a new `doc_element` with one field modified. The original element is unchanged (immutable update pattern).
+These functions return a new `duck_block` with one field modified. The original element is unchanged (immutable update pattern).
 
-### doc_element_set_order
+### duck_block_set_order
 
 ```sql
-doc_element_set_order(elem doc_element, new_order INTEGER) → doc_element
+duck_block_set_order(elem duck_block, new_order INTEGER) → duck_block
 ```
 
 Returns a new element with updated `element_order`.
 
 ### duck_block_set_order
 
-Alias for `doc_element_set_order`.
+Alias for `duck_block_set_order`.
 
 ```sql
-duck_block_set_order(block doc_element, new_order INTEGER) → doc_element
+duck_block_set_order(block duck_block, new_order INTEGER) → duck_block
 ```
 
 **Example:**
 ```sql
-SELECT duck_block_set_order(doc_heading('Title', 1), 42);
+SELECT duck_block_set_order(db_heading('Title', 1), 42);
 -- Returns heading with element_order=42
 ```
 
-### doc_element_set_content
+### duck_block_set_content
 
 ```sql
-doc_element_set_content(elem doc_element, new_content VARCHAR) → doc_element
+duck_block_set_content(elem duck_block, new_content VARCHAR) → duck_block
 ```
 
 Returns a new element with updated `content`.
 
 ### duck_block_set_content
 
-Alias for `doc_element_set_content`.
+Alias for `duck_block_set_content`.
 
 ```sql
-duck_block_set_content(block doc_element, new_content VARCHAR) → doc_element
+duck_block_set_content(block duck_block, new_content VARCHAR) → duck_block
 ```
 
 **Example:**
 ```sql
-SELECT duck_block_set_content(doc_heading('Old', 1), 'New');
+SELECT duck_block_set_content(db_heading('Old', 1), 'New');
 -- Returns heading with content='New'
 ```
 
-### doc_element_set_level
+### duck_block_set_level
 
 ```sql
-doc_element_set_level(elem doc_element, new_level INTEGER) → doc_element
+duck_block_set_level(elem duck_block, new_level INTEGER) → duck_block
 ```
 
 Returns a new element with updated `level`.
 
 ### duck_block_set_level
 
-Alias for `doc_element_set_level`.
+Alias for `duck_block_set_level`.
 
 ```sql
-duck_block_set_level(block doc_element, new_level INTEGER) → doc_element
+duck_block_set_level(block duck_block, new_level INTEGER) → duck_block
 ```
 
 **Example:**
 ```sql
-SELECT duck_block_set_level(doc_heading('Title', 1), 2);
+SELECT duck_block_set_level(db_heading('Title', 1), 2);
 -- Returns heading with level=2
 ```
 
@@ -368,7 +368,7 @@ SELECT duck_block_set_level(doc_heading('Title', 1), 2);
 
 ```sql
 -- From a table with document content
-SELECT to_doc_element(struct_pack(
+SELECT to_duck_block(struct_pack(
     element_type := type_column,
     content := text_column
 ))
@@ -381,14 +381,14 @@ FROM my_table;
 -- Filter to only valid elements
 SELECT *
 FROM my_blocks
-WHERE doc_element_valid(block);
+WHERE duck_block_valid(block);
 ```
 
 ### Transforming Elements
 
 ```sql
 -- Update all element orders
-SELECT doc_element_set_order(block, row_number() OVER () - 1)
+SELECT duck_block_set_order(block, row_number() OVER () - 1)
 FROM my_blocks;
 ```
 
@@ -396,9 +396,9 @@ FROM my_blocks;
 
 ```sql
 -- Count by element type
-SELECT doc_element_type(block), COUNT(*)
+SELECT duck_block_type(block), COUNT(*)
 FROM UNNEST(my_blocks) AS t(block)
-GROUP BY doc_element_type(block);
+GROUP BY duck_block_type(block);
 ```
 
 ### Working with Both Blocks and Inlines
@@ -407,9 +407,9 @@ GROUP BY doc_element_type(block);
 -- Separate blocks from inlines
 SELECT *
 FROM UNNEST(my_elements) AS t(elem)
-WHERE doc_element_kind(elem) = 'block';
+WHERE duck_block_kind(elem) = 'block';
 
 SELECT *
 FROM UNNEST(my_elements) AS t(elem)
-WHERE doc_element_kind(elem) = 'inline';
+WHERE duck_block_kind(elem) = 'inline';
 ```

@@ -8,7 +8,7 @@ A DuckDB extension for structured document element manipulation.
 
 ## Key Features
 
-- **Unified doc_element Type**: A single type for both block and inline elements with `kind` discriminator
+- **Unified duck_block Type**: A single type for both block and inline elements with `kind` discriminator
 - **Block Builder Functions**: Create headings, paragraphs, code blocks, lists, and more with simple function calls
 - **Inline Builder Functions**: Create links, bold, italic, code spans, and images for cross-format rich text
 - **Assembly Functions**: Combine blocks into documents with automatic ordering and level management
@@ -16,7 +16,7 @@ A DuckDB extension for structured document element manipulation.
 - **Extraction Functions**: Extract text, headings, code blocks, and statistics from documents
 - **Type Functions**: Standard constructors, validators, and accessors for integration with other extensions
 
-## The Unified doc_element Type
+## The Unified duck_block Type
 
 Both block-level and inline elements use the same type, distinguished by the `kind` field:
 
@@ -66,32 +66,32 @@ STRUCT(
 LOAD duck_block_utils;
 
 -- Create a simple document
-SELECT doc_assemble([
-    doc_heading('Introduction', 1),
-    doc_paragraph('Welcome to the documentation.'),
-    doc_heading('Getting Started', 2),
-    doc_code('SELECT * FROM docs;', 'sql'),
-    doc_paragraph('Run the query above to begin.')
+SELECT db_assemble([
+    db_heading('Introduction', 1),
+    db_paragraph('Welcome to the documentation.'),
+    db_heading('Getting Started', 2),
+    db_code('SELECT * FROM docs;', 'sql'),
+    db_paragraph('Run the query above to begin.')
 ]);
 
 -- Extract just the headings
-SELECT doc_blocks_headings(doc_assemble([
-    doc_heading('Chapter 1', 1),
-    doc_paragraph('Content...'),
-    doc_heading('Section 1.1', 2)
+SELECT db_blocks_headings(db_assemble([
+    db_heading('Chapter 1', 1),
+    db_paragraph('Content...'),
+    db_heading('Section 1.1', 2)
 ]));
 
 -- Convert to plain text
-SELECT doc_blocks_to_text([
-    doc_heading('Title', 1),
-    doc_paragraph('Hello world')
+SELECT db_blocks_to_text([
+    db_heading('Title', 1),
+    db_paragraph('Hello world')
 ]);
 
 -- Create rich text with inline elements
 SELECT [
-    doc_text('Click '),
-    doc_link('here', 'https://example.com'),
-    doc_text(' to learn more.')
+    db_text('Click '),
+    db_link('here', 'https://example.com'),
+    db_text(' to learn more.')
 ];
 ```
 

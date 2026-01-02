@@ -1,13 +1,13 @@
 # Duck Blocks Canonical Specification
 
 **Version:** 0.4.0
-**Status:** Canonical (Unified doc_element type, heading_level attribute)
+**Status:** Canonical (Unified duck_block type, heading_level attribute)
 
 This document defines the canonical representation for duck_blocks - structured document elements for DuckDB. Extensions that produce or consume duck_blocks (markdown, webbed, etc.) MUST conform to this specification.
 
 ## Type Definition
 
-### doc_element (Unified Type)
+### duck_block (Unified Type)
 
 Both block-level and inline elements use the same unified type, distinguished by the `kind` field:
 
@@ -96,26 +96,26 @@ This enables both ergonomic simple cases and full structured representation.
 
 ### Simple Case: String Argument → Single Struct
 
-When a container builder receives a simple string, it returns a single `doc_element` struct
+When a container builder receives a simple string, it returns a single `duck_block` struct
 with the text in the `content` field:
 
 ```sql
-doc_link('Click here', 'https://example.com')
+db_link('Click here', 'https://example.com')
 
--- Returns doc_element struct:
+-- Returns duck_block struct:
 {kind: 'inline', element_type: 'link', content: 'Click here', level: 1,
  encoding: 'text', attributes: {href: 'https://example.com'}, element_order: 0}
 ```
 
 ### Complex Case: List Argument → LIST with Nested Children
 
-When a container builder receives a list of inlines, it returns a `LIST(doc_element)`
+When a container builder receives a list of inlines, it returns a `LIST(duck_block)`
 with the container as first element (empty content) and children at level+1:
 
 ```sql
-doc_link([doc_bold('Important'), doc_text(' link')], 'https://example.com')
+db_link([db_bold('Important'), db_text(' link')], 'https://example.com')
 
--- Returns LIST(doc_element):
+-- Returns LIST(duck_block):
 [{kind: 'inline', element_type: 'link', content: '', level: 1,
   encoding: 'text', attributes: {href: 'https://example.com'}, element_order: 0},
  {kind: 'inline', element_type: 'bold', content: 'Important', level: 2,
@@ -130,8 +130,8 @@ A single-element list containing only a text inline SHOULD be normalized to the 
 
 ```sql
 -- These are equivalent:
-doc_bold('text')
-doc_bold([doc_text('text')])
+db_bold('text')
+db_bold([db_text('text')])
 
 -- Both produce:
 {kind: 'inline', element_type: 'bold', content: 'text', level: 1,
@@ -171,7 +171,7 @@ The `encoding` field indicates how to interpret `content`:
 
 ## Validation Rules
 
-A doc_element is **canonical** if:
+A duck_block is **canonical** if:
 
 ### Block Validation (kind='block')
 
@@ -198,8 +198,8 @@ A doc_element is **canonical** if:
 Extensions can use this macro to validate duck_blocks without depending on duck_block_utils:
 
 ```sql
--- Validate a single doc_element
-CREATE OR REPLACE MACRO doc_element_is_valid(elem) AS (
+-- Validate a single duck_block
+CREATE OR REPLACE MACRO duck_block_is_valid(elem) AS (
     elem.kind IN ('block', 'inline')
     AND elem.element_type IS NOT NULL
     AND elem.element_order >= 0
@@ -220,7 +220,7 @@ CREATE OR REPLACE MACRO doc_element_is_valid(elem) AS (
 );
 
 -- Check if content field usage is canonical for container inline
-CREATE OR REPLACE MACRO doc_element_content_is_canonical(elem, has_nested_children) AS (
+CREATE OR REPLACE MACRO duck_block_content_is_canonical(elem, has_nested_children) AS (
     CASE
         -- Blocks always use content
         WHEN elem.kind = 'block' THEN true
@@ -262,6 +262,6 @@ Extensions that consume duck_blocks:
 ## Changelog
 
 - 0.4.0: Moved heading level from `level` field to `attributes['heading_level']` to separate semantic heading levels from structural nesting depth
-- 0.3.0: Unified doc_block and doc_inline into single doc_element type with `kind` discriminator
+- 0.3.0: Unified doc_block and doc_inline into single duck_block type with `kind` discriminator
 - 0.2.0: Added Option C content rules for container types
 - 0.1.0: Initial draft specification

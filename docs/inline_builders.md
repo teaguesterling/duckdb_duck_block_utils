@@ -1,10 +1,10 @@
 # Inline Builder Functions
 
-Functions for constructing inline `doc_element` elements for rich text formatting within document blocks.
+Functions for constructing inline `duck_block` elements for rich text formatting within document blocks.
 
 ## Overview
 
-While block builders (`doc_heading`, `doc_paragraph`, etc.) create document structure, inline builders create the formatted text within blocks. Inline elements enable:
+While block builders (`db_heading`, `db_paragraph`, etc.) create document structure, inline builders create the formatted text within blocks. Inline elements enable:
 
 1. **Structured rich text** - Links, bold, italic, code, images as data
 2. **Cross-format compatibility** - Same inline elements render to Markdown, HTML, etc.
@@ -14,9 +14,9 @@ While block builders (`doc_heading`, `doc_paragraph`, etc.) create document stru
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  Block + Inline Structure                                               │
 │                                                                         │
-│  doc_paragraph with inline content:                                     │
+│  db_paragraph with inline content:                                     │
 │  ┌───────────────────────────────────────────────────────────┐         │
-│  │ doc_text("Click ") + doc_link("here", url) + doc_text("!") │         │
+│  │ db_text("Click ") + db_link("here", url) + db_text("!") │         │
 │  └───────────────────────────────────────────────────────────┘         │
 │                            ↓                                            │
 │  Markdown:  Click [here](https://example.com)!                         │
@@ -24,7 +24,7 @@ While block builders (`doc_heading`, `doc_paragraph`, etc.) create document stru
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-## The Unified doc_element Type
+## The Unified duck_block Type
 
 Both block and inline elements use the same unified type, distinguished by the `kind` field:
 
@@ -42,43 +42,43 @@ STRUCT(
 
 ## Inline Constructors
 
-### doc_text
+### db_text
 
 Create plain text content.
 
 ```sql
-doc_text(content VARCHAR) → doc_element
+db_text(content VARCHAR) → duck_block
 ```
 
 **Example:**
 ```sql
-SELECT doc_text('Hello world');
+SELECT db_text('Hello world');
 -- Returns: {kind: 'inline', element_type: 'text', content: 'Hello world',
 --           level: 1, encoding: 'text', attributes: {}, element_order: 0}
 ```
 
 ---
 
-### doc_link
+### db_link
 
 Create a hyperlink.
 
 ```sql
-doc_link(
+db_link(
     text VARCHAR,
     href VARCHAR,
     title VARCHAR DEFAULT NULL
-) → doc_element
+) → duck_block
 ```
 
 **Example:**
 ```sql
-SELECT doc_link('Click here', 'https://example.com');
+SELECT db_link('Click here', 'https://example.com');
 -- Returns: {kind: 'inline', element_type: 'link', content: 'Click here',
 --           level: 1, encoding: 'text',
 --           attributes: {'href': 'https://example.com'}, element_order: 0}
 
-SELECT doc_link('DuckDB', 'https://duckdb.org', 'The DuckDB website');
+SELECT db_link('DuckDB', 'https://duckdb.org', 'The DuckDB website');
 -- Returns: {kind: 'inline', element_type: 'link', content: 'DuckDB',
 --           level: 1, encoding: 'text',
 --           attributes: {'href': 'https://duckdb.org', 'title': 'The DuckDB website'},
@@ -87,21 +87,21 @@ SELECT doc_link('DuckDB', 'https://duckdb.org', 'The DuckDB website');
 
 ---
 
-### doc_inline_image
+### db_inline_image
 
 Create an inline image.
 
 ```sql
-doc_inline_image(
+db_inline_image(
     src VARCHAR,
     alt VARCHAR DEFAULT NULL,
     title VARCHAR DEFAULT NULL
-) → doc_element
+) → duck_block
 ```
 
 **Example:**
 ```sql
-SELECT doc_inline_image('/img/logo.png', 'Logo', 'Company Logo');
+SELECT db_inline_image('/img/logo.png', 'Logo', 'Company Logo');
 -- Returns: {kind: 'inline', element_type: 'image', content: 'Logo',
 --           level: 1, encoding: 'text',
 --           attributes: {'src': '/img/logo.png', 'alt': 'Logo', 'title': 'Company Logo'},
@@ -110,68 +110,68 @@ SELECT doc_inline_image('/img/logo.png', 'Logo', 'Company Logo');
 
 ---
 
-### doc_bold
+### db_bold
 
 Create bold/strong text.
 
 ```sql
-doc_bold(content VARCHAR) → doc_element
+db_bold(content VARCHAR) → duck_block
 ```
 
 **Example:**
 ```sql
-SELECT doc_bold('Important');
+SELECT db_bold('Important');
 -- Returns: {kind: 'inline', element_type: 'bold', content: 'Important',
 --           level: 1, encoding: 'text', attributes: {}, element_order: 0}
 ```
 
 ---
 
-### doc_italic
+### db_italic
 
 Create italic/emphasis text.
 
 ```sql
-doc_italic(content VARCHAR) → doc_element
+db_italic(content VARCHAR) → duck_block
 ```
 
 **Example:**
 ```sql
-SELECT doc_italic('emphasized');
+SELECT db_italic('emphasized');
 -- Returns: {kind: 'inline', element_type: 'italic', content: 'emphasized',
 --           level: 1, encoding: 'text', attributes: {}, element_order: 0}
 ```
 
 ---
 
-### doc_inline_code
+### db_inline_code
 
 Create inline code (monospace).
 
 ```sql
-doc_inline_code(content VARCHAR) → doc_element
+db_inline_code(content VARCHAR) → duck_block
 ```
 
 **Example:**
 ```sql
-SELECT doc_inline_code('print()');
+SELECT db_inline_code('print()');
 -- Returns: {kind: 'inline', element_type: 'code', content: 'print()',
 --           level: 1, encoding: 'text', attributes: {}, element_order: 0}
 ```
 
 ---
 
-### doc_strikethrough
+### db_strikethrough
 
 Create strikethrough text.
 
 ```sql
-doc_strikethrough(content VARCHAR) → doc_element
+db_strikethrough(content VARCHAR) → duck_block
 ```
 
 **Example:**
 ```sql
-SELECT doc_strikethrough('deleted');
+SELECT db_strikethrough('deleted');
 -- Returns: {kind: 'inline', element_type: 'strikethrough', content: 'deleted',
 --           level: 1, encoding: 'text', attributes: {}, element_order: 0}
 ```
@@ -182,25 +182,25 @@ SELECT doc_strikethrough('deleted');
 
 | Function | Element Type | Description |
 |----------|--------------|-------------|
-| `doc_superscript(content)` | `superscript` | Superscript text |
-| `doc_subscript(content)` | `subscript` | Subscript text |
-| `doc_smallcaps(content)` | `smallcaps` | Small capitals |
-| `doc_underline(content)` | `underline` | Underlined text |
-| `doc_math(content, block)` | `math` | Math expression |
-| `doc_quoted(content, type)` | `quoted` | Quoted text |
-| `doc_cite(key)` | `cite` | Citation reference |
-| `doc_note(content)` | `note` | Footnote |
-| `doc_span(content, id)` | `span` | Generic container |
-| `doc_raw_inline(content, fmt)` | `raw` | Raw format content |
+| `db_superscript(content)` | `superscript` | Superscript text |
+| `db_subscript(content)` | `subscript` | Subscript text |
+| `db_smallcaps(content)` | `smallcaps` | Small capitals |
+| `db_underline(content)` | `underline` | Underlined text |
+| `db_math(content, block)` | `math` | Math expression |
+| `db_quoted(content, type)` | `quoted` | Quoted text |
+| `db_cite(key)` | `cite` | Citation reference |
+| `db_note(content)` | `note` | Footnote |
+| `db_span(content, id)` | `span` | Generic container |
+| `db_raw_inline(content, fmt)` | `raw` | Raw format content |
 
 ---
 
 ## Whitespace Elements
 
 ```sql
-doc_space() → doc_element      -- Word separator
-doc_softbreak() → doc_element  -- Soft line break
-doc_linebreak() → doc_element  -- Hard line break
+db_space() → duck_block      -- Word separator
+db_softbreak() → duck_block  -- Soft line break
+db_linebreak() → duck_block  -- Hard line break
 ```
 
 ---
@@ -214,11 +214,11 @@ Combine inline elements into arrays for structured content:
 ```sql
 -- Create a formatted sentence
 SELECT [
-    doc_text('Click '),
-    doc_link('here', 'https://example.com'),
-    doc_text(' to learn more about '),
-    doc_bold('DuckDB'),
-    doc_text('.')
+    db_text('Click '),
+    db_link('here', 'https://example.com'),
+    db_text(' to learn more about '),
+    db_bold('DuckDB'),
+    db_text('.')
 ];
 ```
 
@@ -228,7 +228,7 @@ Generate links from query data:
 
 ```sql
 -- Create links from a table
-SELECT doc_link(
+SELECT db_link(
     project_name,
     'https://github.com/' || owner || '/' || repo
 ) AS project_link
@@ -242,8 +242,8 @@ Create status badges with images:
 ```sql
 -- CI badge with link
 SELECT [
-    doc_link(
-        doc_inline_image(
+    db_link(
+        db_inline_image(
             'https://github.com/' || repo || '/actions/workflows/ci.yml/badge.svg',
             'CI Status'
         ).content,
@@ -256,7 +256,7 @@ SELECT [
 
 ## Integration with Renderers
 
-The unified `doc_element` type is designed for cross-format compatibility:
+The unified `duck_block` type is designed for cross-format compatibility:
 
 ### Markdown Rendering (duckdb_markdown)
 

@@ -35,10 +35,10 @@
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
 ├─────────────────────────────────────────────────────────────┤
 │              Pandoc AST Conversion Layer                     │
-│     (JSON AST ↔ doc_elements, no Pandoc dependency)         │
+│     (JSON AST ↔ duck_blocks, no Pandoc dependency)         │
 ├─────────────────────────────────────────────────────────────┤
 │                    Core Element Types                        │
-│              (doc_element STRUCT handling)                   │
+│              (duck_block STRUCT handling)                   │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -63,9 +63,9 @@ See [pandoc_ast_spec.md](pandoc_ast_spec.md) for detailed conversion rules.
 
 ## Data Model
 
-### Unified doc_element Type
+### Unified duck_block Type
 
-Both block-level and inline elements use the same unified `doc_element` type, distinguished by the `kind` field:
+Both block-level and inline elements use the same unified `duck_block` type, distinguished by the `kind` field:
 
 ```sql
 STRUCT(
@@ -88,14 +88,14 @@ STRUCT(
 
 Functions accept elements in two forms:
 
-1. **LIST of STRUCTs**: `LIST(doc_element)` - for aggregate operations
+1. **LIST of STRUCTs**: `LIST(duck_block)` - for aggregate operations
 2. **Individual rows**: Via table functions that process row-by-row
 
 ### Type Registration
 
 ```sql
--- Register the doc_element type on extension load
-CREATE TYPE doc_element AS STRUCT(
+-- Register the duck_block type on extension load
+CREATE TYPE duck_block AS STRUCT(
     kind VARCHAR,
     element_type VARCHAR,
     content VARCHAR,
@@ -106,7 +106,7 @@ CREATE TYPE doc_element AS STRUCT(
 );
 
 -- Extended version with provenance
-CREATE TYPE doc_element_ext AS STRUCT(
+CREATE TYPE duck_block_ext AS STRUCT(
     kind VARCHAR,
     element_type VARCHAR,
     content VARCHAR,
@@ -125,10 +125,10 @@ CREATE TYPE doc_element_ext AS STRUCT(
 
 Transform element sequences without parsing content.
 
-#### doc_blocks_filter
+#### db_blocks_filter
 ```cpp
 // Signature
-LIST(doc_element) doc_blocks_filter(LIST(doc_element) blocks, VARCHAR[] types)
+LIST(duck_block) db_blocks_filter(LIST(duck_block) blocks, VARCHAR[] types)
 
 // Implementation
 - Iterate through blocks
@@ -136,41 +136,41 @@ LIST(doc_element) doc_blocks_filter(LIST(doc_element) blocks, VARCHAR[] types)
 - Preserve element_order values
 ```
 
-#### doc_blocks_exclude
+#### db_blocks_exclude
 ```cpp
 // Signature
-LIST(doc_element) doc_blocks_exclude(LIST(doc_element) blocks, VARCHAR[] types)
+LIST(duck_block) db_blocks_exclude(LIST(duck_block) blocks, VARCHAR[] types)
 
 // Implementation
 - Iterate through blocks
 - Keep blocks where element_type NOT IN types
 ```
 
-#### doc_blocks_merge
+#### db_blocks_merge
 ```cpp
 // Signature
-LIST(doc_element) doc_blocks_merge(LIST(doc_element) blocks1, LIST(doc_element) blocks2)
+LIST(duck_block) db_blocks_merge(LIST(duck_block) blocks1, LIST(duck_block) blocks2)
 
 // Implementation
 - Concatenate blocks2 after blocks1
 - Renumber element_order: blocks2 orders += max(blocks1 orders) + 1
 ```
 
-#### doc_blocks_reorder
+#### db_blocks_reorder
 ```cpp
 // Signature
-LIST(doc_element) doc_blocks_reorder(LIST(doc_element) blocks)
+LIST(duck_block) db_blocks_reorder(LIST(duck_block) blocks)
 
 // Implementation
 - Sort by current element_order
 - Reassign element_order as 0, 1, 2, ...
 ```
 
-#### doc_blocks_transform
+#### db_blocks_transform
 ```cpp
 // Signature
-LIST(doc_element) doc_blocks_transform(
-    LIST(doc_element) blocks,
+LIST(duck_block) db_blocks_transform(
+    LIST(duck_block) blocks,
     MAP(VARCHAR, VARCHAR) type_mapping,     -- old_type -> new_type
     MAP(VARCHAR, VARCHAR) content_mapping   -- optional content transforms
 )
@@ -185,10 +185,10 @@ LIST(doc_element) doc_blocks_transform(
 
 Extract specific information from elements.
 
-#### doc_blocks_to_text
+#### db_blocks_to_text
 ```cpp
 // Signature
-VARCHAR doc_blocks_to_text(LIST(doc_element) blocks)
+VARCHAR db_blocks_to_text(LIST(duck_block) blocks)
 
 // Implementation
 - For each block:
@@ -199,34 +199,34 @@ VARCHAR doc_blocks_to_text(LIST(doc_element) blocks)
 - Skip 'hr', 'raw' blocks
 ```
 
-#### doc_blocks_headings
+#### db_blocks_headings
 ```cpp
 // Signature (returns table)
 TABLE(level INT, title VARCHAR, id VARCHAR, element_order INT)
-    doc_blocks_headings(LIST(doc_element) blocks)
+    db_blocks_headings(LIST(duck_block) blocks)
 
 // Implementation
 - Filter to element_type = 'heading'
 - Return level, content as title, attributes['id'], element_order
 ```
 
-#### doc_blocks_toc
+#### db_blocks_toc
 ```cpp
 // Signature (returns table)
 TABLE(level INT, title VARCHAR, id VARCHAR, indent VARCHAR, element_order INT)
-    doc_blocks_toc(LIST(doc_element) blocks)
+    db_blocks_toc(LIST(duck_block) blocks)
 
 // Implementation
-- Call doc_blocks_headings
+- Call db_blocks_headings
 - Add indent column: repeat('  ', level - 1)
 - Optionally generate IDs from titles if missing
 ```
 
-#### doc_blocks_code_blocks
+#### db_blocks_code_blocks
 ```cpp
 // Signature (returns table)
 TABLE(language VARCHAR, content VARCHAR, info_string VARCHAR, element_order INT, file_path VARCHAR)
-    doc_blocks_code_blocks(LIST(doc_element) blocks)
+    db_blocks_code_blocks(LIST(duck_block) blocks)
 
 // Implementation
 - Filter to element_type = 'code'
@@ -234,11 +234,11 @@ TABLE(language VARCHAR, content VARCHAR, info_string VARCHAR, element_order INT,
 - Include file_path if present
 ```
 
-#### doc_blocks_links
+#### db_blocks_links
 ```cpp
 // Signature (returns table)
 TABLE(text VARCHAR, url VARCHAR, title VARCHAR, element_order INT)
-    doc_blocks_links(LIST(doc_element) blocks)
+    db_blocks_links(LIST(duck_block) blocks)
 
 // Implementation
 - Scan content of 'paragraph', 'list' blocks for markdown links
@@ -250,10 +250,10 @@ TABLE(text VARCHAR, url VARCHAR, title VARCHAR, element_order INT)
 
 Check conformance and quality.
 
-#### doc_blocks_validate
+#### db_blocks_validate
 ```cpp
 // Signature
-STRUCT(valid BOOL, errors LIST(VARCHAR)) doc_blocks_validate(LIST(doc_element) blocks)
+STRUCT(valid BOOL, errors LIST(VARCHAR)) db_blocks_validate(LIST(duck_block) blocks)
 
 // Implementation
 - Check each block:
@@ -267,11 +267,11 @@ STRUCT(valid BOOL, errors LIST(VARCHAR)) doc_blocks_validate(LIST(doc_element) b
 - Return aggregated results
 ```
 
-#### doc_blocks_lint
+#### db_blocks_lint
 ```cpp
 // Signature (returns table)
 TABLE(severity VARCHAR, message VARCHAR, element_order INT, suggestion VARCHAR)
-    doc_blocks_lint(LIST(doc_element) blocks)
+    db_blocks_lint(LIST(duck_block) blocks)
 
 // Implementation
 Checks:
@@ -283,11 +283,11 @@ Checks:
 - 'info': Large element_order gaps
 ```
 
-#### doc_blocks_stats
+#### db_blocks_stats
 ```cpp
 // Signature
 TABLE(element_type VARCHAR, count INT, avg_content_length FLOAT)
-    doc_blocks_stats(LIST(doc_element) blocks)
+    db_blocks_stats(LIST(duck_block) blocks)
 
 // Implementation
 - Group by element_type
@@ -299,20 +299,20 @@ TABLE(element_type VARCHAR, count INT, avg_content_length FLOAT)
 
 Facilitate format conversion workflows.
 
-#### doc_blocks_set_source
+#### db_blocks_set_source
 ```cpp
 // Signature
-LIST(doc_element_ext) doc_blocks_set_source(LIST(doc_element) blocks, VARCHAR format)
+LIST(duck_block_ext) db_blocks_set_source(LIST(duck_block) blocks, VARCHAR format)
 
 // Implementation
 - Add/set source_format field on all blocks
 - Return extended element type
 ```
 
-#### doc_blocks_normalize
+#### db_blocks_normalize
 ```cpp
 // Signature
-LIST(doc_element) doc_blocks_normalize(LIST(doc_element) blocks)
+LIST(duck_block) db_blocks_normalize(LIST(duck_block) blocks)
 
 // Implementation
 - Convert namespaced types to nearest core type:
@@ -323,11 +323,11 @@ LIST(doc_element) doc_blocks_normalize(LIST(doc_element) blocks)
 - Preserve original type in attributes['original_type']
 ```
 
-#### doc_blocks_map_types
+#### db_blocks_map_types
 ```cpp
 // Signature
-LIST(doc_element) doc_blocks_map_types(
-    LIST(doc_element) blocks,
+LIST(duck_block) db_blocks_map_types(
+    LIST(duck_block) blocks,
     MAP(VARCHAR, VARCHAR) mapping
 )
 
@@ -340,25 +340,25 @@ LIST(doc_element) doc_blocks_map_types(
 
 ### Phase 1: Core Infrastructure
 - Extension scaffolding
-- Type registration (doc_element, doc_element_ext)
+- Type registration (duck_block, duck_block_ext)
 - Basic manipulation: filter, exclude, merge, reorder
 
 ### Phase 2: Extraction Functions
-- doc_blocks_to_text
-- doc_blocks_headings
-- doc_blocks_toc
-- doc_blocks_code_blocks
+- db_blocks_to_text
+- db_blocks_headings
+- db_blocks_toc
+- db_blocks_code_blocks
 
 ### Phase 3: Validation
-- doc_blocks_validate
-- doc_blocks_lint
-- doc_blocks_stats
+- db_blocks_validate
+- db_blocks_lint
+- db_blocks_stats
 
 ### Phase 4: Conversion Helpers
-- doc_blocks_set_source
-- doc_blocks_normalize
-- doc_blocks_map_types
-- doc_blocks_links
+- db_blocks_set_source
+- db_blocks_normalize
+- db_blocks_map_types
+- db_blocks_links
 
 ### Phase 5: Advanced Features
 - Content-aware transformations
