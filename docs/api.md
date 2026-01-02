@@ -1,4 +1,4 @@
-# Duck Block Utils - API Reference
+# Duck Block Utils - Complete API Reference
 
 Complete reference for all functions provided by the `duck_block_utils` extension.
 
@@ -6,7 +6,7 @@ Complete reference for all functions provided by the `duck_block_utils` extensio
 
 ### doc_element (Unified Type)
 
-The core document element type used throughout this extension. Both block-level and inline elements use the same type, distinguished by the `kind` field:
+The core document element type. Both block-level and inline elements use the same type, distinguished by the `kind` field:
 
 ```sql
 STRUCT(
@@ -27,643 +27,848 @@ STRUCT(
 | `block` | Block-level elements (heading, paragraph, code, list, etc.) |
 | `inline` | Inline elements (text, bold, italic, link, etc.) |
 
-### doc_element_ext
+### Block Types (kind='block')
 
-Extended element type with provenance tracking.
+| element_type | Description | level | encoding | Key Attributes |
+|--------------|-------------|-------|----------|----------------|
+| `heading` | Section heading | 1-6 | text | `id` |
+| `paragraph` | Text paragraph | NULL | text | |
+| `code` | Code block | NULL | text | `language` |
+| `blockquote` | Quoted content | 1+ | text | |
+| `list` | List container | NULL | json | `ordered`, `start` |
+| `table` | Table | NULL | json | |
+| `hr` | Horizontal rule | NULL | text | |
+| `metadata` | YAML frontmatter | 0 | yaml | |
+| `image` | Block-level image | NULL | text | `src`, `alt`, `title` |
+| `raw` | Raw format content | NULL | html/xml | `format` |
 
-```sql
-STRUCT(
-    kind VARCHAR,
-    element_type VARCHAR,
-    content VARCHAR,
-    level INTEGER,
-    encoding VARCHAR,
-    attributes MAP(VARCHAR, VARCHAR),
-    element_order INTEGER,
-    source_format VARCHAR,              -- Origin format: 'markdown', 'html', etc.
-    file_path VARCHAR                   -- Source file path
-)
-```
+### Inline Types (kind='inline')
+
+| element_type | Description | Key Attributes |
+|--------------|-------------|----------------|
+| `text` | Plain text | |
+| `space` | Word separator | |
+| `softbreak` | Soft line break | |
+| `linebreak` | Hard line break | |
+| `bold` | Strong emphasis | |
+| `italic` | Emphasis | |
+| `strikethrough` | Struck text | |
+| `superscript` | Superscript | |
+| `subscript` | Subscript | |
+| `smallcaps` | Small capitals | |
+| `underline` | Underlined | |
+| `code` | Inline code | |
+| `math` | Math expression | `display`: inline/block |
+| `link` | Hyperlink | `href`, `title` |
+| `image` | Inline image | `src`, `alt`, `title` |
+| `quoted` | Quoted text | `quote_type`: single/double |
+| `cite` | Citation | `key`, `prefix`, `suffix` |
+| `note` | Footnote | |
+| `span` | Generic container | `id`, `class` |
+| `raw` | Raw format | `format` |
 
 ---
 
-## Block Manipulation Functions
+## Block Builder Functions
 
-### doc_blocks_filter
+### doc_heading
 
-Filter elements to include only specified types.
-
-**Signature:**
 ```sql
-doc_blocks_filter(
-    blocks LIST(doc_element),
-    types VARCHAR[]
-) → LIST(doc_element)
+doc_heading(content VARCHAR, level INTEGER) → doc_element
 ```
 
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks` | LIST(doc_element) | Input element sequence |
-| `types` | VARCHAR[] | Element types to include |
+Creates a heading block.
 
-**Returns:** Filtered list containing only elements with matching types.
+**Parameters:**
+- `content` - Heading text
+- `level` - Heading level (1-6)
+
+**Returns:** `doc_element` with `kind='block'`, `element_type='heading'`
 
 **Example:**
 ```sql
--- Keep only headings and code blocks
-SELECT doc_blocks_filter(
-    (SELECT list(b) FROM read_markdown_blocks('doc.md') b),
-    ['heading', 'code']
-);
+SELECT doc_heading('Introduction', 1);
+-- {kind: 'block', element_type: 'heading', content: 'Introduction', level: 1, ...}
 ```
 
 ---
 
-### doc_blocks_exclude
+### doc_paragraph
 
-Filter elements to exclude specified types.
-
-**Signature:**
 ```sql
-doc_blocks_exclude(
-    blocks LIST(doc_element),
-    types VARCHAR[]
-) → LIST(doc_element)
+doc_paragraph(content VARCHAR) → doc_element
 ```
 
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks` | LIST(doc_element) | Input element sequence |
-| `types` | VARCHAR[] | Element types to exclude |
-
-**Returns:** Filtered list with specified types removed.
+Creates a paragraph block.
 
 **Example:**
 ```sql
--- Remove all horizontal rules and metadata
-SELECT doc_blocks_exclude(
-    (SELECT list(b) FROM read_markdown_blocks('doc.md') b),
-    ['hr', 'metadata']
-);
+SELECT doc_paragraph('This is body text.');
 ```
 
 ---
 
-### doc_blocks_merge
+### doc_code
 
-Combine two element sequences into one.
-
-**Signature:**
 ```sql
-doc_blocks_merge(
-    blocks1 LIST(doc_element),
-    blocks2 LIST(doc_element)
-) → LIST(doc_element)
+doc_code(content VARCHAR) → doc_element
+doc_code(content VARCHAR, language VARCHAR) → doc_element
 ```
 
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks1` | LIST(doc_element) | First element sequence |
-| `blocks2` | LIST(doc_element) | Second element sequence (appended) |
+Creates a code block.
 
-**Returns:** Combined list with `element_order` values adjusted for continuity.
+**Parameters:**
+- `content` - Code content
+- `language` - (Optional) Programming language
+
+**Attributes set:** `language`
 
 **Example:**
 ```sql
--- Merge two documents
-SELECT doc_blocks_merge(
-    (SELECT list(b) FROM read_markdown_blocks('intro.md') b),
-    (SELECT list(b) FROM read_markdown_blocks('main.md') b)
-);
+SELECT doc_code('print("hello")', 'python');
 ```
 
 ---
 
-### doc_blocks_reorder
+### doc_blockquote
 
-Renumber element_order values sequentially from 0.
-
-**Signature:**
 ```sql
-doc_blocks_reorder(
-    blocks LIST(doc_element)
-) → LIST(doc_element)
+doc_blockquote(content VARCHAR) → doc_element
+doc_blockquote(content VARCHAR, level INTEGER) → doc_element
 ```
 
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks` | LIST(doc_element) | Input element sequence |
+Creates a blockquote block.
 
-**Returns:** Elements with element_order renumbered as 0, 1, 2, ...
+**Parameters:**
+- `content` - Quoted text
+- `level` - (Optional) Nesting level, defaults to 1
+
+---
+
+### doc_list_block
+
+```sql
+doc_list_block(items VARCHAR[]) → doc_element
+doc_list_block(items VARCHAR[], ordered BOOLEAN) → doc_element
+```
+
+Creates a list block with JSON-encoded items.
+
+**Parameters:**
+- `items` - Array of list item strings
+- `ordered` - (Optional) True for numbered list, false for bullets (default)
+
+**Attributes set:** `ordered`, `start`
 
 **Example:**
 ```sql
--- Fix gaps in element_order after filtering
-SELECT doc_blocks_reorder(
-    doc_blocks_filter(blocks, ['heading', 'paragraph'])
-);
+SELECT doc_list_block(['First', 'Second', 'Third'], true);
 ```
 
 ---
 
-### doc_blocks_slice
+### doc_hr
 
-Extract a contiguous range of elements.
-
-**Signature:**
 ```sql
-doc_blocks_slice(
-    blocks LIST(doc_element),
-    start_order INTEGER,
-    end_order INTEGER
-) → LIST(doc_element)
+doc_hr() → doc_element
 ```
 
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks` | LIST(doc_element) | Input element sequence |
-| `start_order` | INTEGER | Starting element_order (inclusive) |
-| `end_order` | INTEGER | Ending element_order (inclusive) |
+Creates a horizontal rule block.
 
-**Returns:** Elements within the specified range.
+---
+
+### doc_metadata
+
+```sql
+doc_metadata(yaml_content VARCHAR) → doc_element
+```
+
+Creates a metadata block (YAML frontmatter).
 
 **Example:**
 ```sql
--- Extract elements 5 through 10
-SELECT doc_blocks_slice(blocks, 5, 10);
+SELECT doc_metadata('title: My Document
+author: Jane Doe');
 ```
 
 ---
 
-### doc_blocks_transform
+### doc_image
 
-Apply transformations to element types and content.
-
-**Signature:**
 ```sql
-doc_blocks_transform(
-    blocks LIST(doc_element),
-    type_mapping MAP(VARCHAR, VARCHAR),
-    content_fn VARCHAR DEFAULT NULL
-) → LIST(doc_element)
+doc_image(src VARCHAR) → doc_element
+doc_image(src VARCHAR, alt VARCHAR) → doc_element
+doc_image(src VARCHAR, alt VARCHAR, title VARCHAR) → doc_element
 ```
 
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks` | LIST(doc_element) | Input element sequence |
-| `type_mapping` | MAP(VARCHAR, VARCHAR) | Map of old_type → new_type |
-| `content_fn` | VARCHAR | Optional: SQL expression for content transformation |
+Creates a block-level image.
 
-**Returns:** Elements with transformed types and optionally transformed content.
+**Attributes set:** `src`, `alt`, `title`
+
+---
+
+### doc_raw
+
+```sql
+doc_raw(content VARCHAR) → doc_element
+doc_raw(content VARCHAR, format VARCHAR) → doc_element
+```
+
+Creates a raw HTML/XML block.
+
+**Parameters:**
+- `content` - Raw markup content
+- `format` - (Optional) 'html' or 'xml', defaults to 'html'
+
+---
+
+## Inline Builder Functions
+
+### doc_text
+
+```sql
+doc_text(content VARCHAR) → doc_element
+```
+
+Creates plain text content.
+
+**Returns:** `doc_element` with `kind='inline'`, `element_type='text'`
 
 **Example:**
 ```sql
--- Convert all blockquotes to paragraphs
-SELECT doc_blocks_transform(
-    blocks,
-    MAP{'blockquote': 'paragraph'}
-);
+SELECT doc_text('Hello world');
+-- {kind: 'inline', element_type: 'text', content: 'Hello world', level: 1, ...}
 ```
 
 ---
 
-## Content Extraction Functions
+### Whitespace Functions
 
-### doc_blocks_to_text
-
-Extract plain text content from elements.
-
-**Signature:**
 ```sql
-doc_blocks_to_text(
-    blocks LIST(doc_element),
-    separator VARCHAR DEFAULT '\n\n'
-) → VARCHAR
+doc_space() → doc_element       -- Word separator
+doc_softbreak() → doc_element   -- Soft line break
+doc_linebreak() → doc_element   -- Hard line break
 ```
 
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks` | LIST(doc_element) | Input element sequence |
-| `separator` | VARCHAR | Text between blocks (default: double newline) |
+All return `doc_element` with `kind='inline'` and empty content.
 
-**Returns:** Concatenated plain text content.
+---
+
+### doc_bold
+
+```sql
+doc_bold(content VARCHAR) → doc_element
+```
+
+Creates bold/strong text.
+
+---
+
+### doc_italic
+
+```sql
+doc_italic(content VARCHAR) → doc_element
+```
+
+Creates italic/emphasis text.
+
+---
+
+### doc_strikethrough
+
+```sql
+doc_strikethrough(content VARCHAR) → doc_element
+```
+
+Creates strikethrough text.
+
+---
+
+### doc_superscript
+
+```sql
+doc_superscript(content VARCHAR) → doc_element
+```
+
+Creates superscript text.
+
+---
+
+### doc_subscript
+
+```sql
+doc_subscript(content VARCHAR) → doc_element
+```
+
+Creates subscript text.
+
+---
+
+### doc_smallcaps
+
+```sql
+doc_smallcaps(content VARCHAR) → doc_element
+```
+
+Creates small capitals text.
+
+---
+
+### doc_underline
+
+```sql
+doc_underline(content VARCHAR) → doc_element
+```
+
+Creates underlined text.
+
+---
+
+### doc_inline_code
+
+```sql
+doc_inline_code(content VARCHAR) → doc_element
+```
+
+Creates inline code.
 
 **Example:**
 ```sql
--- Get document as plain text
-SELECT doc_blocks_to_text(
-    (SELECT list(b) FROM read_markdown_blocks('doc.md') b)
-);
+SELECT doc_inline_code('print()');
+-- {kind: 'inline', element_type: 'code', content: 'print()', ...}
 ```
 
 ---
 
-### doc_blocks_headings
+### doc_math
 
-Extract heading information as a table.
-
-**Signature:**
 ```sql
-doc_blocks_headings(
-    blocks LIST(doc_element)
-) → TABLE(level INTEGER, title VARCHAR, id VARCHAR, element_order INTEGER)
+doc_math(content VARCHAR) → doc_element
+doc_math(content VARCHAR, block_display BOOLEAN) → doc_element
 ```
 
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks` | LIST(doc_element) | Input element sequence |
+Creates a math expression.
 
-**Returns:** Table of headings with level, title, id attribute, and position.
+**Parameters:**
+- `content` - LaTeX math content
+- `block_display` - (Optional) True for block display, false for inline (default)
+
+**Attributes set:** `display` ('inline' or 'block')
 
 **Example:**
 ```sql
--- Get all headings
-SELECT * FROM doc_blocks_headings(
-    (SELECT list(b) FROM read_markdown_blocks('doc.md') b)
-);
+SELECT doc_math('E=mc^2');
+SELECT doc_math('\\sum_{i=1}^n x_i', true);
 ```
-
-**Output:**
-| level | title | id | element_order |
-|-------|-------|-----|---------------|
-| 1 | Introduction | introduction | 0 |
-| 2 | Getting Started | getting-started | 3 |
-| 2 | Examples | examples | 8 |
 
 ---
 
-### doc_blocks_toc
+### doc_link
 
-Generate a table of contents from headings.
-
-**Signature:**
 ```sql
-doc_blocks_toc(
-    blocks LIST(doc_element),
-    min_level INTEGER DEFAULT 1,
-    max_level INTEGER DEFAULT 6
-) → TABLE(level INTEGER, title VARCHAR, id VARCHAR, indent VARCHAR, element_order INTEGER)
+doc_link(text VARCHAR, href VARCHAR) → doc_element
+doc_link(text VARCHAR, href VARCHAR, title VARCHAR) → doc_element
 ```
 
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks` | LIST(doc_element) | Input element sequence |
-| `min_level` | INTEGER | Minimum heading level to include |
-| `max_level` | INTEGER | Maximum heading level to include |
+Creates a hyperlink.
 
-**Returns:** Table with heading info plus indentation string.
+**Parameters:**
+- `text` - Link text
+- `href` - URL
+- `title` - (Optional) Link title/tooltip
+
+**Attributes set:** `href`, `title`
 
 **Example:**
 ```sql
--- Generate indented TOC
-SELECT indent || '- [' || title || '](#' || id || ')' as toc_line
-FROM doc_blocks_toc(
-    (SELECT list(b) FROM read_markdown_blocks('doc.md') b)
-);
+SELECT doc_link('Click here', 'https://example.com');
+-- {kind: 'inline', element_type: 'link', content: 'Click here',
+--  attributes: {'href': 'https://example.com'}, ...}
 ```
 
 ---
 
-### doc_blocks_code_blocks
+### doc_inline_image
 
-Extract code blocks with metadata.
-
-**Signature:**
 ```sql
-doc_blocks_code_blocks(
-    blocks LIST(doc_element)
-) → TABLE(language VARCHAR, content VARCHAR, info_string VARCHAR, element_order INTEGER)
+doc_inline_image(src VARCHAR) → doc_element
+doc_inline_image(src VARCHAR, alt VARCHAR) → doc_element
+doc_inline_image(src VARCHAR, alt VARCHAR, title VARCHAR) → doc_element
 ```
 
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks` | LIST(doc_element) | Input element sequence |
+Creates an inline image.
 
-**Returns:** Table of code blocks with language and content.
+**Parameters:**
+- `src` - Image URL or path
+- `alt` - (Optional) Alt text (also stored in content)
+- `title` - (Optional) Image title
+
+**Attributes set:** `src`, `alt`, `title`
+
+---
+
+### doc_quoted
+
+```sql
+doc_quoted(content VARCHAR) → doc_element
+doc_quoted(content VARCHAR, quote_type VARCHAR) → doc_element
+```
+
+Creates quoted text.
+
+**Parameters:**
+- `content` - Quoted text
+- `quote_type` - (Optional) 'single' or 'double' (default)
+
+**Attributes set:** `quote_type`
+
+---
+
+### doc_cite
+
+```sql
+doc_cite(key VARCHAR) → doc_element
+doc_cite(key VARCHAR, prefix VARCHAR) → doc_element
+doc_cite(key VARCHAR, prefix VARCHAR, suffix VARCHAR) → doc_element
+```
+
+Creates a citation reference.
+
+**Parameters:**
+- `key` - Citation key
+- `prefix` - (Optional) Text before citation
+- `suffix` - (Optional) Text after citation
+
+**Attributes set:** `key`, `prefix`, `suffix`
+
+---
+
+### doc_note
+
+```sql
+doc_note(content VARCHAR) → doc_element
+```
+
+Creates a footnote.
+
+---
+
+### doc_span
+
+```sql
+doc_span(content VARCHAR) → doc_element
+doc_span(content VARCHAR, id VARCHAR) → doc_element
+doc_span(content VARCHAR, id VARCHAR, class VARCHAR) → doc_element
+```
+
+Creates a generic inline container.
+
+**Attributes set:** `id`, `class`
+
+---
+
+### doc_raw_inline
+
+```sql
+doc_raw_inline(content VARCHAR) → doc_element
+doc_raw_inline(content VARCHAR, format VARCHAR) → doc_element
+```
+
+Creates raw inline content.
+
+**Parameters:**
+- `content` - Raw content
+- `format` - (Optional) 'html', 'latex', etc. (default: 'html')
+
+**Attributes set:** `format`
+
+---
+
+## Assembly Functions
+
+### doc_assemble
+
+```sql
+doc_assemble(blocks LIST(doc_element)) → LIST(doc_element)
+```
+
+Assigns sequential `element_order` values (0, 1, 2, ...) to a list of elements.
 
 **Example:**
 ```sql
--- Get all Python code blocks
-SELECT content
-FROM doc_blocks_code_blocks(blocks)
-WHERE language = 'python';
+SELECT doc_assemble([
+    doc_heading('Title', 1),
+    doc_paragraph('Content')
+]);
+-- First element gets element_order=0, second gets element_order=1
 ```
 
 ---
 
-### doc_blocks_links
+### doc_document
 
-Extract links from block content.
-
-**Signature:**
 ```sql
-doc_blocks_links(
-    blocks LIST(doc_element)
-) → TABLE(text VARCHAR, url VARCHAR, title VARCHAR, element_order INTEGER)
+doc_document(blocks LIST(doc_element)) → LIST(doc_element)
 ```
 
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks` | LIST(doc_element) | Input element sequence |
+Alias for `doc_assemble`. Use for semantic clarity when creating complete documents.
 
-**Returns:** Table of links extracted from text content.
+---
+
+### doc_section
+
+```sql
+doc_section(title VARCHAR, level INTEGER) → LIST(doc_element)
+doc_section(title VARCHAR, level INTEGER, children LIST(doc_element)) → LIST(doc_element)
+```
+
+Creates a section with a heading followed by content blocks.
+
+**Parameters:**
+- `title` - Section heading text
+- `level` - Heading level (1-6)
+- `children` - (Optional) Content blocks for the section
 
 **Example:**
 ```sql
--- Find all external links
-SELECT * FROM doc_blocks_links(blocks)
-WHERE url LIKE 'http%';
+SELECT doc_section('Getting Started', 2, [
+    doc_paragraph('First, install the extension.'),
+    doc_code('LOAD duck_block_utils;', 'sql')
+]);
+-- Returns: [heading, paragraph, code] with sequential element_order
 ```
 
 ---
 
-## Validation Functions
+### doc_rebase_levels
 
-### doc_blocks_validate
-
-Check elements for schema compliance.
-
-**Signature:**
 ```sql
-doc_blocks_validate(
-    blocks LIST(doc_element)
-) → STRUCT(valid BOOLEAN, errors LIST(VARCHAR))
+doc_rebase_levels(blocks LIST(doc_element), offset INTEGER) → LIST(doc_element)
 ```
 
+Adjusts heading levels by a fixed offset.
+
 **Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks` | LIST(doc_element) | Input element sequence |
+- `blocks` - List of elements
+- `offset` - Amount to add to heading levels (can be negative)
 
-**Returns:** Struct with validation result and list of errors.
-
-**Validation checks:**
-- kind is 'block' or 'inline'
-- element_type is non-empty
-- encoding is valid ('text', 'json', 'yaml', 'html', 'xml')
-- JSON content is valid when encoding='json'
-- YAML content is valid when encoding='yaml'
-- element_order is non-negative
-- level is NULL or non-negative (for blocks), >= 1 (for inlines)
+**Notes:**
+- Only affects heading blocks
+- Clamps results to valid range (1-6)
 
 **Example:**
 ```sql
-SELECT (doc_blocks_validate(blocks)).valid as is_valid;
+SELECT doc_rebase_levels([doc_heading('Title', 1)], 1);
+-- Returns heading with level=2
 ```
 
 ---
 
-### doc_blocks_lint
+### doc_concat
 
-Check for common issues and best practices.
-
-**Signature:**
 ```sql
-doc_blocks_lint(
-    blocks LIST(doc_element)
-) → TABLE(severity VARCHAR, message VARCHAR, element_order INTEGER, suggestion VARCHAR)
+doc_concat(blocks1 LIST(doc_element), blocks2 LIST(doc_element)) → LIST(doc_element)
 ```
 
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks` | LIST(doc_element) | Input element sequence |
+Concatenates two element lists without modifying `element_order`.
 
-**Returns:** Table of issues with severity, message, location, and suggestions.
-
-**Severity levels:**
-- `error` - Critical issues that may cause problems
-- `warning` - Potential issues or non-standard patterns
-- `info` - Suggestions for improvement
-
-**Checks performed:**
-| Severity | Issue |
-|----------|-------|
-| error | Duplicate element_order values |
-| warning | Heading level skipped (e.g., h1 → h3) |
-| warning | Empty content in non-hr/non-image blocks |
-| warning | Unknown element_type (not core, not namespaced) |
-| warning | Code block without language |
-| info | Large gaps in element_order |
-
-**Example:**
-```sql
--- Show all errors and warnings
-SELECT * FROM doc_blocks_lint(blocks)
-WHERE severity IN ('error', 'warning');
-```
+**Notes:**
+- Unlike `doc_blocks_merge`, does not adjust `element_order`
+- Use with `doc_assemble` to renumber after concatenation
 
 ---
 
-### doc_blocks_stats
+## Type Functions
 
-Get element type statistics.
+### duck_block (Full Constructor)
 
-**Signature:**
 ```sql
-doc_blocks_stats(
-    blocks LIST(doc_element)
-) → TABLE(element_type VARCHAR, count INTEGER, avg_content_length DOUBLE, total_content_length BIGINT)
-```
-
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks` | LIST(doc_element) | Input element sequence |
-
-**Returns:** Aggregated statistics per element type.
-
-**Example:**
-```sql
--- Document composition
-SELECT * FROM doc_blocks_stats(blocks)
-ORDER BY count DESC;
-```
-
----
-
-### doc_blocks_structure
-
-Analyze document structure.
-
-**Signature:**
-```sql
-doc_blocks_structure(
-    blocks LIST(doc_element)
-) → STRUCT(
-    block_count INTEGER,
-    heading_count INTEGER,
-    max_heading_level INTEGER,
-    has_metadata BOOLEAN,
-    has_code BOOLEAN,
-    has_tables BOOLEAN,
-    languages VARCHAR[]
-)
-```
-
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks` | LIST(doc_element) | Input element sequence |
-
-**Returns:** Struct summarizing document structure.
-
-**Example:**
-```sql
-SELECT (doc_blocks_structure(blocks)).*;
-```
-
----
-
-## Conversion Helper Functions
-
-### doc_blocks_set_source
-
-Add or update source_format on all elements.
-
-**Signature:**
-```sql
-doc_blocks_set_source(
-    blocks LIST(doc_element),
-    format VARCHAR
-) → LIST(doc_element_ext)
-```
-
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks` | LIST(doc_element) | Input element sequence |
-| `format` | VARCHAR | Source format identifier |
-
-**Returns:** Extended elements with source_format set.
-
-**Example:**
-```sql
--- Track provenance
-SELECT doc_blocks_set_source(
-    (SELECT list(b) FROM read_markdown_blocks('doc.md') b),
-    'markdown'
-);
-```
-
----
-
-### doc_blocks_normalize
-
-Convert all elements to core types only.
-
-**Signature:**
-```sql
-doc_blocks_normalize(
-    blocks LIST(doc_element)
-) → LIST(doc_element)
-```
-
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks` | LIST(doc_element) | Input element sequence |
-
-**Returns:** Elements with namespaced types converted to nearest core type.
-
-**Normalization rules:**
-| Original Type | Normalized Type | Notes |
-|---------------|-----------------|-------|
-| `md:footnote` | `paragraph` | `attributes['original_type']` preserved |
-| `html:div` | `raw` | `attributes['format']='html'` |
-| `html:h1`-`html:h6` | `heading` | Level extracted from tag |
-| `html:p` | `paragraph` | |
-| `html:pre` | `code` | |
-| `html:ul`, `html:ol` | `list` | |
-| `html:table` | `table` | |
-| `xml:*` | `raw` | `attributes['format']='xml'` |
-
-**Example:**
-```sql
--- Normalize before cross-format merge
-SELECT doc_blocks_normalize(html_blocks);
-```
-
----
-
-### doc_blocks_map_types
-
-Apply custom type mapping.
-
-**Signature:**
-```sql
-doc_blocks_map_types(
-    blocks LIST(doc_element),
-    mapping MAP(VARCHAR, VARCHAR)
-) → LIST(doc_element)
-```
-
-**Parameters:**
-| Name | Type | Description |
-|------|------|-------------|
-| `blocks` | LIST(doc_element) | Input element sequence |
-| `mapping` | MAP(VARCHAR, VARCHAR) | Type transformation map |
-
-**Returns:** Elements with mapped types (unmapped types unchanged).
-
-**Example:**
-```sql
--- Custom format conversion
-SELECT doc_blocks_map_types(
-    blocks,
-    MAP{
-        'html:section': 'heading',
-        'html:article': 'paragraph',
-        'html:aside': 'blockquote'
-    }
-);
-```
-
----
-
-## Aggregate Functions
-
-### doc_blocks_agg
-
-Aggregate rows into an element list (for use with GROUP BY).
-
-**Signature:**
-```sql
-doc_blocks_agg(
+duck_block(
     element_type VARCHAR,
     content VARCHAR,
     level INTEGER,
     encoding VARCHAR,
     attributes MAP(VARCHAR, VARCHAR),
     element_order INTEGER
-) → LIST(doc_element)
+) → doc_element
 ```
+
+Creates a `doc_element` with `kind='block'` and all fields specified.
+
+---
+
+### duck_block (Simple Constructor)
+
+```sql
+duck_block(element_type VARCHAR, content VARCHAR) → doc_element
+```
+
+Creates a `doc_element` with `kind='block'` using defaults:
+- `level`: NULL
+- `encoding`: 'text'
+- `attributes`: empty map
+- `element_order`: 0
+
+---
+
+### to_duck_block
+
+```sql
+to_duck_block(input STRUCT) → doc_element
+```
+
+Converts a compatible struct to a `doc_element`.
+
+**Notes:**
+- Accepts structs with 2-7 fields
+- Missing fields are filled with defaults
+- Infers `kind` from context if not provided
+
+---
+
+### duck_block_valid
+
+```sql
+duck_block_valid(element doc_element) → BOOLEAN
+```
+
+Checks if an element has valid structure and values.
+
+**Validation Rules:**
+- `kind` must be 'block' or 'inline'
+- `element_type` must be non-empty
+- `encoding` must be valid if not NULL
+- `element_order` must be non-negative if not NULL
+- For headings: `level` must be 1-6
+- For inlines: `level` must be >= 1
+
+---
+
+### Field Accessors
+
+```sql
+duck_block_type(element doc_element) → VARCHAR      -- Get element_type
+duck_block_content(element doc_element) → VARCHAR   -- Get content
+duck_block_level(element doc_element) → INTEGER     -- Get level
+duck_block_encoding(element doc_element) → VARCHAR  -- Get encoding
+duck_block_order(element doc_element) → INTEGER     -- Get element_order
+duck_block_attr(element doc_element, key VARCHAR) → VARCHAR  -- Get attribute value
+```
+
+---
+
+### Field Setters
+
+Return a new element with one field modified (immutable update):
+
+```sql
+duck_block_set_order(element doc_element, new_order INTEGER) → doc_element
+duck_block_set_content(element doc_element, new_content VARCHAR) → doc_element
+duck_block_set_level(element doc_element, new_level INTEGER) → doc_element
+```
+
+---
+
+## Manipulation Functions
+
+### doc_blocks_filter
+
+```sql
+doc_blocks_filter(blocks LIST(doc_element), types VARCHAR[]) → LIST(doc_element)
+```
+
+Filter elements to include only specified types.
 
 **Example:**
 ```sql
--- Collect elements by file
-SELECT
-    file_path,
-    doc_blocks_agg(element_type, content, level, encoding, attributes, element_order) as blocks
-FROM read_markdown_blocks('docs/**/*.md', include_filepath := true)
-GROUP BY file_path;
+SELECT doc_blocks_filter(blocks, ['heading', 'code']);
 ```
+
+---
+
+### doc_blocks_exclude
+
+```sql
+doc_blocks_exclude(blocks LIST(doc_element), types VARCHAR[]) → LIST(doc_element)
+```
+
+Filter elements to exclude specified types.
+
+---
+
+### doc_blocks_merge
+
+```sql
+doc_blocks_merge(blocks1 LIST(doc_element), blocks2 LIST(doc_element)) → LIST(doc_element)
+```
+
+Combine two element sequences with automatic `element_order` adjustment.
+
+---
+
+### doc_blocks_reorder
+
+```sql
+doc_blocks_reorder(blocks LIST(doc_element)) → LIST(doc_element)
+```
+
+Renumber `element_order` values sequentially from 0.
+
+---
+
+### doc_blocks_slice
+
+```sql
+doc_blocks_slice(blocks LIST(doc_element), start_order INTEGER, end_order INTEGER) → LIST(doc_element)
+```
+
+Extract elements within an `element_order` range (inclusive).
+
+---
+
+## Extraction Functions
+
+### doc_blocks_to_text
+
+```sql
+doc_blocks_to_text(blocks LIST(doc_element)) → VARCHAR
+doc_blocks_to_text(blocks LIST(doc_element), separator VARCHAR) → VARCHAR
+```
+
+Extract plain text content from elements.
+
+**Parameters:**
+- `separator` - Text between blocks (default: double newline)
+
+---
+
+### doc_blocks_headings
+
+```sql
+doc_blocks_headings(blocks LIST(doc_element)) → LIST(STRUCT(level, title, id, element_order))
+```
+
+Extract heading information.
+
+---
+
+### doc_blocks_code_blocks
+
+```sql
+doc_blocks_code_blocks(blocks LIST(doc_element)) → LIST(STRUCT(language, content, element_order))
+```
+
+Extract code block information.
+
+---
+
+### doc_blocks_stats
+
+```sql
+doc_blocks_stats(blocks LIST(doc_element)) → LIST(STRUCT(element_type, count, total_length, avg_length))
+```
+
+Compute statistics by element type.
+
+---
+
+## Pandoc Conversion Functions
+
+### pandoc_inlines_to_doc_inlines
+
+```sql
+pandoc_inlines_to_doc_inlines(json_inlines VARCHAR) → LIST(doc_element)
+```
+
+Convert Pandoc inline JSON array to doc_element inlines.
+
+**Example:**
+```sql
+SELECT pandoc_inlines_to_doc_inlines('[{"t":"Str","c":"Hello"},{"t":"Space"},{"t":"Strong","c":[{"t":"Str","c":"world"}]}]');
+```
+
+---
+
+### pandoc_inlines_to_text
+
+```sql
+pandoc_inlines_to_text(json_inlines VARCHAR, mode VARCHAR) → VARCHAR
+```
+
+Convert Pandoc inline JSON to text.
+
+**Parameters:**
+- `mode` - 'text' for plain text, 'markdown' for formatted
+
+**Example:**
+```sql
+SELECT pandoc_inlines_to_text('[{"t":"Str","c":"Hello"},{"t":"Space"},{"t":"Strong","c":[{"t":"Str","c":"world"}]}]', 'markdown');
+-- Returns: 'Hello **world**'
+```
+
+---
+
+### doc_inlines_to_pandoc
+
+```sql
+doc_inlines_to_pandoc(inlines LIST(doc_element)) → VARCHAR
+```
+
+Convert doc_element inlines to Pandoc JSON.
+
+**Example:**
+```sql
+SELECT doc_inlines_to_pandoc([doc_text('Hello')]);
+-- Returns: '[{"t":"Str","c":"Hello"}]'
+```
+
+---
+
+### doc_text_to_pandoc
+
+```sql
+doc_text_to_pandoc(text VARCHAR) → VARCHAR
+```
+
+Convert plain text to Pandoc inline JSON.
+
+---
+
+## Implementation Notes for Webbed
+
+When implementing these types in webbed (or any other extension):
+
+1. **Use the same struct field order:**
+   - kind (index 0)
+   - element_type (index 1)
+   - content (index 2)
+   - level (index 3)
+   - encoding (index 4)
+   - attributes (index 5)
+   - element_order (index 6)
+
+2. **Field access by index is faster** than by name
+
+3. **Block elements** should have:
+   - `kind = 'block'`
+   - `level` is NULL except for headings (1-6) and blockquotes (nesting depth)
+
+4. **Inline elements** should have:
+   - `kind = 'inline'`
+   - `level >= 1` (indicates nesting depth in container inlines)
+   - `element_order` for position within inline sequence
+
+5. **Whitespace inlines** (space, softbreak, linebreak) have empty content
+
+6. **Container inlines** (bold, italic, link, etc.):
+   - Simple case: content field contains the text
+   - Complex case: content is empty, children are at level+1
 
 ---
 
 ## See Also
 
-- [Design Document](design.md) - Architecture and implementation details
-- [Duck Blocks Specification](duck_blocks_spec.md) - Unified doc_element type schema
-- [DuckDB Markdown Extension](https://github.com/teaguesterling/duckdb_markdown) - Reference implementation
+- [Duck Blocks Specification](duck_blocks_spec.md) - Canonical type specification
+- [Block Builders](block_builders.md) - Block construction guide
+- [Inline Builders](inline_builders.md) - Inline construction guide
+- [Type Functions](type_functions.md) - Type function details
