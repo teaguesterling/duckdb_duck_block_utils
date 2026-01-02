@@ -1,7 +1,7 @@
 -- 03_markdown_render.sql
--- Render doc_elements to Markdown
+-- Render duck_blocks to Markdown
 --
--- v4: Renders blocks and inline arrays from step 2 using doc_elements_to_md()
+-- v4: Renders blocks and inline arrays from step 2 using db_elements_to_md()
 --     No duck_block_utils needed - only markdown rendering functions
 --
 -- Run: duckdb_markdown/build/release/duckdb /tmp/dashboard.duckdb -f 03_markdown_render.sql
@@ -14,13 +14,13 @@ CREATE OR REPLACE TABLE rendered_markdown AS
 WITH
 -- Header: render each block
 header_md AS (
-    SELECT sort_order, doc_element_to_md(block) AS md
+    SELECT sort_order, db_element_to_md(block) AS md
     FROM header_blocks
 ),
 
 -- Categories: render each block
 category_md AS (
-    SELECT sort_order, doc_element_to_md(block) AS md
+    SELECT sort_order, db_element_to_md(block) AS md
     FROM category_blocks
 ),
 
@@ -29,21 +29,21 @@ project_md AS (
     SELECT
         sort_order,
         -- Heading
-        doc_element_to_md(heading_block)
+        db_element_to_md(heading_block)
         -- Description (with inline content if no description text)
         || CASE
             WHEN desc_inlines IS NOT NULL
-            THEN doc_elements_to_md(desc_inlines) || E'\n\n'
-            ELSE doc_element_to_md(desc_block)
+            THEN db_elements_to_md(desc_inlines) || E'\n\n'
+            ELSE db_element_to_md(desc_block)
         END
         -- Links as unordered list items
-        || '- ' || doc_elements_to_md(github_inlines) || E'\n'
+        || '- ' || db_elements_to_md(github_inlines) || E'\n'
         || CASE WHEN extension_inlines IS NOT NULL
-            THEN '- ' || doc_elements_to_md(extension_inlines) || E'\n'
+            THEN '- ' || db_elements_to_md(extension_inlines) || E'\n'
             ELSE ''
         END
         || CASE WHEN docs_inlines IS NOT NULL
-            THEN '- ' || doc_elements_to_md(docs_inlines) || E'\n'
+            THEN '- ' || db_elements_to_md(docs_inlines) || E'\n'
             ELSE ''
         END
         || E'\n'
@@ -59,7 +59,7 @@ footer_md AS (
     UNION ALL
     SELECT
         999 AS sort_order,
-        doc_elements_to_md(inlines) || E'\n\n' AS md
+        db_elements_to_md(inlines) || E'\n\n' AS md
     FROM footer_inlines
 ),
 

@@ -16,9 +16,9 @@ V4 uses a 3-step pipeline with separate DuckDB binaries:
 
 ## Key Design
 
-- **Inline elements** (`doc_link`, `doc_text`, `doc_inline_image`, `doc_italic`) create structured content
+- **Inline elements** (`db_link`, `db_text`, `db_inline_image`, `db_italic`) create structured content
 - **Inline arrays** are stored alongside blocks in step 2
-- **`doc_elements_to_md()`** renders both blocks and inline arrays in step 3
+- **`db_elements_to_md()`** renders both blocks and inline arrays in step 3
 - **No markdown syntax** in SQL - all formatting is through structured elements
 
 ## Example
@@ -33,10 +33,10 @@ format(getvariable('link_github'), github_url, github_ci_url)
 V4 uses structured inline elements:
 ```sql
 -- v4 step 2: Create inline element array (duck_block_utils)
-[doc_link('GitHub', github_url), doc_text(' '), doc_inline_image(github_ci_url, 'CI')] AS github_inlines
+[db_link('GitHub', github_url), db_text(' '), db_inline_image(github_ci_url, 'CI')] AS github_inlines
 
 -- v4 step 3: Render to markdown (markdown extension)
-'- ' || doc_elements_to_md(github_inlines)
+'- ' || db_elements_to_md(github_inlines)
 ```
 
 ## Benefits

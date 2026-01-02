@@ -18,7 +18,7 @@ static Value CreateAttrsMap(const map<string, string> &attrs) {
 	return Value::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR, keys, values);
 }
 
-// Helper to create a single doc_element Value (for inline)
+// Helper to create a single duck_block Value (for inline)
 static Value CreateDocInline(const string &inline_type, const string &content,
                              int32_t level, const map<string, string> &attrs, int32_t order) {
 	child_list_t<Value> struct_values;
@@ -792,7 +792,7 @@ void PandocInlineConvert::PandocInlinesToTextFun(DataChunk &args, ExpressionStat
 void PandocInlineConvert::Register(ExtensionLoader &loader) {
 	auto duck_block_list_type = BlockTypes::DuckBlockListType();
 
-	// pandoc_inlines_to_db_inlines(json VARCHAR) -> LIST(doc_element)
+	// pandoc_inlines_to_db_inlines(json VARCHAR) -> LIST(duck_block)
 	loader.RegisterFunction(ScalarFunction(
 	    "pandoc_inlines_to_db_inlines",
 	    {LogicalType::VARCHAR},
@@ -800,7 +800,7 @@ void PandocInlineConvert::Register(ExtensionLoader &loader) {
 	    PandocInlinesToDbInlinesFun
 	));
 
-	// db_inlines_to_pandoc(LIST(doc_element)) -> VARCHAR (JSON)
+	// db_inlines_to_pandoc(LIST(duck_block)) -> VARCHAR (JSON)
 	loader.RegisterFunction(ScalarFunction(
 	    "db_inlines_to_pandoc",
 	    {duck_block_list_type},

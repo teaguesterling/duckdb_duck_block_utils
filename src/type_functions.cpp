@@ -97,7 +97,7 @@ void TypeFunctions::ToDuckBlockFun(DataChunk &args, ExpressionState &state, Vect
 
 		auto &children = StructValue::GetChildren(input);
 
-		// Extract fields - now expects 7 fields for doc_element
+		// Extract fields - now expects 7 fields for duck_block
 		Value kind, element_type, content, level, encoding, attributes, element_order;
 
 		if (children.size() >= 7) {
@@ -143,7 +143,7 @@ void TypeFunctions::DuckBlockValidFun(DataChunk &args, ExpressionState &state, V
 
 		auto &children = StructValue::GetChildren(block);
 
-		// Check required structure (7 fields for doc_element)
+		// Check required structure (7 fields for duck_block)
 		if (children.size() < 7) {
 			result.SetValue(i, Value(false));
 			continue;
@@ -338,7 +338,7 @@ void TypeFunctions::DuckBlockSetLevelFun(DataChunk &args, ExpressionState &state
 void TypeFunctions::Register(ExtensionLoader &loader) {
 	auto duck_block_type = BlockTypes::DuckBlockType();
 
-	// duck_block(block_type, content, level, encoding, attributes, block_order) -> doc_element
+	// duck_block(block_type, content, level, encoding, attributes, block_order) -> duck_block
 	loader.RegisterFunction(ScalarFunction(
 	    "duck_block",
 	    {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::INTEGER,
@@ -348,7 +348,7 @@ void TypeFunctions::Register(ExtensionLoader &loader) {
 	    DuckBlockFun
 	));
 
-	// duck_block(block_type, content) -> doc_element
+	// duck_block(block_type, content) -> duck_block
 	loader.RegisterFunction(ScalarFunction(
 	    "duck_block",
 	    {LogicalType::VARCHAR, LogicalType::VARCHAR},
@@ -356,7 +356,7 @@ void TypeFunctions::Register(ExtensionLoader &loader) {
 	    DuckBlockSimpleFun
 	));
 
-	// to_duck_block(struct) -> doc_element
+	// to_duck_block(struct) -> duck_block
 	loader.RegisterFunction(ScalarFunction(
 	    "to_duck_block",
 	    {LogicalType::ANY},
@@ -420,7 +420,7 @@ void TypeFunctions::Register(ExtensionLoader &loader) {
 	    DuckBlockAttrFun
 	));
 
-	// duck_block_set_order(element, new_order) -> doc_element
+	// duck_block_set_order(element, new_order) -> duck_block
 	loader.RegisterFunction(ScalarFunction(
 	    "duck_block_set_order",
 	    {duck_block_type, LogicalType::INTEGER},
@@ -428,7 +428,7 @@ void TypeFunctions::Register(ExtensionLoader &loader) {
 	    DuckBlockSetOrderFun
 	));
 
-	// duck_block_set_content(element, new_content) -> doc_element
+	// duck_block_set_content(element, new_content) -> duck_block
 	loader.RegisterFunction(ScalarFunction(
 	    "duck_block_set_content",
 	    {duck_block_type, LogicalType::VARCHAR},
@@ -436,7 +436,7 @@ void TypeFunctions::Register(ExtensionLoader &loader) {
 	    DuckBlockSetContentFun
 	));
 
-	// duck_block_set_level(element, new_level) -> doc_element
+	// duck_block_set_level(element, new_level) -> duck_block
 	loader.RegisterFunction(ScalarFunction(
 	    "duck_block_set_level",
 	    {duck_block_type, LogicalType::INTEGER},

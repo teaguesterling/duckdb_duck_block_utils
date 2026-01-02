@@ -1,5 +1,5 @@
 -- 03_markdown_render.sql
--- Render doc_blocks to Markdown
+-- Render db_blocks to Markdown
 --
 -- Run: duckdb_markdown/build/release/duckdb /tmp/dashboard.duckdb -f 03_markdown_render.sql
 

@@ -11,16 +11,16 @@ public:
 	static void Register(ExtensionLoader &loader);
 
 private:
-	// duck_block(block_type, content, level, encoding, attributes, block_order) -> doc_block
+	// duck_block(block_type, content, level, encoding, attributes, block_order) -> duck_block
 	// Full constructor with all fields
 	static void DuckBlockFun(DataChunk &args, ExpressionState &state, Vector &result);
 
-	// duck_block(block_type, content) -> doc_block
+	// duck_block(block_type, content) -> duck_block
 	// Minimal constructor with defaults
 	static void DuckBlockSimpleFun(DataChunk &args, ExpressionState &state, Vector &result);
 
-	// to_duck_block(struct) -> doc_block
-	// Convert a compatible struct to doc_block
+	// to_duck_block(struct) -> duck_block
+	// Convert a compatible struct to duck_block
 	static void ToDuckBlockFun(DataChunk &args, ExpressionState &state, Vector &result);
 
 	// duck_block_valid(block) -> BOOLEAN
@@ -51,15 +51,15 @@ private:
 	// Extract a specific attribute value
 	static void DuckBlockAttrFun(DataChunk &args, ExpressionState &state, Vector &result);
 
-	// duck_block_set_order(block, new_order) -> doc_block
+	// duck_block_set_order(block, new_order) -> duck_block
 	// Return a new block with updated block_order
 	static void DuckBlockSetOrderFun(DataChunk &args, ExpressionState &state, Vector &result);
 
-	// duck_block_set_content(block, new_content) -> doc_block
+	// duck_block_set_content(block, new_content) -> duck_block
 	// Return a new block with updated content
 	static void DuckBlockSetContentFun(DataChunk &args, ExpressionState &state, Vector &result);
 
-	// duck_block_set_level(block, new_level) -> doc_block
+	// duck_block_set_level(block, new_level) -> duck_block
 	// Return a new block with updated level
 	static void DuckBlockSetLevelFun(DataChunk &args, ExpressionState &state, Vector &result);
 };

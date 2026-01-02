@@ -688,17 +688,17 @@ See [Type Functions](type_functions.md) for complete documentation.
 
 ## Pandoc Conversion Functions
 
-### pandoc_inlines_to_doc_inlines
+### pandoc_inlines_to_db_inlines
 
 Convert Pandoc inline JSON to duck_block inlines.
 
 ```sql
-pandoc_inlines_to_doc_inlines(inlines VARCHAR) → LIST(duck_block)
+pandoc_inlines_to_db_inlines(inlines VARCHAR) → LIST(duck_block)
 ```
 
 **Example:**
 ```sql
-SELECT pandoc_inlines_to_doc_inlines('[{"t":"Str","c":"Hello"},{"t":"Space"},{"t":"Strong","c":[{"t":"Str","c":"world"}]}]');
+SELECT pandoc_inlines_to_db_inlines('[{"t":"Str","c":"Hello"},{"t":"Space"},{"t":"Strong","c":[{"t":"Str","c":"world"}]}]');
 -- Returns list of duck_block inlines
 ```
 

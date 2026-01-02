@@ -1,5 +1,5 @@
 -- 02_duck_block_utils_create_page_structure.sql
--- Build doc_elements from project data using duck_block_utils builders
+-- Build duck_blocks from project data using duck_block_utils builders
 --
 -- v4: Uses duck_block_builders completely - no markdown syntax in templates
 --     Creates blocks + stores inline element arrays for step 3 to render
@@ -23,12 +23,12 @@ SET VARIABLE url_rtd_badge TO 'https://readthedocs.org/projects/{0}/badge/';
 
 CREATE OR REPLACE TABLE header_blocks AS
 WITH owner AS (SELECT default_owner FROM config)
-SELECT 1 AS sort_order, doc_heading('DuckDB Extensions Dashboard', 1) AS block
+SELECT 1 AS sort_order, db_heading('DuckDB Extensions Dashboard', 1) AS block
 UNION ALL
-SELECT 2, doc_paragraph('A collection of DuckDB extensions and related projects by ' || (SELECT default_owner FROM owner) || '.');
+SELECT 2, db_paragraph('A collection of DuckDB extensions and related projects by ' || (SELECT default_owner FROM owner) || '.');
 
 CREATE OR REPLACE TABLE footer_inlines AS
-SELECT [doc_italic('Generated with DuckDB extensions: yaml, duck_block_utils, markdown')] AS inlines;
+SELECT [db_italic('Generated with DuckDB extensions: yaml, duck_block_utils, markdown')] AS inlines;
 
 ------------------------------------------------------------
 -- Category headers
@@ -47,7 +47,7 @@ WITH categories AS (
 SELECT
     c.sort_order,
     c.name AS category,
-    doc_heading(c.name, 2) AS block
+    db_heading(c.name, 2) AS block
 FROM categories c
 WHERE c.name IN (SELECT DISTINCT category FROM projects);
 
@@ -91,20 +91,20 @@ SELECT
     name,
     description,
     -- Heading block for project name
-    doc_heading(name, 3) AS heading_block,
+    db_heading(name, 3) AS heading_block,
     -- Description block (empty if no description - inlines will fill it)
-    doc_paragraph(coalesce(description, '')) AS desc_block,
+    db_paragraph(coalesce(description, '')) AS desc_block,
     -- Inline elements for "No description" italic
     CASE WHEN description IS NULL
-        THEN [doc_italic('No description')]
+        THEN [db_italic('No description')]
     END AS desc_inlines,
     -- Inline elements for each link type
-    [doc_link('GitHub', github_url), doc_text(' '), doc_inline_image(github_ci_url, 'CI')] AS github_inlines,
+    [db_link('GitHub', github_url), db_text(' '), db_inline_image(github_ci_url, 'CI')] AS github_inlines,
     CASE WHEN extension_page IS NOT NULL
-        THEN [doc_link('Extension', extension_page), doc_text(' '), doc_inline_image(ext_ci_url, 'Extension CI')]
+        THEN [db_link('Extension', extension_page), db_text(' '), db_inline_image(ext_ci_url, 'Extension CI')]
     END AS extension_inlines,
     CASE WHEN docs IS NOT NULL
-        THEN [doc_link('Docs', docs), doc_text(' '), doc_inline_image(docs_badge_url, 'Docs')]
+        THEN [db_link('Docs', docs), db_text(' '), db_inline_image(docs_badge_url, 'Docs')]
     END AS docs_inlines
 FROM projects_with_urls;
 

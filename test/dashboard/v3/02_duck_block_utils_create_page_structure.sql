@@ -1,5 +1,5 @@
 -- 02_duck_block_utils_create_page_structure.sql
--- Build doc_blocks from project data using templates
+-- Build db_blocks from project data using templates
 --
 -- Run: ./build/release/duckdb /tmp/dashboard.duckdb -f test/dashboard/v3/02_duck_block_utils_create_page_structure.sql
 
@@ -90,8 +90,8 @@ projects_with_links AS (
 -- Header
 header AS (
     SELECT * FROM (VALUES
-        (1, doc_heading('DuckDB Extensions Dashboard', 1)),
-        (2, doc_paragraph(format(
+        (1, db_heading('DuckDB Extensions Dashboard', 1)),
+        (2, db_paragraph(format(
             'A collection of DuckDB extensions and related projects by {}.',
             (SELECT default_owner FROM owner)
         )))
@@ -100,7 +100,7 @@ header AS (
 
 -- Category headers
 category_headers AS (
-    SELECT c.sort_order, doc_heading(c.name, 2) AS block
+    SELECT c.sort_order, db_heading(c.name, 2) AS block
     FROM categories c
     WHERE c.name IN (SELECT DISTINCT category FROM projects)
 ),
@@ -109,7 +109,7 @@ category_headers AS (
 project_blocks AS (
     SELECT
         cat_order + row_number() OVER (PARTITION BY category ORDER BY name) AS sort_order,
-        doc_paragraph(format(
+        db_paragraph(format(
             getvariable('project_template'),
             name,
             coalesce(description, '_No description_'),
@@ -121,7 +121,7 @@ project_blocks AS (
 -- Footer
 footer AS (
     SELECT 999 AS sort_order,
-           doc_paragraph(getvariable('footer_template')) AS block
+           db_paragraph(getvariable('footer_template')) AS block
 )
 
 -- Combine

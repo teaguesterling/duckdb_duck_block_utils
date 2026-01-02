@@ -1,5 +1,5 @@
 -- 02_duck_block_utils_create_page_structure.sql
--- Build doc_blocks from project data
+-- Build db_blocks from project data
 --
 -- Run: ./build/release/duckdb /tmp/dashboard.duckdb -f test/dashboard/v2/02_duck_block_utils_create_page_structure.sql
 
@@ -48,11 +48,11 @@ header AS (
         SELECT unnest([
             {
                 sort_order: 1,
-                block: doc_heading('DuckDB Extensions Dashboard', 1)
+                block: db_heading('DuckDB Extensions Dashboard', 1)
             },
             {
                 sort_order: 2,
-                block: doc_paragraph(format(
+                block: db_paragraph(format(
                     'A collection of DuckDB extensions and related projects by {}.',
                     (SELECT default_owner FROM owner)
                 ))
@@ -65,7 +65,7 @@ header AS (
 category_headers AS (
     SELECT
         c.sort_order,
-        doc_heading(c.name, 2) AS block
+        db_heading(c.name, 2) AS block
     FROM categories c
     WHERE c.name IN (SELECT DISTINCT category FROM projects)
 ),
@@ -74,7 +74,7 @@ category_headers AS (
 project_content AS (
     SELECT
         p.category_order + row_number() OVER (PARTITION BY p.category ORDER BY p.name) AS sort_order,
-        doc_paragraph(array_to_string([
+        db_paragraph(array_to_string([
             -- Project heading
             format('### {}', p.name),
             '',
@@ -99,7 +99,7 @@ project_content AS (
 footer AS (
     SELECT
         999 AS sort_order,
-        doc_paragraph(array_to_string([
+        db_paragraph(array_to_string([
             '---',
             '',
             '_Generated with DuckDB extensions: yaml, duck_block_utils, markdown_'

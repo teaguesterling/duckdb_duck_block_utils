@@ -783,17 +783,17 @@ Compute statistics by element type.
 
 ## Pandoc Conversion Functions
 
-### pandoc_inlines_to_doc_inlines
+### pandoc_inlines_to_db_inlines
 
 ```sql
-pandoc_inlines_to_doc_inlines(json_inlines VARCHAR) → LIST(duck_block)
+pandoc_inlines_to_db_inlines(json_inlines VARCHAR) → LIST(duck_block)
 ```
 
 Convert Pandoc inline JSON array to duck_block inlines.
 
 **Example:**
 ```sql
-SELECT pandoc_inlines_to_doc_inlines('[{"t":"Str","c":"Hello"},{"t":"Space"},{"t":"Strong","c":[{"t":"Str","c":"world"}]}]');
+SELECT pandoc_inlines_to_db_inlines('[{"t":"Str","c":"Hello"},{"t":"Space"},{"t":"Strong","c":[{"t":"Str","c":"world"}]}]');
 ```
 
 ---

@@ -1,5 +1,5 @@
 -- 02_duck_block_utils_create_page_structure.sql
--- Build doc_blocks from project data
+-- Build db_blocks from project data
 -- Run with: ./build/release/duckdb /tmp/dashboard.duckdb -f test/dashboard/02_duck_block_utils_create_page_structure.sql
 
 -- Build document blocks for the dashboard
@@ -7,9 +7,9 @@ CREATE OR REPLACE TABLE page_blocks AS
 WITH
 -- Title and intro
 header_blocks AS (
-    SELECT 1 as sort_order, doc_heading('DuckDB Extensions Dashboard', 1) as block
+    SELECT 1 as sort_order, db_heading('DuckDB Extensions Dashboard', 1) as block
     UNION ALL
-    SELECT 2, doc_paragraph('A collection of DuckDB extensions and related projects by ' ||
+    SELECT 2, db_paragraph('A collection of DuckDB extensions and related projects by ' ||
         (SELECT default_owner FROM config) || '.')
 ),
 
@@ -27,7 +27,7 @@ category_data AS (
 ),
 
 category_headers AS (
-    SELECT cat_order as sort_order, doc_heading(category, 2) as block
+    SELECT cat_order as sort_order, db_heading(category, 2) as block
     FROM category_data
 ),
 
@@ -35,7 +35,7 @@ category_headers AS (
 project_blocks AS (
     SELECT
         cd.cat_order + row_number() OVER (PARTITION BY p.category ORDER BY p.name) as sort_order,
-        doc_paragraph(
+        db_paragraph(
             '### ' || p.name || chr(10) || chr(10) ||
             coalesce(p.description, '_No description_') || chr(10) || chr(10) ||
             -- Bulleted list of links with inline badges
@@ -59,7 +59,7 @@ project_blocks AS (
 -- Footer
 footer AS (
     SELECT 999 as sort_order,
-        doc_paragraph('---' || chr(10) || chr(10) ||
+        db_paragraph('---' || chr(10) || chr(10) ||
             '_Generated with DuckDB extensions: yaml, duck_block_utils, markdown_') as block
 )
 

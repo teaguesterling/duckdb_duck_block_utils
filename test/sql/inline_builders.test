@@ -5,10 +5,10 @@
 require duck_block_utils
 
 # ============================================================================
-# doc_inline Type Tests
+# duck_inline Type Tests
 # ============================================================================
 
-# Test doc_inline type is registered with all fields
+# Test duck_inline type is registered with all fields
 query I
 SELECT typeof(db_text('hello'));
 ----
