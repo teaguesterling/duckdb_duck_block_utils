@@ -538,6 +538,8 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 				}
 			}
 
+			// TODO: Issue #2 - Currently expects nested inlines at level+1
+			// Should also support content field for simple text links
 			idx_t nested_end = i + 1;
 			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
 			json << "{\"t\":\"Link\",\"c\":[[\"\",[],[]]," << nested << ",[\"" << href << "\",\"\"]]}";

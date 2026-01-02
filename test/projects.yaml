@@ -1,0 +1,152 @@
+# DuckDB Extensions & Projects Registry
+#
+# Consistent schema for all projects to enable SQL processing
+
+default_owner: teaguesterling
+
+projects:
+  # DuckDB Extensions
+  - name: duckdb_yaml
+    category: DuckDB Extensions
+    extension_name: yaml
+    description: Read and write YAML files with schema inference and data type detection
+    docs: https://duckdb-yaml.readthedocs.io
+    extension_page: https://duckdb.org/community_extensions/extensions/yaml.html
+
+  - name: duckdb_webbed
+    category: DuckDB Extensions
+    extension_name: webbed
+    description: Web scraping, HTTP utilities, and HTML manipulation for DuckDB
+    extension_page: https://duckdb.org/community_extensions/extensions/webbed.html
+
+  - name: duckdb_markdown
+    category: DuckDB Extensions
+    extension_name: markdown
+    description: Parse, query, and manipulate Markdown documents with duck_blocks support
+    extension_page: https://duckdb.org/community_extensions/extensions/markdown.html
+
+  - name: duckdb_mcp
+    category: DuckDB Extensions
+    extension_name: mcp
+    description: Model Context Protocol (MCP) integration for DuckDB
+    extension_page: https://duckdb.org/community_extensions/extensions/duckdb_mcp.html
+
+  - name: duckdb_duck_block_utils
+    category: DuckDB Extensions
+    extension_name: duck_block_utils
+    description: Work with duck_blocks - structured document elements for literate data analysis
+    extension_page: https://duckdb.org/community_extensions/extensions/duckdb_duck_block_utils.html
+
+  - name: duckdb_urlparser
+    category: DuckDB Extensions
+    extension_name: urlparser
+    description: Parse, manipulate, and query URLs in SQL
+    extension_page: https://duckdb.org/community_extensions/extensions/duckdb_urlparser.html
+
+  - name: duckdb_scalarfs
+    category: DuckDB Extensions
+    extension_name: scalarfs
+    description: Treat in-memory content as files with variable and data URI protocols
+    extension_page: https://duckdb.org/community_extensions/extensions/duckdb_scalarfs.html
+
+  - name: duckdb_func_apply
+    category: DuckDB Extensions
+    extension_name: func_apply
+    description: Dynamic function dispatch and URL routing with pattern matching
+    extension_page: https://duckdb.org/community_extensions/extensions/duckdb_func_apply.html
+
+  - name: sitting_duck
+    category: DuckDB Extensions
+    extension_name: sitting_duck
+    description: DuckDB testing, mocking, and development utilities
+    extension_page: https://duckdb.org/community_extensions/extensions/sitting_duck.html
+
+  - name: duck_hunt
+    category: DuckDB Extensions
+    extension_name: duck_hunt
+    description: DuckDB query optimization, profiling, and performance analysis
+    extension_page: https://duckdb.org/community_extensions/extensions/duck_hunt.html
+
+  - name: duck_tails
+    category: DuckDB Extensions
+    extension_name: duck_tails
+    description: Advanced logging, debugging, and observability for DuckDB
+    extension_page: https://duckdb.org/community_extensions/extensions/duck_tails.html
+
+  - name: geneducks
+    category: DuckDB Extensions
+    extension_name: geneducks
+    description: Genomic data analysis - VCF, BAM, FASTA parsing and querying
+    extension_page: https://duckdb.org/community_extensions/extensions/geneducks.html
+    todo: true
+
+  # Shell Helpers
+  - name: tmux-use
+    category: Shell Helpers
+    description: Smart tmux session management with workspace detection
+
+  - name: dotfiles
+    category: Shell Helpers
+    description: Personal shell configuration, aliases, and environment setup
+
+  # Result and Data Management
+  - name: blq-cli
+    category: Result and Data Management
+    description: Below Limit of Quantification (BLQ) data management CLI
+
+  - name: aidr
+    category: Result and Data Management
+    description: Agent Intent-Driven Retrieval - AI agents with persistent workspaces
+
+  - name: shq
+    category: Result and Data Management
+    description: Shell Query - SQL interface for shell commands (MAGIC system)
+    todo: true
+
+  - name: bird
+    category: Result and Data Management
+    description: Batch Interactive Result Database (MAGIC system)
+    todo: true
+
+  # Watched Projects
+  - name: spack
+    category: Watched Projects
+    owner: spack
+    description: A flexible package manager for HPC and scientific computing
+    homepage: https://spack.io
+    watched: true
+
+  - name: duckdb
+    category: Watched Projects
+    owner: duckdb
+    description: An in-process SQL OLAP database management system
+    homepage: https://duckdb.org
+    watched: true
+
+  - name: duckdb_rdkit
+    category: Watched Projects
+    owner: duckdb
+    description: RDKit cheminformatics extension for DuckDB
+    watched: true
+
+  - name: duckdb_iceberg
+    category: Watched Projects
+    owner: duckdb
+    description: Apache Iceberg table format support for DuckDB
+    watched: true
+
+  - name: grit
+    category: Watched Projects
+    owner: getgrit
+    description: Code transformation and refactoring tool
+    homepage: https://www.grit.io
+    watched: true
+
+  # Legacy Projects
+  - name: rdalchemy
+    category: Legacy Projects
+    description: SQLAlchemy integration for RDKit chemistry databases
+
+  - name: sapartition
+    category: Legacy Projects
+    description: SQLAlchemy table partitioning utilities
