@@ -12,7 +12,7 @@ require duck_block_utils
 query I
 SELECT typeof(db_text('hello'));
 ----
-duck_block[]
+STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR, VARCHAR), element_order INTEGER)[]
 
 # ============================================================================
 # db_text Tests (v2: returns LIST)
@@ -359,9 +359,9 @@ SELECT db_bold([db_text('A'), db_text('B'), db_text('C')])[2].element_order,
 # Integration: Composing inline elements
 # ============================================================================
 
-# Test creating a list of inlines with list_flatten
+# Test creating a list of inlines with flatten
 query I
-SELECT len(list_flatten([
+SELECT len(flatten([
     db_text('Click '),
     db_link('https://example.com', 'here'),
     db_text('!')

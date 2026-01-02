@@ -15,6 +15,25 @@ static Value CreateAttributesMap(const map<string, string> &attrs) {
 	return Value::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR, keys, values);
 }
 
+// Helper to flatten LIST(LIST(duck_block)) to LIST(duck_block)
+static Value FlattenNestedList(const Value &nested_list) {
+	vector<Value> result;
+	if (!nested_list.IsNull()) {
+		auto &outer_children = ListValue::GetChildren(nested_list);
+		for (auto &inner_list : outer_children) {
+			if (!inner_list.IsNull()) {
+				auto &inner_children = ListValue::GetChildren(inner_list);
+				for (auto &item : inner_children) {
+					if (!item.IsNull()) {
+						result.push_back(item);
+					}
+				}
+			}
+		}
+	}
+	return Value::LIST(BlockTypes::DuckBlockType(), std::move(result));
+}
+
 // Helper to set all struct fields for an inline element
 static void SetInlineFields(vector<unique_ptr<Vector>> &entries, idx_t i,
                             const char *element_type, const Value &content,
@@ -36,6 +55,21 @@ Value InlineBuilderFunctions::CreateInline(const string &inline_type, const stri
 	struct_values.push_back(make_pair("kind", Value(BlockTypes::KIND_INLINE)));
 	struct_values.push_back(make_pair("element_type", Value(inline_type)));
 	struct_values.push_back(make_pair("content", Value(content)));
+	struct_values.push_back(make_pair("level", Value(level)));
+	struct_values.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_TEXT)));
+	struct_values.push_back(make_pair("attributes", CreateAttributesMap(attributes)));
+	struct_values.push_back(make_pair("element_order", Value(inline_order)));
+
+	return Value::STRUCT(std::move(struct_values));
+}
+
+Value InlineBuilderFunctions::CreateInlineWithNullContent(const string &inline_type,
+                                                          const map<string, string> &attributes,
+                                                          int32_t level, int32_t inline_order) {
+	child_list_t<Value> struct_values;
+	struct_values.push_back(make_pair("kind", Value(BlockTypes::KIND_INLINE)));
+	struct_values.push_back(make_pair("element_type", Value(inline_type)));
+	struct_values.push_back(make_pair("content", Value(LogicalType::VARCHAR)));  // Typed NULL
 	struct_values.push_back(make_pair("level", Value(level)));
 	struct_values.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_TEXT)));
 	struct_values.push_back(make_pair("attributes", CreateAttributesMap(attributes)));
@@ -577,57 +611,42 @@ void InlineBuilderFunctions::DbNoteFlattenFun(DataChunk &args, ExpressionState &
 void InlineBuilderFunctions::Register(ExtensionLoader &loader) {
 	auto duck_block_type = BlockTypes::DuckBlockType();
 
-	// Text and whitespace
-	loader.RegisterFunction(ScalarFunction("db_text", {LogicalType::VARCHAR}, duck_block_type, DbTextFun));
-	loader.RegisterFunction(ScalarFunction("db_space", {}, duck_block_type, DbSpaceFun));
-	loader.RegisterFunction(ScalarFunction("db_softbreak", {}, duck_block_type, DbSoftBreakFun));
-	loader.RegisterFunction(ScalarFunction("db_linebreak", {}, duck_block_type, DbLineBreakFun));
+	// ========================================================================
+	// Legacy V1 API - Only register overloads that DON'T conflict with V2
+	// V2 versions with same input signature but different return type win
+	// ========================================================================
 
-	// Formatting
-	loader.RegisterFunction(ScalarFunction("db_bold", {LogicalType::VARCHAR}, duck_block_type, DbBoldFun));
-	loader.RegisterFunction(ScalarFunction("db_italic", {LogicalType::VARCHAR}, duck_block_type, DbItalicFun));
-	loader.RegisterFunction(ScalarFunction("db_strikethrough", {LogicalType::VARCHAR}, duck_block_type, DbStrikethroughFun));
-	loader.RegisterFunction(ScalarFunction("db_superscript", {LogicalType::VARCHAR}, duck_block_type, DbSuperscriptFun));
-	loader.RegisterFunction(ScalarFunction("db_subscript", {LogicalType::VARCHAR}, duck_block_type, DbSubscriptFun));
-	loader.RegisterFunction(ScalarFunction("db_smallcaps", {LogicalType::VARCHAR}, duck_block_type, DbSmallCapsFun));
-	loader.RegisterFunction(ScalarFunction("db_underline", {LogicalType::VARCHAR}, duck_block_type, DbUnderlineFun));
+	// Text, whitespace, formatting - REMOVED: V2 versions exist with same signatures
+	// db_text(VARCHAR), db_space(), db_softbreak(), db_linebreak()
+	// db_bold(VARCHAR), db_italic(VARCHAR), db_strikethrough(VARCHAR)
+	// db_superscript(VARCHAR), db_subscript(VARCHAR), db_smallcaps(VARCHAR), db_underline(VARCHAR)
+	// db_inline_code(VARCHAR), db_math(VARCHAR)
 
-	// Semantic - inline code
-	loader.RegisterFunction(ScalarFunction("db_inline_code", {LogicalType::VARCHAR}, duck_block_type, DbInlineCodeFun));
-
-	// Semantic - math
-	loader.RegisterFunction(ScalarFunction("db_math", {LogicalType::VARCHAR}, duck_block_type, DbMathFun));
+	// db_math(VARCHAR, BOOLEAN) - LEGACY ONLY (V2 uses BOOLEAN, VARCHAR order)
 	loader.RegisterFunction(ScalarFunction("db_math", {LogicalType::VARCHAR, LogicalType::BOOLEAN}, duck_block_type, DbMathFun));
 
-	// Semantic - link
-	loader.RegisterFunction(ScalarFunction("db_link", {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbLinkFun));
-	loader.RegisterFunction(ScalarFunction("db_link", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbLinkFun));
+	// db_link(VARCHAR, VARCHAR) - REMOVED: V2 version exists with same signature
+	// db_link(VARCHAR, VARCHAR, VARCHAR) - LEGACY ONLY (different param meaning than V2)
 
-	// Semantic - inline image
-	loader.RegisterFunction(ScalarFunction("db_inline_image", {LogicalType::VARCHAR}, duck_block_type, DbInlineImageFun));
-	loader.RegisterFunction(ScalarFunction("db_inline_image", {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbInlineImageFun));
-	loader.RegisterFunction(ScalarFunction("db_inline_image", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbInlineImageFun));
+	// Semantic - inline image: REMOVED - V2 versions exist with same signatures
 
-	// Semantic - quoted
-	loader.RegisterFunction(ScalarFunction("db_quoted", {LogicalType::VARCHAR}, duck_block_type, DbQuotedFun));
-	loader.RegisterFunction(ScalarFunction("db_quoted", {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbQuotedFun));
+	// Semantic - quoted: REMOVED - V2 versions exist with same signatures
 
 	// Semantic - citation
-	loader.RegisterFunction(ScalarFunction("db_cite", {LogicalType::VARCHAR}, duck_block_type, DbCiteFun));
+	// db_cite(VARCHAR) - REMOVED: V2 version exists with same signature
+	// db_cite(VARCHAR, VARCHAR) - LEGACY ONLY (V2 doesn't have this signature)
 	loader.RegisterFunction(ScalarFunction("db_cite", {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbCiteFun));
+	// db_cite(VARCHAR, VARCHAR, VARCHAR) - LEGACY ONLY (V2 doesn't have this signature)
 	loader.RegisterFunction(ScalarFunction("db_cite", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbCiteFun));
 
-	// Semantic - footnote
-	loader.RegisterFunction(ScalarFunction("db_note", {LogicalType::VARCHAR}, duck_block_type, DbNoteFun));
+	// Semantic - footnote: REMOVED - V2 version exists with same signature
 
 	// Semantic - span
-	loader.RegisterFunction(ScalarFunction("db_span", {LogicalType::VARCHAR}, duck_block_type, DbSpanFun));
-	loader.RegisterFunction(ScalarFunction("db_span", {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbSpanFun));
-	loader.RegisterFunction(ScalarFunction("db_span", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbSpanFun));
+	// db_span(VARCHAR) - REMOVED: V2 version exists with same signature
+	// db_span(VARCHAR, VARCHAR) - REMOVED: V2 version below returns LIST
+	// db_span(VARCHAR, VARCHAR, VARCHAR) - REMOVED: V2 version below returns LIST
 
-	// Semantic - raw inline
-	loader.RegisterFunction(ScalarFunction("db_raw_inline", {LogicalType::VARCHAR}, duck_block_type, DbRawInlineFun));
-	loader.RegisterFunction(ScalarFunction("db_raw_inline", {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DbRawInlineFun));
+	// Semantic - raw inline: REMOVED - V2 versions exist with same signatures
 
 	// ========================================================================
 	// Flattening overloads - take children list, return flattened list
@@ -647,17 +666,491 @@ void InlineBuilderFunctions::Register(ExtensionLoader &loader) {
 	loader.RegisterFunction(ScalarFunction("db_link", {LogicalType::VARCHAR, duck_block_list_type}, duck_block_list_type, DbLinkFlattenFun));
 	loader.RegisterFunction(ScalarFunction("db_link", {LogicalType::VARCHAR, duck_block_list_type, LogicalType::VARCHAR}, duck_block_list_type, DbLinkFlattenFun));
 
-	// Quoted with children: db_quoted(children) and db_quoted(children, quote_type)
+	// Quoted with children: db_quoted(children)
+	// NOTE: db_quoted(children, quote_type) REMOVED - conflicts with V2 API (quote_type, content) order
 	loader.RegisterFunction(ScalarFunction("db_quoted", {duck_block_list_type}, duck_block_list_type, DbQuotedFlattenFun));
-	loader.RegisterFunction(ScalarFunction("db_quoted", {duck_block_list_type, LogicalType::VARCHAR}, duck_block_list_type, DbQuotedFlattenFun));
 
-	// Span with children: db_span(children), db_span(children, id), db_span(children, id, classes)
+	// Span with children: db_span(children)
+	// NOTE: db_span(children, id) and db_span(children, id, classes) REMOVED - conflicts with V2 API (id, content) order
 	loader.RegisterFunction(ScalarFunction("db_span", {duck_block_list_type}, duck_block_list_type, DbSpanFlattenFun));
-	loader.RegisterFunction(ScalarFunction("db_span", {duck_block_list_type, LogicalType::VARCHAR}, duck_block_list_type, DbSpanFlattenFun));
-	loader.RegisterFunction(ScalarFunction("db_span", {duck_block_list_type, LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_list_type, DbSpanFlattenFun));
 
 	// Note with children: db_note(children)
 	loader.RegisterFunction(ScalarFunction("db_note", {duck_block_list_type}, duck_block_list_type, DbNoteFlattenFun));
+
+	// ========================================================================
+	// Nested list overloads - accept LIST(LIST(duck_block)) and flatten
+	// This enables: db_bold([db_italic('hi')]) where db_italic returns LIST
+	// ========================================================================
+	auto duck_block_nested_list_type = LogicalType::LIST(duck_block_list_type);
+
+	// Helper lambda to create a nested list flattening function
+	auto make_nested_flatten = [](const char *element_type) {
+		return [element_type](DataChunk &args, ExpressionState &state, Vector &result) {
+			auto &nested_vec = args.data[0];
+			auto count = args.size();
+			for (idx_t i = 0; i < count; i++) {
+				auto nested_list = nested_vec.GetValue(i);
+				auto flat_children = FlattenNestedList(nested_list);
+
+				// Create parent inline element with NULL content
+				auto parent = InlineBuilderFunctions::CreateInlineWithNullContent(element_type, {}, 1, 0);
+
+				// Flatten: parent + children at level+1
+				vector<Value> flattened;
+				flattened.push_back(parent);
+				if (!flat_children.IsNull()) {
+					auto &children = ListValue::GetChildren(flat_children);
+					int32_t child_order = 0;
+					for (auto &child : children) {
+						if (!child.IsNull()) {
+							auto child_fields = StructValue::GetChildren(child);
+							child_fields[BlockTypes::LEVEL_IDX] = Value(2);
+							child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
+							flattened.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
+						}
+					}
+				}
+				result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+			}
+		};
+	};
+
+	// Formatting with nested list children
+	loader.RegisterFunction(ScalarFunction("db_bold", {duck_block_nested_list_type}, duck_block_list_type, make_nested_flatten(BlockTypes::INLINE_BOLD)));
+	loader.RegisterFunction(ScalarFunction("db_italic", {duck_block_nested_list_type}, duck_block_list_type, make_nested_flatten(BlockTypes::INLINE_ITALIC)));
+	loader.RegisterFunction(ScalarFunction("db_strikethrough", {duck_block_nested_list_type}, duck_block_list_type, make_nested_flatten(BlockTypes::INLINE_STRIKETHROUGH)));
+	loader.RegisterFunction(ScalarFunction("db_superscript", {duck_block_nested_list_type}, duck_block_list_type, make_nested_flatten(BlockTypes::INLINE_SUPERSCRIPT)));
+	loader.RegisterFunction(ScalarFunction("db_subscript", {duck_block_nested_list_type}, duck_block_list_type, make_nested_flatten(BlockTypes::INLINE_SUBSCRIPT)));
+	loader.RegisterFunction(ScalarFunction("db_smallcaps", {duck_block_nested_list_type}, duck_block_list_type, make_nested_flatten(BlockTypes::INLINE_SMALLCAPS)));
+	loader.RegisterFunction(ScalarFunction("db_underline", {duck_block_nested_list_type}, duck_block_list_type, make_nested_flatten(BlockTypes::INLINE_UNDERLINE)));
+
+	// db_link with nested list children: db_link(href, LIST(LIST(duck_block)))
+	loader.RegisterFunction(ScalarFunction("db_link",
+	    {LogicalType::VARCHAR, duck_block_nested_list_type}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &href_vec = args.data[0];
+		    auto &nested_vec = args.data[1];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto href = href_vec.GetValue(i);
+			    auto nested_list = nested_vec.GetValue(i);
+			    auto flat_children = FlattenNestedList(nested_list);
+
+			    map<string, string> attrs;
+			    if (!href.IsNull()) attrs["href"] = href.GetValue<string>();
+			    auto parent = InlineBuilderFunctions::CreateInlineWithNullContent(BlockTypes::INLINE_LINK, attrs, 1, 0);
+
+			    vector<Value> flattened;
+			    flattened.push_back(parent);
+			    if (!flat_children.IsNull()) {
+				    auto &children = ListValue::GetChildren(flat_children);
+				    int32_t child_order = 0;
+				    for (auto &child : children) {
+					    if (!child.IsNull()) {
+						    auto child_fields = StructValue::GetChildren(child);
+						    child_fields[BlockTypes::LEVEL_IDX] = Value(2);
+						    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
+						    flattened.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
+					    }
+				    }
+			    }
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		    }
+	    }));
+
+	// db_quoted with nested list children
+	loader.RegisterFunction(ScalarFunction("db_quoted",
+	    {duck_block_nested_list_type}, duck_block_list_type, make_nested_flatten(BlockTypes::INLINE_QUOTED)));
+
+	// db_span with nested list children
+	loader.RegisterFunction(ScalarFunction("db_span",
+	    {duck_block_nested_list_type}, duck_block_list_type, make_nested_flatten(BlockTypes::INLINE_SPAN)));
+
+	// db_span with id and nested list children: db_span(id, nested_children)
+	loader.RegisterFunction(ScalarFunction("db_span",
+	    {LogicalType::VARCHAR, duck_block_nested_list_type}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &id_vec = args.data[0];
+		    auto &nested_vec = args.data[1];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto id = id_vec.GetValue(i);
+			    auto nested_list = nested_vec.GetValue(i);
+			    auto flat_children = FlattenNestedList(nested_list);
+
+			    map<string, string> attrs;
+			    if (!id.IsNull()) attrs["id"] = id.GetValue<string>();
+			    auto parent = InlineBuilderFunctions::CreateInlineWithNullContent(BlockTypes::INLINE_SPAN, attrs, 1, 0);
+
+			    vector<Value> flattened;
+			    flattened.push_back(parent);
+			    if (!flat_children.IsNull()) {
+				    auto &children = ListValue::GetChildren(flat_children);
+				    int32_t child_order = 0;
+				    for (auto &child : children) {
+					    if (!child.IsNull()) {
+						    auto child_fields = StructValue::GetChildren(child);
+						    child_fields[BlockTypes::LEVEL_IDX] = Value(2);
+						    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
+						    flattened.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
+					    }
+				    }
+			    }
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		    }
+	    }));
+
+	// db_note with nested list children
+	loader.RegisterFunction(ScalarFunction("db_note",
+	    {duck_block_nested_list_type}, duck_block_list_type, make_nested_flatten(BlockTypes::INLINE_NOTE)));
+
+	// ========================================================================
+	// V2 API: All builders return LIST(duck_block)
+	// These wrap single elements in a list for uniform composition
+	// ========================================================================
+
+	// Helper lambda to wrap single inline element in a list
+	auto wrap_in_list = [](const char *element_type, const char *encoding = BlockTypes::ENCODING_TEXT) {
+		return [element_type, encoding](DataChunk &args, ExpressionState &state, Vector &result) {
+			auto &content_vec = args.data[0];
+			auto count = args.size();
+			for (idx_t i = 0; i < count; i++) {
+				auto content = content_vec.GetValue(i);
+				auto element = InlineBuilderFunctions::CreateInline(element_type,
+				    content.IsNull() ? "" : content.GetValue<string>(), {}, 1, 0);
+				vector<Value> list_result;
+				list_result.push_back(element);
+				result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(list_result)));
+			}
+		};
+	};
+
+	// Helper lambda for zero-arg whitespace elements
+	auto wrap_whitespace_in_list = [](const char *element_type) {
+		return [element_type](DataChunk &args, ExpressionState &state, Vector &result) {
+			auto count = args.size();
+			for (idx_t i = 0; i < count; i++) {
+				auto element = InlineBuilderFunctions::CreateInline(element_type, "", {}, 1, 0);
+				vector<Value> list_result;
+				list_result.push_back(element);
+				result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(list_result)));
+			}
+		};
+	};
+
+	// V2: Text and whitespace returning LIST
+	loader.RegisterFunction(ScalarFunction("db_text",
+	    {LogicalType::VARCHAR}, duck_block_list_type, wrap_in_list(BlockTypes::INLINE_TEXT)));
+	loader.RegisterFunction(ScalarFunction("db_space",
+	    {}, duck_block_list_type, wrap_whitespace_in_list(BlockTypes::INLINE_SPACE)));
+	loader.RegisterFunction(ScalarFunction("db_softbreak",
+	    {}, duck_block_list_type, wrap_whitespace_in_list(BlockTypes::INLINE_SOFTBREAK)));
+	loader.RegisterFunction(ScalarFunction("db_linebreak",
+	    {}, duck_block_list_type, wrap_whitespace_in_list(BlockTypes::INLINE_LINEBREAK)));
+
+	// V2: Formatting returning LIST
+	loader.RegisterFunction(ScalarFunction("db_bold",
+	    {LogicalType::VARCHAR}, duck_block_list_type, wrap_in_list(BlockTypes::INLINE_BOLD)));
+	loader.RegisterFunction(ScalarFunction("db_italic",
+	    {LogicalType::VARCHAR}, duck_block_list_type, wrap_in_list(BlockTypes::INLINE_ITALIC)));
+	loader.RegisterFunction(ScalarFunction("db_strikethrough",
+	    {LogicalType::VARCHAR}, duck_block_list_type, wrap_in_list(BlockTypes::INLINE_STRIKETHROUGH)));
+	loader.RegisterFunction(ScalarFunction("db_superscript",
+	    {LogicalType::VARCHAR}, duck_block_list_type, wrap_in_list(BlockTypes::INLINE_SUPERSCRIPT)));
+	loader.RegisterFunction(ScalarFunction("db_subscript",
+	    {LogicalType::VARCHAR}, duck_block_list_type, wrap_in_list(BlockTypes::INLINE_SUBSCRIPT)));
+	loader.RegisterFunction(ScalarFunction("db_smallcaps",
+	    {LogicalType::VARCHAR}, duck_block_list_type, wrap_in_list(BlockTypes::INLINE_SMALLCAPS)));
+	loader.RegisterFunction(ScalarFunction("db_underline",
+	    {LogicalType::VARCHAR}, duck_block_list_type, wrap_in_list(BlockTypes::INLINE_UNDERLINE)));
+
+	// V2: Semantic inline code returning LIST
+	loader.RegisterFunction(ScalarFunction("db_inline_code",
+	    {LogicalType::VARCHAR}, duck_block_list_type, wrap_in_list(BlockTypes::INLINE_CODE)));
+
+	// V2: Math returning LIST
+	loader.RegisterFunction(ScalarFunction("db_math",
+	    {LogicalType::VARCHAR}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &content_vec = args.data[0];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto content = content_vec.GetValue(i);
+			    map<string, string> attrs;
+			    attrs["display"] = "inline";
+			    auto element = InlineBuilderFunctions::CreateInline(BlockTypes::INLINE_MATH,
+			        content.IsNull() ? "" : content.GetValue<string>(), attrs, 1, 0);
+			    vector<Value> list_result;
+			    list_result.push_back(element);
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(list_result)));
+		    }
+	    }));
+
+	loader.RegisterFunction(ScalarFunction("db_math",
+	    {LogicalType::BOOLEAN, LogicalType::VARCHAR}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &display_vec = args.data[0];
+		    auto &content_vec = args.data[1];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto display = display_vec.GetValue(i);
+			    auto content = content_vec.GetValue(i);
+			    map<string, string> attrs;
+			    attrs["display"] = (!display.IsNull() && display.GetValue<bool>()) ? "block" : "inline";
+			    auto element = InlineBuilderFunctions::CreateInline(BlockTypes::INLINE_MATH,
+			        content.IsNull() ? "" : content.GetValue<string>(), attrs, 1, 0);
+			    vector<Value> list_result;
+			    list_result.push_back(element);
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(list_result)));
+		    }
+	    }));
+
+	// V2: Link returning LIST (href, content)
+	loader.RegisterFunction(ScalarFunction("db_link",
+	    {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &href_vec = args.data[0];
+		    auto &content_vec = args.data[1];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto href = href_vec.GetValue(i);
+			    auto content = content_vec.GetValue(i);
+			    map<string, string> attrs;
+			    if (!href.IsNull()) attrs["href"] = href.GetValue<string>();
+			    auto element = InlineBuilderFunctions::CreateInline(BlockTypes::INLINE_LINK,
+			        content.IsNull() ? "" : content.GetValue<string>(), attrs, 1, 0);
+			    vector<Value> list_result;
+			    list_result.push_back(element);
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(list_result)));
+		    }
+	    }));
+
+	// V2: Link returning LIST (href, title, content)
+	loader.RegisterFunction(ScalarFunction("db_link",
+	    {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &href_vec = args.data[0];
+		    auto &title_vec = args.data[1];
+		    auto &content_vec = args.data[2];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto href = href_vec.GetValue(i);
+			    auto title = title_vec.GetValue(i);
+			    auto content = content_vec.GetValue(i);
+			    map<string, string> attrs;
+			    if (!href.IsNull()) attrs["href"] = href.GetValue<string>();
+			    if (!title.IsNull()) attrs["title"] = title.GetValue<string>();
+			    auto element = InlineBuilderFunctions::CreateInline(BlockTypes::INLINE_LINK,
+			        content.IsNull() ? "" : content.GetValue<string>(), attrs, 1, 0);
+			    vector<Value> list_result;
+			    list_result.push_back(element);
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(list_result)));
+		    }
+	    }));
+
+	// V2: Inline image returning LIST
+	loader.RegisterFunction(ScalarFunction("db_inline_image",
+	    {LogicalType::VARCHAR}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &src_vec = args.data[0];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto src = src_vec.GetValue(i);
+			    map<string, string> attrs;
+			    if (!src.IsNull()) attrs["src"] = src.GetValue<string>();
+			    auto element = InlineBuilderFunctions::CreateInline(BlockTypes::INLINE_IMAGE, "", attrs, 1, 0);
+			    vector<Value> list_result;
+			    list_result.push_back(element);
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(list_result)));
+		    }
+	    }));
+
+	loader.RegisterFunction(ScalarFunction("db_inline_image",
+	    {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &src_vec = args.data[0];
+		    auto &alt_vec = args.data[1];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto src = src_vec.GetValue(i);
+			    auto alt = alt_vec.GetValue(i);
+			    map<string, string> attrs;
+			    if (!src.IsNull()) attrs["src"] = src.GetValue<string>();
+			    if (!alt.IsNull()) attrs["alt"] = alt.GetValue<string>();
+			    string content = alt.IsNull() ? "" : alt.GetValue<string>();
+			    auto element = InlineBuilderFunctions::CreateInline(BlockTypes::INLINE_IMAGE, content, attrs, 1, 0);
+			    vector<Value> list_result;
+			    list_result.push_back(element);
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(list_result)));
+		    }
+	    }));
+
+	loader.RegisterFunction(ScalarFunction("db_inline_image",
+	    {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &src_vec = args.data[0];
+		    auto &alt_vec = args.data[1];
+		    auto &title_vec = args.data[2];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto src = src_vec.GetValue(i);
+			    auto alt = alt_vec.GetValue(i);
+			    auto title = title_vec.GetValue(i);
+			    map<string, string> attrs;
+			    if (!src.IsNull()) attrs["src"] = src.GetValue<string>();
+			    if (!alt.IsNull()) attrs["alt"] = alt.GetValue<string>();
+			    if (!title.IsNull()) attrs["title"] = title.GetValue<string>();
+			    string content = alt.IsNull() ? "" : alt.GetValue<string>();
+			    auto element = InlineBuilderFunctions::CreateInline(BlockTypes::INLINE_IMAGE, content, attrs, 1, 0);
+			    vector<Value> list_result;
+			    list_result.push_back(element);
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(list_result)));
+		    }
+	    }));
+
+	// V2: Quoted returning LIST
+	loader.RegisterFunction(ScalarFunction("db_quoted",
+	    {LogicalType::VARCHAR}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &content_vec = args.data[0];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto content = content_vec.GetValue(i);
+			    map<string, string> attrs;
+			    attrs["quote_type"] = "double";
+			    auto element = InlineBuilderFunctions::CreateInline(BlockTypes::INLINE_QUOTED,
+			        content.IsNull() ? "" : content.GetValue<string>(), attrs, 1, 0);
+			    vector<Value> list_result;
+			    list_result.push_back(element);
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(list_result)));
+		    }
+	    }));
+
+	loader.RegisterFunction(ScalarFunction("db_quoted",
+	    {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &quote_type_vec = args.data[0];
+		    auto &content_vec = args.data[1];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto quote_type = quote_type_vec.GetValue(i);
+			    auto content = content_vec.GetValue(i);
+			    map<string, string> attrs;
+			    attrs["quote_type"] = quote_type.IsNull() ? "double" : quote_type.GetValue<string>();
+			    auto element = InlineBuilderFunctions::CreateInline(BlockTypes::INLINE_QUOTED,
+			        content.IsNull() ? "" : content.GetValue<string>(), attrs, 1, 0);
+			    vector<Value> list_result;
+			    list_result.push_back(element);
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(list_result)));
+		    }
+	    }));
+
+	// V2: Cite returning LIST
+	loader.RegisterFunction(ScalarFunction("db_cite",
+	    {LogicalType::VARCHAR}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &key_vec = args.data[0];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto key = key_vec.GetValue(i);
+			    map<string, string> attrs;
+			    if (!key.IsNull()) attrs["key"] = key.GetValue<string>();
+			    string content = key.IsNull() ? "" : key.GetValue<string>();
+			    auto element = InlineBuilderFunctions::CreateInline(BlockTypes::INLINE_CITE, content, attrs, 1, 0);
+			    vector<Value> list_result;
+			    list_result.push_back(element);
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(list_result)));
+		    }
+	    }));
+
+	// V2: Note returning LIST
+	loader.RegisterFunction(ScalarFunction("db_note",
+	    {LogicalType::VARCHAR}, duck_block_list_type, wrap_in_list(BlockTypes::INLINE_NOTE)));
+
+	// V2: Span returning LIST
+	loader.RegisterFunction(ScalarFunction("db_span",
+	    {LogicalType::VARCHAR}, duck_block_list_type, wrap_in_list(BlockTypes::INLINE_SPAN)));
+
+	// V2: Span with id and content
+	loader.RegisterFunction(ScalarFunction("db_span",
+	    {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &id_vec = args.data[0];
+		    auto &content_vec = args.data[1];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto id = id_vec.GetValue(i);
+			    auto content = content_vec.GetValue(i);
+			    map<string, string> attrs;
+			    if (!id.IsNull()) attrs["id"] = id.GetValue<string>();
+			    auto element = InlineBuilderFunctions::CreateInline(BlockTypes::INLINE_SPAN,
+			        content.IsNull() ? "" : content.GetValue<string>(), attrs, 1, 0);
+			    vector<Value> list_result;
+			    list_result.push_back(element);
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(list_result)));
+		    }
+	    }));
+
+	// V2: Span with id, class, and content
+	loader.RegisterFunction(ScalarFunction("db_span",
+	    {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &id_vec = args.data[0];
+		    auto &class_vec = args.data[1];
+		    auto &content_vec = args.data[2];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto id = id_vec.GetValue(i);
+			    auto cls = class_vec.GetValue(i);
+			    auto content = content_vec.GetValue(i);
+			    map<string, string> attrs;
+			    if (!id.IsNull()) attrs["id"] = id.GetValue<string>();
+			    if (!cls.IsNull()) attrs["class"] = cls.GetValue<string>();
+			    auto element = InlineBuilderFunctions::CreateInline(BlockTypes::INLINE_SPAN,
+			        content.IsNull() ? "" : content.GetValue<string>(), attrs, 1, 0);
+			    vector<Value> list_result;
+			    list_result.push_back(element);
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(list_result)));
+		    }
+	    }));
+
+	// V2: Raw inline returning LIST
+	loader.RegisterFunction(ScalarFunction("db_raw_inline",
+	    {LogicalType::VARCHAR}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &content_vec = args.data[0];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto content = content_vec.GetValue(i);
+			    map<string, string> attrs;
+			    attrs["format"] = "html";
+			    auto element = InlineBuilderFunctions::CreateInline(BlockTypes::INLINE_RAW,
+			        content.IsNull() ? "" : content.GetValue<string>(), attrs, 1, 0);
+			    vector<Value> list_result;
+			    list_result.push_back(element);
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(list_result)));
+		    }
+	    }));
+
+	loader.RegisterFunction(ScalarFunction("db_raw_inline",
+	    {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &format_vec = args.data[0];
+		    auto &content_vec = args.data[1];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto format = format_vec.GetValue(i);
+			    auto content = content_vec.GetValue(i);
+			    string format_str = format.IsNull() ? "html" : format.GetValue<string>();
+			    map<string, string> attrs;
+			    attrs["format"] = format_str;
+			    auto element = InlineBuilderFunctions::CreateInline(BlockTypes::INLINE_RAW,
+			        content.IsNull() ? "" : content.GetValue<string>(), attrs, 1, 0);
+			    vector<Value> list_result;
+			    list_result.push_back(element);
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(list_result)));
+		    }
+	    }));
 }
 
 } // namespace duckdb

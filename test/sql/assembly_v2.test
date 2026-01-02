@@ -187,7 +187,7 @@ paragraph
 
 # Test db_rebase_levels with mixed blocks (flattened)
 query I
-SELECT len(db_rebase_levels(list_flatten([
+SELECT len(db_rebase_levels(flatten([
     db_heading(1, 'Title'),
     db_paragraph('Text'),
     db_heading(2, 'Subtitle')
@@ -196,7 +196,7 @@ SELECT len(db_rebase_levels(list_flatten([
 3
 
 query I
-SELECT db_rebase_levels(list_flatten([
+SELECT db_rebase_levels(flatten([
     db_heading(1, 'Title'),
     db_paragraph('Text'),
     db_heading(2, 'Subtitle')
@@ -205,7 +205,7 @@ SELECT db_rebase_levels(list_flatten([
 2
 
 query I
-SELECT db_rebase_levels(list_flatten([
+SELECT db_rebase_levels(flatten([
     db_heading(1, 'Title'),
     db_paragraph('Text'),
     db_heading(2, 'Subtitle')
@@ -351,7 +351,7 @@ SELECT db_blocks_headings([
 query I
 SELECT len(db_assemble([
     db_heading(1, 'Main Doc'),
-    db_rebase_levels(list_flatten([
+    db_rebase_levels(flatten([
         db_heading(1, 'Subdoc Title'),
         db_paragraph('Subdoc content')
     ]), 1)
@@ -362,14 +362,14 @@ SELECT len(db_assemble([
 query II
 SELECT db_assemble([
     db_heading(1, 'Main Doc'),
-    db_rebase_levels(list_flatten([
+    db_rebase_levels(flatten([
         db_heading(1, 'Subdoc Title'),
         db_paragraph('Subdoc content')
     ]), 1)
 ])[1].attributes['heading_level'],
 db_assemble([
     db_heading(1, 'Main Doc'),
-    db_rebase_levels(list_flatten([
+    db_rebase_levels(flatten([
         db_heading(1, 'Subdoc Title'),
         db_paragraph('Subdoc content')
     ]), 1)

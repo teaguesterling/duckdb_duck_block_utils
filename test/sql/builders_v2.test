@@ -12,7 +12,7 @@ require duck_block_utils
 query I
 SELECT typeof(db_heading(1, 'My Title'));
 ----
-duck_block[]
+STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR, VARCHAR), element_order INTEGER)[]
 
 # Test db_heading creates correct element_type
 query I
@@ -327,7 +327,7 @@ html
 # Test filtering builder-created blocks (need to flatten first)
 query I
 SELECT len(db_blocks_filter(
-    list_flatten([db_heading(1, 'Title'), db_paragraph('Text'), db_code('py', 'x=1')]),
+    flatten([db_heading(1, 'Title'), db_paragraph('Text'), db_code('py', 'x=1')]),
     ['heading', 'code']
 ));
 ----
