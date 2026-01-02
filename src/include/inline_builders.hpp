@@ -10,33 +10,37 @@ public:
 	// Register all inline builder functions with the extension loader
 	static void Register(ExtensionLoader &loader);
 
-private:
 	// Helper to create a doc_inline Value with the given fields
 	static Value CreateInline(const string &inline_type, const string &content,
-	                          const map<string, string> &attributes);
+	                          const map<string, string> &attributes,
+	                          int32_t level = 1, int32_t inline_order = 0);
 
-	// Inline element constructors - each returns a single doc_inline
-
-	// doc_text(content VARCHAR) -> doc_inline
+private:
+	// Text and whitespace
 	static void DocTextFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DocSpaceFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DocSoftBreakFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DocLineBreakFun(DataChunk &args, ExpressionState &state, Vector &result);
 
-	// doc_link(text VARCHAR, href VARCHAR, title VARCHAR?) -> doc_inline
-	static void DocLinkFun(DataChunk &args, ExpressionState &state, Vector &result);
-
-	// doc_inline_image(src VARCHAR, alt VARCHAR?, title VARCHAR?) -> doc_inline
-	static void DocInlineImageFun(DataChunk &args, ExpressionState &state, Vector &result);
-
-	// doc_bold(content VARCHAR) -> doc_inline
+	// Formatting (container types)
 	static void DocBoldFun(DataChunk &args, ExpressionState &state, Vector &result);
-
-	// doc_italic(content VARCHAR) -> doc_inline
 	static void DocItalicFun(DataChunk &args, ExpressionState &state, Vector &result);
-
-	// doc_inline_code(content VARCHAR) -> doc_inline
-	static void DocInlineCodeFun(DataChunk &args, ExpressionState &state, Vector &result);
-
-	// doc_strikethrough(content VARCHAR) -> doc_inline
 	static void DocStrikethroughFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DocSuperscriptFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DocSubscriptFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DocSmallCapsFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DocUnderlineFun(DataChunk &args, ExpressionState &state, Vector &result);
+
+	// Semantic elements
+	static void DocInlineCodeFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DocMathFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DocLinkFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DocInlineImageFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DocQuotedFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DocCiteFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DocNoteFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DocSpanFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DocRawInlineFun(DataChunk &args, ExpressionState &state, Vector &result);
 };
 
 } // namespace duckdb

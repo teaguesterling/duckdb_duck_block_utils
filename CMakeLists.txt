@@ -16,6 +16,7 @@ set(EXTENSION_SOURCES
     src/manipulation.cpp
     src/builders.cpp
     src/inline_builders.cpp
+    src/pandoc_inline_convert.cpp
     src/assembly.cpp
     src/extraction.cpp
 )

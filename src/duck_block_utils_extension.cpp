@@ -6,6 +6,7 @@
 #include "manipulation.hpp"
 #include "builders.hpp"
 #include "inline_builders.hpp"
+#include "pandoc_inline_convert.hpp"
 #include "assembly.hpp"
 #include "extraction.hpp"
 #include "duckdb.hpp"
@@ -25,6 +26,9 @@ static void LoadInternal(ExtensionLoader &loader) {
 
 	// Phase 2b: Inline Builder Functions
 	InlineBuilderFunctions::Register(loader);
+
+	// Phase 2c: Pandoc Inline Conversion Functions
+	PandocInlineConvert::Register(loader);
 
 	// Phase 3: Assembly Functions
 	AssemblyFunctions::Register(loader);

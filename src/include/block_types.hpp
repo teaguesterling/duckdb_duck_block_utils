@@ -59,16 +59,33 @@ public:
 	// Field indices for doc_inline struct
 	static constexpr idx_t INLINE_TYPE_IDX = 0;
 	static constexpr idx_t INLINE_CONTENT_IDX = 1;
-	static constexpr idx_t INLINE_ATTRIBUTES_IDX = 2;
+	static constexpr idx_t INLINE_LEVEL_IDX = 2;
+	static constexpr idx_t INLINE_ATTRIBUTES_IDX = 3;
+	static constexpr idx_t INLINE_ORDER_IDX = 4;
 
-	// Inline element type names
+	// Inline element type names - text and formatting
 	static constexpr const char *INLINE_TEXT = "text";
-	static constexpr const char *INLINE_LINK = "link";
-	static constexpr const char *INLINE_IMAGE = "image";
+	static constexpr const char *INLINE_SPACE = "space";
+	static constexpr const char *INLINE_SOFTBREAK = "softbreak";
+	static constexpr const char *INLINE_LINEBREAK = "linebreak";
 	static constexpr const char *INLINE_BOLD = "bold";
 	static constexpr const char *INLINE_ITALIC = "italic";
-	static constexpr const char *INLINE_CODE = "code";
 	static constexpr const char *INLINE_STRIKETHROUGH = "strikethrough";
+	static constexpr const char *INLINE_SUPERSCRIPT = "superscript";
+	static constexpr const char *INLINE_SUBSCRIPT = "subscript";
+	static constexpr const char *INLINE_SMALLCAPS = "smallcaps";
+	static constexpr const char *INLINE_UNDERLINE = "underline";
+
+	// Inline element type names - semantic
+	static constexpr const char *INLINE_CODE = "code";
+	static constexpr const char *INLINE_MATH = "math";
+	static constexpr const char *INLINE_LINK = "link";
+	static constexpr const char *INLINE_IMAGE = "image";
+	static constexpr const char *INLINE_QUOTED = "quoted";
+	static constexpr const char *INLINE_CITE = "cite";
+	static constexpr const char *INLINE_NOTE = "note";
+	static constexpr const char *INLINE_SPAN = "span";
+	static constexpr const char *INLINE_RAW = "raw";
 };
 
 } // namespace duckdb

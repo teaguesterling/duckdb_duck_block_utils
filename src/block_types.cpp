@@ -39,8 +39,10 @@ LogicalType BlockTypes::DocInlineType() {
 	child_list_t<LogicalType> struct_children;
 	struct_children.push_back(make_pair("inline_type", LogicalType::VARCHAR));
 	struct_children.push_back(make_pair("content", LogicalType::VARCHAR));
+	struct_children.push_back(make_pair("level", LogicalType::INTEGER));
 	struct_children.push_back(make_pair("attributes",
 	                                    LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR)));
+	struct_children.push_back(make_pair("inline_order", LogicalType::INTEGER));
 
 	return LogicalType::STRUCT(std::move(struct_children));
 }
