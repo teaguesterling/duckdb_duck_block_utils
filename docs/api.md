@@ -36,6 +36,29 @@ STRUCT(
 )
 ```
 
+### doc_inline
+
+Inline element type for rich text formatting within block content.
+
+```sql
+STRUCT(
+    inline_type VARCHAR,                   -- Element type: 'text', 'link', 'bold', etc.
+    content VARCHAR,                       -- Text content or alt text
+    attributes MAP(VARCHAR, VARCHAR)       -- Type-specific attributes (href, src, title, etc.)
+)
+```
+
+**Inline type identifiers:**
+| inline_type | Description | Attributes |
+|-------------|-------------|------------|
+| `text` | Plain text | none |
+| `link` | Hyperlink | `href`, `title` |
+| `image` | Inline image | `src`, `alt`, `title` |
+| `bold` | Bold/strong text | none |
+| `italic` | Italic/emphasis text | none |
+| `code` | Inline code | none |
+| `strikethrough` | Strikethrough text | none |
+
 ---
 
 ## Block Manipulation Functions

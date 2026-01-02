@@ -49,6 +49,26 @@ public:
 	static constexpr const char *ENCODING_YAML = "yaml";
 	static constexpr const char *ENCODING_HTML = "html";
 	static constexpr const char *ENCODING_XML = "xml";
+
+	// Create the doc_inline type for inline elements
+	static LogicalType DocInlineType();
+
+	// Create a LIST(doc_inline) type
+	static LogicalType DocInlineListType();
+
+	// Field indices for doc_inline struct
+	static constexpr idx_t INLINE_TYPE_IDX = 0;
+	static constexpr idx_t INLINE_CONTENT_IDX = 1;
+	static constexpr idx_t INLINE_ATTRIBUTES_IDX = 2;
+
+	// Inline element type names
+	static constexpr const char *INLINE_TEXT = "text";
+	static constexpr const char *INLINE_LINK = "link";
+	static constexpr const char *INLINE_IMAGE = "image";
+	static constexpr const char *INLINE_BOLD = "bold";
+	static constexpr const char *INLINE_ITALIC = "italic";
+	static constexpr const char *INLINE_CODE = "code";
+	static constexpr const char *INLINE_STRIKETHROUGH = "strikethrough";
 };
 
 } // namespace duckdb

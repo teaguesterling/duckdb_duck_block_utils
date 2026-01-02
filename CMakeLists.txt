@@ -15,6 +15,7 @@ set(EXTENSION_SOURCES
     src/type_functions.cpp
     src/manipulation.cpp
     src/builders.cpp
+    src/inline_builders.cpp
     src/assembly.cpp
     src/extraction.cpp
 )

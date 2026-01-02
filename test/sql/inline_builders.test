@@ -1,0 +1,214 @@
+# name: test/sql/inline_builders.test
+# description: test duck_block_utils extension - inline builder functions
+# group: [duck_block_utils]
+
+require duck_block_utils
+
+# ============================================================================
+# doc_inline Type Tests
+# ============================================================================
+
+# Test doc_inline type is registered
+query I
+SELECT typeof(doc_text('hello'));
+----
+STRUCT(inline_type VARCHAR, content VARCHAR, attributes MAP(VARCHAR, VARCHAR))
+
+# ============================================================================
+# doc_text Tests
+# ============================================================================
+
+# Test doc_text creates correct inline_type
+query I
+SELECT doc_text('Hello world').inline_type;
+----
+text
+
+# Test doc_text sets content
+query I
+SELECT doc_text('Hello world').content;
+----
+Hello world
+
+# Test doc_text has empty attributes
+query I
+SELECT len(doc_text('Hello world').attributes);
+----
+0
+
+# ============================================================================
+# doc_link Tests
+# ============================================================================
+
+# Test doc_link creates link inline_type
+query I
+SELECT doc_link('Click here', 'https://example.com').inline_type;
+----
+link
+
+# Test doc_link sets content to text
+query I
+SELECT doc_link('Click here', 'https://example.com').content;
+----
+Click here
+
+# Test doc_link sets href attribute
+query I
+SELECT doc_link('Click here', 'https://example.com').attributes['href'];
+----
+https://example.com
+
+# Test doc_link with title
+query I
+SELECT doc_link('Click here', 'https://example.com', 'My Title').attributes['title'];
+----
+My Title
+
+# Test doc_link with title still has href
+query I
+SELECT doc_link('Click here', 'https://example.com', 'My Title').attributes['href'];
+----
+https://example.com
+
+# ============================================================================
+# doc_inline_image Tests
+# ============================================================================
+
+# Test doc_inline_image creates image inline_type
+query I
+SELECT doc_inline_image('/path/to/img.png').inline_type;
+----
+image
+
+# Test doc_inline_image sets src attribute
+query I
+SELECT doc_inline_image('/path/to/img.png').attributes['src'];
+----
+/path/to/img.png
+
+# Test doc_inline_image with alt text
+query I
+SELECT doc_inline_image('/path/to/img.png', 'Alt text').attributes['alt'];
+----
+Alt text
+
+# Test doc_inline_image sets content to alt text
+query I
+SELECT doc_inline_image('/path/to/img.png', 'Alt text').content;
+----
+Alt text
+
+# Test doc_inline_image with title
+query I
+SELECT doc_inline_image('/path/to/img.png', 'Alt text', 'Image title').attributes['title'];
+----
+Image title
+
+# ============================================================================
+# doc_bold Tests
+# ============================================================================
+
+# Test doc_bold creates bold inline_type
+query I
+SELECT doc_bold('Important').inline_type;
+----
+bold
+
+# Test doc_bold sets content
+query I
+SELECT doc_bold('Important').content;
+----
+Important
+
+# Test doc_bold has empty attributes
+query I
+SELECT len(doc_bold('Important').attributes);
+----
+0
+
+# ============================================================================
+# doc_italic Tests
+# ============================================================================
+
+# Test doc_italic creates italic inline_type
+query I
+SELECT doc_italic('Emphasis').inline_type;
+----
+italic
+
+# Test doc_italic sets content
+query I
+SELECT doc_italic('Emphasis').content;
+----
+Emphasis
+
+# Test doc_italic has empty attributes
+query I
+SELECT len(doc_italic('Emphasis').attributes);
+----
+0
+
+# ============================================================================
+# doc_inline_code Tests
+# ============================================================================
+
+# Test doc_inline_code creates code inline_type
+query I
+SELECT doc_inline_code('print(1)').inline_type;
+----
+code
+
+# Test doc_inline_code sets content
+query I
+SELECT doc_inline_code('print(1)').content;
+----
+print(1)
+
+# Test doc_inline_code has empty attributes
+query I
+SELECT len(doc_inline_code('print(1)').attributes);
+----
+0
+
+# ============================================================================
+# doc_strikethrough Tests
+# ============================================================================
+
+# Test doc_strikethrough creates strikethrough inline_type
+query I
+SELECT doc_strikethrough('deleted').inline_type;
+----
+strikethrough
+
+# Test doc_strikethrough sets content
+query I
+SELECT doc_strikethrough('deleted').content;
+----
+deleted
+
+# Test doc_strikethrough has empty attributes
+query I
+SELECT len(doc_strikethrough('deleted').attributes);
+----
+0
+
+# ============================================================================
+# Integration: Using inline elements in lists
+# ============================================================================
+
+# Test creating a list of inline elements
+query I
+SELECT len([doc_text('Hello '), doc_bold('world'), doc_text('!')]);
+----
+3
+
+# Test array of inline elements can be used together
+query I
+SELECT [doc_text('Hello '), doc_bold('world')][1].inline_type;
+----
+text
+
+query I
+SELECT [doc_text('Hello '), doc_bold('world')][2].inline_type;
+----
+bold

@@ -5,6 +5,7 @@
 #include "type_functions.hpp"
 #include "manipulation.hpp"
 #include "builders.hpp"
+#include "inline_builders.hpp"
 #include "assembly.hpp"
 #include "extraction.hpp"
 #include "duckdb.hpp"
@@ -21,6 +22,9 @@ static void LoadInternal(ExtensionLoader &loader) {
 
 	// Phase 2: Builder Functions
 	BuilderFunctions::Register(loader);
+
+	// Phase 2b: Inline Builder Functions
+	InlineBuilderFunctions::Register(loader);
 
 	// Phase 3: Assembly Functions
 	AssemblyFunctions::Register(loader);

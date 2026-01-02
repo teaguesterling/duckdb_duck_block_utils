@@ -8,8 +8,9 @@ A DuckDB extension for structured document block manipulation.
 
 ## Key Features
 
-- **Structured Document Type**: The `doc_block` struct provides a standardized representation for document elements
-- **Builder Functions**: Create headings, paragraphs, code blocks, lists, and more with simple function calls
+- **Structured Document Types**: The `doc_block` struct for document elements and `doc_inline` for rich text formatting
+- **Block Builder Functions**: Create headings, paragraphs, code blocks, lists, and more with simple function calls
+- **Inline Builder Functions**: Create links, bold, italic, code spans, and images for cross-format rich text
 - **Assembly Functions**: Combine blocks into documents with automatic ordering and level management
 - **Manipulation Functions**: Filter, merge, slice, and reorder block collections
 - **Extraction Functions**: Extract text, headings, code blocks, and statistics from documents
@@ -45,6 +46,30 @@ STRUCT(
 | `image` | Image references | No | text |
 | `raw` | Raw HTML/XML | No | html/xml |
 
+## The doc_inline Type
+
+For rich text formatting within blocks, the `doc_inline` type represents inline elements:
+
+```sql
+STRUCT(
+    inline_type VARCHAR,                   -- 'text', 'link', 'bold', etc.
+    content VARCHAR,                       -- Text content or alt text
+    attributes MAP(VARCHAR, VARCHAR)       -- Type-specific attributes
+)
+```
+
+### Supported Inline Types
+
+| Inline Type | Description | Attributes |
+|-------------|-------------|------------|
+| `text` | Plain text | none |
+| `link` | Hyperlink | `href`, `title` |
+| `image` | Inline image | `src`, `alt`, `title` |
+| `bold` | Bold/strong text | none |
+| `italic` | Italic/emphasis | none |
+| `code` | Inline code | none |
+| `strikethrough` | Strikethrough | none |
+
 ## Quick Start
 
 ```sql
@@ -78,6 +103,8 @@ SELECT doc_blocks_to_text([
 
 - [Getting Started](getting_started.md) - Installation and basic usage
 - [API Reference](api_reference.md) - Complete function reference
+- [Block Builder Functions](block_builders.md) - Creating document blocks
+- [Inline Builder Functions](inline_builders.md) - Creating inline elements for rich text
 - [Type Functions](type_functions.md) - Type constructors and validators
 - [Examples](examples.md) - Common patterns and use cases
 - [Integration Guide](integration.md) - Integrating with other extensions
