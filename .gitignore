@@ -1,4 +1,6 @@
 build
+build.log
+build.out
 .idea
 cmake-build-debug
 duckdb_unittest_tempdir/
