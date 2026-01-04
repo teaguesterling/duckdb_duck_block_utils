@@ -103,6 +103,72 @@ SELECT db_paragraph([db_text('A'), db_text('B')])[2].level;
 2
 
 # ============================================================================
+# db_paragraph with VARCHAR[] Tests (Issue #4)
+# ============================================================================
+
+# Test db_paragraph with string array - returns paragraph
+query I
+SELECT db_paragraph(['Hello ', 'world'])[1].element_type;
+----
+paragraph
+
+# Test db_paragraph with string array - parent content is NULL
+query I
+SELECT db_paragraph(['Hello ', 'world'])[1].content IS NULL;
+----
+true
+
+# Test db_paragraph with string array - correct list length
+query I
+SELECT len(db_paragraph(['A', 'B', 'C']));
+----
+4
+
+# Test db_paragraph with string array - children are text type
+query I
+SELECT db_paragraph(['Hello'])[2].element_type;
+----
+text
+
+# Test db_paragraph with string array - children are inline kind
+query I
+SELECT db_paragraph(['Hello'])[2].kind;
+----
+inline
+
+# Test db_paragraph with string array - children have level 2
+query I
+SELECT db_paragraph(['Hello'])[2].level;
+----
+2
+
+# Test db_paragraph with string array - children have correct content
+query I
+SELECT db_paragraph(['Hello', 'world'])[2].content;
+----
+Hello
+
+# Test db_paragraph with string array - element_order set correctly
+query III
+SELECT db_paragraph(['A', 'B', 'C'])[2].element_order,
+       db_paragraph(['A', 'B', 'C'])[3].element_order,
+       db_paragraph(['A', 'B', 'C'])[4].element_order;
+----
+0	1	2
+
+# Test db_paragraph with single string in array
+query I
+SELECT len(db_paragraph(['Only one']));
+----
+2
+
+# Test db_paragraph with empty string array returns just parent
+query I
+SELECT len(db_paragraph([]::VARCHAR[]));
+----
+1
+
+# ============================================================================
 # db_code Tests (v2: language first when specified)
 # ============================================================================
 

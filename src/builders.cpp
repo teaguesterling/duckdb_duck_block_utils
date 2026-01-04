@@ -934,6 +934,46 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
+	// db_paragraph(VARCHAR[]) -> LIST(duck_block)
+	// Converts each string to a db_text inline element (Issue #4)
+	loader.RegisterFunction(ScalarFunction("db_paragraph",
+	    {LogicalType::LIST(LogicalType::VARCHAR)}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &strings_vec = args.data[0];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto strings_list = strings_vec.GetValue(i);
+
+			    // Create paragraph parent with NULL content
+			    auto parent = BuilderFunctions::CreateBlockWithNullContent(BlockTypes::TYPE_PARAGRAPH, BlockTypes::KIND_BLOCK,
+			                                                               Value(1), BlockTypes::ENCODING_TEXT, {});
+
+			    vector<Value> result_list;
+			    result_list.push_back(parent);
+
+			    // Convert each string to a text inline element at level 2
+			    if (!strings_list.IsNull()) {
+				    auto &string_children = ListValue::GetChildren(strings_list);
+				    int32_t child_order = 0;
+				    for (auto &str_val : string_children) {
+					    if (!str_val.IsNull()) {
+						    child_list_t<Value> text_struct;
+						    text_struct.push_back(make_pair("kind", Value(BlockTypes::KIND_INLINE)));
+						    text_struct.push_back(make_pair("element_type", Value(BlockTypes::INLINE_TEXT)));
+						    text_struct.push_back(make_pair("content", str_val));
+						    text_struct.push_back(make_pair("level", Value(2)));
+						    text_struct.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_TEXT)));
+						    text_struct.push_back(make_pair("attributes", CreateAttributesMap({})));
+						    text_struct.push_back(make_pair("element_order", Value(child_order++)));
+						    result_list.push_back(Value::STRUCT(std::move(text_struct)));
+					    }
+				    }
+			    }
+
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
+		    }
+	    }));
+
 	// db_blockquote(level, LIST(LIST(duck_block))) -> LIST(duck_block)
 	loader.RegisterFunction(ScalarFunction("db_blockquote",
 	    {LogicalType::INTEGER, duck_block_nested_list_type}, duck_block_list_type,
