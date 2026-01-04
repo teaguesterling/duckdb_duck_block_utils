@@ -1,0 +1,221 @@
+# name: test/sql/pragma_aliases.test
+# description: test duck_block_utils PRAGMA duck_block_aliases
+# group: [duck_block_utils]
+
+require duck_block_utils
+
+# ============================================================================
+# PRAGMA Registration
+# ============================================================================
+
+# Test pragma runs successfully
+statement ok
+PRAGMA duck_block_aliases;
+
+# ============================================================================
+# Heading Aliases (h1-h6)
+# ============================================================================
+
+query I
+SELECT h1('Title')[1].element_type;
+----
+heading
+
+query I
+SELECT h1('Title')[1].attributes['heading_level'];
+----
+1
+
+query I
+SELECT h2('Subtitle')[1].attributes['heading_level'];
+----
+2
+
+query I
+SELECT h3('Section')[1].attributes['heading_level'];
+----
+3
+
+# ============================================================================
+# Block Element Aliases
+# ============================================================================
+
+# Test p (paragraph)
+query I
+SELECT p('Hello world')[1].element_type;
+----
+paragraph
+
+# Test pre (code block)
+query I
+SELECT pre('sql', 'SELECT 1')[1].element_type;
+----
+code
+
+query I
+SELECT pre('python', 'print(1)')[1].attributes['language'];
+----
+python
+
+# Test blockquote and bq
+query I
+SELECT blockquote('Quote text')[1].element_type;
+----
+blockquote
+
+query I
+SELECT bq('Quote text')[1].element_type;
+----
+blockquote
+
+# Test ul (unordered list)
+query I
+SELECT ul(['A', 'B'])[1].attributes['ordered'];
+----
+false
+
+# Test ol (ordered list)
+query I
+SELECT ol(['A', 'B'])[1].attributes['ordered'];
+----
+true
+
+# Test li (list item)
+query I
+SELECT li('Item')[1].element_type;
+----
+list_item
+
+# Test hr
+query I
+SELECT hr()[1].element_type;
+----
+hr
+
+# Test img
+query I
+SELECT img('/path/to/image.png', 'Alt text')[1].element_type;
+----
+image
+
+# Test div
+query I
+SELECT div(p('Content'))[1].element_type;
+----
+div
+
+# ============================================================================
+# Inline Element Aliases
+# ============================================================================
+
+# Test text
+query I
+SELECT text('Hello')[1].element_type;
+----
+text
+
+# Test b and strong (bold)
+query I
+SELECT b('Bold')[1].element_type;
+----
+bold
+
+query I
+SELECT strong('Strong')[1].element_type;
+----
+bold
+
+# Test i and em (italic)
+query I
+SELECT i('Italic')[1].element_type;
+----
+italic
+
+query I
+SELECT em('Emphasis')[1].element_type;
+----
+italic
+
+# Test a (link)
+query I
+SELECT a('https://example.com', 'Link text')[1].element_type;
+----
+link
+
+# Test code (inline code)
+query I
+SELECT code('x = 1')[1].element_type;
+----
+code
+
+query I
+SELECT code('x = 1')[1].kind;
+----
+inline
+
+# Test s and del (strikethrough)
+query I
+SELECT s('Deleted')[1].element_type;
+----
+strikethrough
+
+query I
+SELECT del('Deleted')[1].element_type;
+----
+strikethrough
+
+# Test sup and sub
+query I
+SELECT sup('2')[1].element_type;
+----
+superscript
+
+query I
+SELECT sub('2')[1].element_type;
+----
+subscript
+
+# Test span
+query I
+SELECT span('Content')[1].element_type;
+----
+span
+
+# Test math
+query I
+SELECT math('E = mc^2')[1].element_type;
+----
+math
+
+# ============================================================================
+# Document Assembly Aliases
+# ============================================================================
+
+# Test page (db_assemble)
+query I
+SELECT len(page([h1('Title'), p('Text')]));
+----
+2
+
+# Test doc (alias for page)
+query I
+SELECT len(doc([h1('Title'), p('Text')]));
+----
+2
+
+# ============================================================================
+# Composition Test
+# ============================================================================
+
+# Test complex document with aliases
+# h1=1, p(3 children)=4, h2=1, p(2 children)=3, pre=1 = 10 total
+query I
+SELECT len(page([
+    h1('DuckDB Search'),
+    p([text('Found '), b('3'), text(' results.')]),
+    h2('Extension 1'),
+    p([text('Link: '), a('https://github.com', 'GitHub')]),
+    pre('sql', 'LOAD extension;')
+]));
+----
+10

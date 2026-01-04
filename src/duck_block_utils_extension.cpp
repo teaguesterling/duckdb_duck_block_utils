@@ -11,6 +11,7 @@
 #include "extraction.hpp"
 #include "validation.hpp"
 #include "pandoc_block_convert.hpp"
+#include "pragma_aliases.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/function/scalar_function.hpp"
@@ -43,6 +44,9 @@ static void LoadInternal(ExtensionLoader &loader) {
 
 	// Phase 6: Pandoc AST Block Functions
 	PandocBlockConvert::Register(loader);
+
+	// Phase 7: Pragma for short aliases
+	PragmaAliases::Register(loader);
 }
 
 void DuckBlockUtilsExtension::Load(ExtensionLoader &loader) {
