@@ -193,6 +193,119 @@ SELECT db_list_block(['A', 'B'])[1].content;
 ["A","B"]
 
 # ============================================================================
+# db_list_block with LIST(LIST(duck_block)) Tests (Issue #3)
+# ============================================================================
+
+# Test db_list_block with list items - returns list type
+query I
+SELECT db_list_block([db_list_item('First'), db_list_item('Second')])[1].element_type;
+----
+list
+
+# Test db_list_block with list items - unordered by default
+query I
+SELECT db_list_block([db_list_item('First'), db_list_item('Second')])[1].attributes['ordered'];
+----
+false
+
+# Test db_list_block with list items - ordered flag (ordered first)
+query I
+SELECT db_list_block(true, [db_list_item('First'), db_list_item('Second')])[1].attributes['ordered'];
+----
+true
+
+# Test db_list_block with list items - parent content is NULL
+query I
+SELECT db_list_block([db_list_item('First')])[1].content IS NULL;
+----
+true
+
+# Test db_list_block with list items - correct list length (1 parent + children)
+query I
+SELECT len(db_list_block([db_list_item('A'), db_list_item('B'), db_list_item('C')]));
+----
+4
+
+# Test db_list_block with list items - children have level 2 (parent is level 1)
+query I
+SELECT db_list_block([db_list_item('First')])[2].level;
+----
+2
+
+# Test db_list_block with list items - children element_order is set correctly
+query III
+SELECT db_list_block([db_list_item('A'), db_list_item('B'), db_list_item('C')])[2].element_order,
+       db_list_block([db_list_item('A'), db_list_item('B'), db_list_item('C')])[3].element_order,
+       db_list_block([db_list_item('A'), db_list_item('B'), db_list_item('C')])[4].element_order;
+----
+0	1	2
+
+# Test db_list_block with rich list items containing inline content
+query I
+SELECT len(db_list_block([
+    db_list_item([db_link('https://example.com', 'Link'), db_text(' description')])
+]));
+----
+4
+
+# Test db_list_block with rich items - nested children have correct levels
+query I
+SELECT db_list_block([db_list_item([db_bold('Bold text')])])[3].level;
+----
+3
+
+# Test db_list_block with rich items - nested element_type preserved
+query I
+SELECT db_list_block([db_list_item([db_bold('Bold')])])[3].element_type;
+----
+bold
+
+# Test db_list_block ordered with rich items
+query I
+SELECT len(db_list_block(true, [
+    db_list_item(true, [db_text('First item')]),
+    db_list_item(true, [db_text('Second item')])
+]));
+----
+5
+
+# Test db_list_block with list items - parent level is 1
+query I
+SELECT db_list_block([db_list_item('Test')])[1].level;
+----
+1
+
+# Test db_list_block with list items - parent kind is block
+query I
+SELECT db_list_block([db_list_item('Test')])[1].kind;
+----
+block
+
+# Test db_list_block with explicit ordered=false
+query I
+SELECT db_list_block(false, [db_list_item('A'), db_list_item('B')])[1].attributes['ordered'];
+----
+false
+
+# Test db_list_block with single item
+query I
+SELECT len(db_list_block([db_list_item('Only one')]));
+----
+2
+
+# Test db_list_block with empty list returns just the parent
+query I
+SELECT len(db_list_block(list_value()::duck_block[][]));
+----
+1
+
+# Test db_list_block children preserve list_item element_type
+query I
+SELECT db_list_block([db_list_item('Item')])[2].element_type;
+----
+list_item
+
+# ============================================================================
 # db_list_item Tests (NEW in v2)
 # ============================================================================
 
