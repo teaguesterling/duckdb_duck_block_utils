@@ -9,11 +9,10 @@ Practical examples and common patterns for using `duck_block_utils`.
 ```sql
 -- Create documentation for each table
 SELECT db_assemble([
-    db_heading(table_name, 2),
+    db_heading(2, table_name),
     db_paragraph('Columns: ' || column_count::VARCHAR),
-    db_code(
-        'SELECT * FROM ' || table_name || ' LIMIT 10;',
-        'sql'
+    db_code('sql',
+        'SELECT * FROM ' || table_name || ' LIMIT 10;'
     )
 ])
 FROM (
@@ -35,11 +34,11 @@ WITH endpoints AS (
 )
 SELECT db_assemble(list(block ORDER BY ord))
 FROM (
-    SELECT 1 as ord, db_heading('API Reference', 1) as block
+    SELECT 1 as ord, db_heading(1, 'API Reference') as block
     UNION ALL
     SELECT
         row_number() OVER () + 1,
-        db_section(endpoint, 3, [db_paragraph(description)])
+        db_section(3, endpoint, [db_paragraph(description)])
     FROM endpoints
 );
 ```
@@ -74,10 +73,10 @@ ORDER BY chapter_num;
 ```sql
 -- Main document with embedded subdocuments
 SELECT db_assemble(db_concat(
-    [
-        db_heading('Main Report', 1),
+    flatten([
+        db_heading(1, 'Main Report'),
         db_paragraph('This report contains multiple sections.')
-    ],
+    ]),
     db_concat(
         db_rebase_levels(section1_blocks, 1),  -- h1→h2, h2→h3
         db_rebase_levels(section2_blocks, 1)
@@ -217,13 +216,13 @@ WITH sales_data AS (
     GROUP BY region
 )
 SELECT db_assemble([
-    db_heading('Sales Report', 1),
+    db_heading(1, 'Sales Report'),
     db_metadata('generated: ' || current_date::VARCHAR),
-    db_heading('Summary', 2),
+    db_heading(2, 'Summary'),
     db_paragraph('Total regions: ' || COUNT(*)::VARCHAR),
-    db_heading('By Region', 2)
+    db_heading(2, 'By Region')
 ] || list(
-    db_section(region, 3, [
+    db_section(3, region, [
         db_paragraph('Total: $' || total::VARCHAR)
     ])
 ))
@@ -234,9 +233,9 @@ FROM sales_data;
 
 ```sql
 SELECT db_assemble([
-    db_heading('User Directory', 1)
+    db_heading(1, 'User Directory')
 ] || list(
-    db_section(name, 2, [
+    db_section(2, name, [
         db_paragraph('Email: ' || email),
         db_paragraph('Role: ' || role)
     ])
@@ -251,13 +250,13 @@ FROM users;
 
 ```sql
 -- Create a paragraph with formatted inline content
-SELECT [
+SELECT flatten([
     db_text('Visit '),
-    db_link('our website', 'https://example.com'),
+    db_link('https://example.com', 'our website'),
     db_text(' or email '),
-    db_link('support@example.com', 'mailto:support@example.com'),
+    db_link('mailto:support@example.com', 'support@example.com'),
     db_text('.')
-];
+]);
 ```
 
 ### Generate Badge Links
@@ -296,13 +295,13 @@ ORDER BY element_order;
 SELECT db_assemble(list(
     CASE json_data->>'type'
         WHEN 'heading' THEN db_heading(
-            json_data->>'text',
-            (json_data->>'heading_level')::INTEGER
+            (json_data->>'heading_level')::INTEGER,
+            json_data->>'text'
         )
         WHEN 'paragraph' THEN db_paragraph(json_data->>'text')
         WHEN 'code' THEN db_code(
-            json_data->>'text',
-            json_data->>'language'
+            json_data->>'language',
+            json_data->>'text'
         )
     END
 ))
@@ -319,6 +318,41 @@ WHERE (
     SELECT bool_and(duck_block_valid(block))
     FROM UNNEST(blocks) AS t(block)
 );
+```
+
+## Using Short Aliases
+
+Enable short aliases for more concise code:
+
+```sql
+PRAGMA duck_block_aliases;
+
+-- Same examples with short names
+SELECT page([
+    h1('Sales Report'),
+    p([text('Generated: '), b(current_date::VARCHAR)]),
+    h2('Summary'),
+    ul(['Revenue: $1M', 'Customers: 500', 'Growth: 25%']),
+    h2('Details'),
+    div('charts', [
+        p('See attached visualizations.')
+    ])
+]);
+```
+
+### Rich Lists with Aliases
+
+```sql
+PRAGMA duck_block_aliases;
+
+SELECT page([
+    h1('Project Links'),
+    ol([
+        li([a('https://github.com/duckdb/duckdb', 'DuckDB'), text(' - main repo')]),
+        li([a('https://duckdb.org', 'Documentation'), text(' - user guide')]),
+        li([b('Extensions'), text(' - see community repo')])
+    ])
+]);
 ```
 
 ## Performance Tips

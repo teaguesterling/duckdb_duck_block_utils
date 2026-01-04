@@ -83,6 +83,7 @@ STRUCT(
 | `metadata` | YAML frontmatter | NULL | |
 | `image` | Image references | NULL | `src`, `alt`, `title` |
 | `raw` | Raw HTML/XML | NULL | `format` |
+| `div` | Generic container | NULL | `id`, `class` |
 
 **Note:** For headings, the semantic level (h1-h6) is stored in `attributes['heading_level']`, not the `level` field. This separates heading semantics from structural nesting depth.
 
@@ -146,7 +147,8 @@ STRUCT(
 | `db_paragraph(content)` | Create paragraph block |
 | `db_code(content, language)` | Create code block |
 | `db_blockquote(content, level)` | Create blockquote block |
-| `db_list_block(items[], ordered)` | Create list block |
+| `db_list_block(items[], ordered)` | Create list block (strings or rich items) |
+| `db_div(children, id, class)` | Create generic container |
 | `db_hr()` | Create horizontal rule |
 | `db_metadata(yaml_content)` | Create metadata block |
 | `db_image(src, alt, title)` | Create image block |
@@ -286,6 +288,31 @@ COPY (
         '{"title": {"t": "MetaString", "c": "My Doc"}}'::JSON
     )
 ) TO 'for_pandoc.json';
+```
+
+## Short Aliases
+
+For less verbose document composition, enable HTML-inspired short aliases:
+
+```sql
+PRAGMA duck_block_aliases;
+
+-- Now you can use short names like h1, p, b, a, etc.
+SELECT page([
+    h1('DuckDB Search'),
+    p([text('Found '), b('3'), text(' results.')]),
+    pre('sql', 'LOAD extension;')
+]);
+```
+
+Available aliases include: `h1`-`h6`, `p`, `pre`, `ul`, `ol`, `li`, `div`, `b`, `i`, `a`, `code`, and more. See [Block Builders](docs/block_builders.md) for the complete list.
+
+## Type Casting
+
+Cast VARCHAR to duck_block to create text inline elements:
+
+```sql
+SELECT 'hello'::duck_block;  -- Creates text inline element
 ```
 
 ## Building

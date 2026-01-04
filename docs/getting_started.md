@@ -18,7 +18,7 @@ Let's create a simple document with a heading and some paragraphs:
 
 ```sql
 SELECT db_assemble([
-    db_heading('Welcome', 1),
+    db_heading(1, 'Welcome'),
     db_paragraph('This is my first document.'),
     db_paragraph('It has multiple paragraphs.')
 ]);
@@ -26,33 +26,36 @@ SELECT db_assemble([
 
 The `db_assemble` function takes a list of blocks and assigns sequential `element_order` values (0, 1, 2, ...).
 
+> **Note:** All builder functions follow a "config-first, content-last" pattern.
+> For example: `db_heading(level, content)`, `db_code(language, content)`.
+
 ## Understanding duck_block
 
 Both blocks and inlines use the unified `duck_block` type, distinguished by the `kind` field:
 
 ```sql
-SELECT db_heading('Hello', 1);
+SELECT db_heading(1, 'Hello');
 ```
 
-Output:
+Output (returns LIST with one element):
 ```
-{
+[{
   kind: 'block',
   element_type: 'heading',
   content: 'Hello',
   level: 1,
   encoding: 'text',
-  attributes: {},
+  attributes: {heading_level: '1'},
   element_order: 0
-}
+}]
 ```
 
-You can access fields using dot notation:
+You can access fields using dot notation (index first since builders return lists):
 
 ```sql
-SELECT db_heading('Hello', 1).element_type;  -- 'heading'
-SELECT db_heading('Hello', 1).level;         -- 1
-SELECT db_heading('Hello', 1).kind;          -- 'block'
+SELECT db_heading(1, 'Hello')[1].element_type;  -- 'heading'
+SELECT db_heading(1, 'Hello')[1].attributes['heading_level'];  -- '1'
+SELECT db_heading(1, 'Hello')[1].kind;          -- 'block'
 ```
 
 ## Building Rich Documents
@@ -60,13 +63,13 @@ SELECT db_heading('Hello', 1).kind;          -- 'block'
 ### Code Blocks
 
 ```sql
-SELECT db_code('SELECT * FROM users;', 'sql');
+SELECT db_code('sql', 'SELECT * FROM users;');
 ```
 
 The language is stored in the `attributes` map:
 
 ```sql
-SELECT db_code('print("hi")', 'python').attributes['language'];
+SELECT db_code('python', 'print("hi")')[1].attributes['language'];
 -- Returns: 'python'
 ```
 
@@ -77,7 +80,13 @@ SELECT db_code('print("hi")', 'python').attributes['language'];
 SELECT db_list_block(['Item 1', 'Item 2', 'Item 3']);
 
 -- Ordered list
-SELECT db_list_block(['First', 'Second', 'Third'], true);
+SELECT db_list_block(true, ['First', 'Second', 'Third']);
+
+-- Rich list items with inline content
+SELECT db_list_block([
+    db_list_item([db_link('https://github.com', 'GitHub'), db_text(' - code hosting')]),
+    db_list_item([db_bold('DuckDB'), db_text(' - analytics')])
+]);
 ```
 
 ### Images
@@ -102,9 +111,9 @@ Inline elements have `kind='inline'` and are used for rich text formatting:
 SELECT db_text('Hello world');
 -- Returns: {kind: 'inline', element_type: 'text', content: 'Hello world', level: 1, ...}
 
-SELECT db_link('Click here', 'https://example.com');
--- Returns: {kind: 'inline', element_type: 'link', content: 'Click here',
---           attributes: {href: 'https://example.com'}, ...}
+SELECT db_link('https://example.com', 'Click here');
+-- Returns: [{kind: 'inline', element_type: 'link', content: 'Click here',
+--            attributes: {href: 'https://example.com'}, ...}]
 
 SELECT db_bold('Important');
 -- Returns: {kind: 'inline', element_type: 'bold', content: 'Important', ...}
@@ -117,7 +126,7 @@ Combine inline elements into arrays:
 ```sql
 SELECT [
     db_text('Click '),
-    db_link('here', 'https://example.com'),
+    db_link('https://example.com', 'here'),
     db_text(' to learn more about '),
     db_bold('DuckDB'),
     db_text('.')
@@ -129,13 +138,28 @@ SELECT [
 The `db_section` function creates a heading with child content:
 
 ```sql
-SELECT db_section('Introduction', 1, [
+SELECT db_section(1, 'Introduction', [
     db_paragraph('Welcome to the guide.'),
     db_paragraph('Let us begin.')
 ]);
 ```
 
 This returns a list of 3 blocks: the heading plus two paragraphs.
+
+## Generic Containers (db_div)
+
+Create containers to group content with optional id/class attributes:
+
+```sql
+-- Simple container
+SELECT db_div([db_paragraph('Content 1'), db_paragraph('Content 2')]);
+
+-- Container with id and class
+SELECT db_div('sidebar', 'widget', [
+    db_heading(3, 'Related'),
+    db_list_block(['A', 'B', 'C'])
+]);
+```
 
 ## Combining Documents
 
@@ -145,8 +169,8 @@ Concatenate two block lists:
 
 ```sql
 SELECT db_assemble(db_concat(
-    db_section('Part 1', 1, [db_paragraph('Content 1')]),
-    db_section('Part 2', 1, [db_paragraph('Content 2')])
+    db_section(1, 'Part 1', [db_paragraph('Content 1')]),
+    db_section(1, 'Part 2', [db_paragraph('Content 2')])
 ));
 ```
 
@@ -156,8 +180,8 @@ Merge with automatic order adjustment:
 
 ```sql
 SELECT db_blocks_merge(
-    [db_heading('First', 1)],
-    [db_heading('Second', 1)]
+    db_heading(1, 'First'),
+    db_heading(1, 'Second')
 );
 -- First block: element_order=0
 -- Second block: element_order=1
@@ -182,10 +206,10 @@ SELECT db_blocks_exclude(my_doc, ['hr', 'raw']);
 ### Get Plain Text
 
 ```sql
-SELECT db_blocks_to_text([
-    db_heading('Title', 1),
+SELECT db_blocks_to_text(flatten([
+    db_heading(1, 'Title'),
     db_paragraph('Body text here.')
-]);
+]));
 -- Returns: "Title\n\nBody text here."
 ```
 
@@ -226,7 +250,7 @@ INSERT INTO documents VALUES (
     1,
     'My Doc',
     db_assemble([
-        db_heading('Introduction', 1),
+        db_heading(1, 'Introduction'),
         db_paragraph('Hello world.')
     ])
 );
@@ -253,7 +277,7 @@ When embedding one document inside another, adjust heading levels:
 -- Original subdocument has h1, h2
 -- Embed it as h2, h3 (offset by 1)
 SELECT db_assemble(db_concat(
-    [db_heading('Main Document', 1)],
+    db_heading(1, 'Main Document'),
     db_rebase_levels(subdoc_blocks, 1)
 ));
 ```
@@ -267,9 +291,36 @@ SELECT duck_block_valid(db_heading('Title', 1));  -- true
 SELECT duck_block_valid(duck_block('invalid', 'x'));  -- false
 ```
 
+## Short Aliases (Optional)
+
+For less verbose document composition, enable HTML-inspired short aliases:
+
+```sql
+PRAGMA duck_block_aliases;
+
+-- Now you can use short names
+SELECT page([
+    h1('My Document'),
+    p([text('Hello '), b('world'), text('!')]),
+    pre('sql', 'SELECT 1;')
+]);
+```
+
+Available aliases: `h1`-`h6`, `p`, `pre`, `ul`, `ol`, `li`, `div`, `b`, `i`, `a`, `code`, and more.
+
+## Type Casting
+
+Cast strings directly to duck_block (creates text inline):
+
+```sql
+SELECT 'hello'::duck_block;
+-- Equivalent to db_text('hello')
+```
+
 ## Next Steps
 
 - See [API Reference](api_reference.md) for all available functions
 - See [Examples](examples.md) for common patterns
 - See [Type Functions](type_functions.md) for integration with other extensions
 - See [Inline Builders](inline_builders.md) for rich text formatting
+- See [Block Builders](block_builders.md) for complete alias list
