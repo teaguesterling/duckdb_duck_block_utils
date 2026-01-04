@@ -54,6 +54,7 @@ public:
 	static constexpr const char *TYPE_METADATA = "metadata";
 	static constexpr const char *TYPE_IMAGE = "image";
 	static constexpr const char *TYPE_RAW = "raw";
+	static constexpr const char *TYPE_DIV = "div";
 
 	// ========================================================================
 	// Inline type names

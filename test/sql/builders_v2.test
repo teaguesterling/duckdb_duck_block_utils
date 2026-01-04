@@ -552,6 +552,90 @@ SELECT len([('a'::duck_block), ('b'::duck_block)]);
 2
 
 # ============================================================================
+# db_div Tests (Issue #6) - Generic block container
+# ============================================================================
+
+# Test db_div creates div element_type
+query I
+SELECT db_div(db_paragraph('content'))[1].element_type;
+----
+div
+
+# Test db_div creates block kind
+query I
+SELECT db_div(db_paragraph('content'))[1].kind;
+----
+block
+
+# Test db_div parent content is NULL
+query I
+SELECT db_div(db_paragraph('content'))[1].content IS NULL;
+----
+true
+
+# Test db_div with single child - correct length
+query I
+SELECT len(db_div(db_paragraph('content')));
+----
+2
+
+# Test db_div children have level 2
+query I
+SELECT db_div(db_paragraph('content'))[2].level;
+----
+2
+
+# Test db_div with id attribute
+query I
+SELECT db_div('my-id', db_paragraph('content'))[1].attributes['id'];
+----
+my-id
+
+# Test db_div with id and class attributes
+query II
+SELECT db_div('my-id', 'my-class', db_paragraph('content'))[1].attributes['id'],
+       db_div('my-id', 'my-class', db_paragraph('content'))[1].attributes['class'];
+----
+my-id	my-class
+
+# Test db_div with nested list (composition)
+query I
+SELECT len(db_div([db_heading(1, 'Title'), db_paragraph('Text')]));
+----
+3
+
+# Test db_div with id and nested list
+query I
+SELECT db_div('section-1', [db_heading(1, 'Title'), db_paragraph('Text')])[1].attributes['id'];
+----
+section-1
+
+# Test db_div with id, class, and nested list
+query I
+SELECT len(db_div('my-id', 'container', [db_heading(1, 'A'), db_paragraph('B')]));
+----
+3
+
+# Test db_div element_order on children
+query II
+SELECT db_div([db_paragraph('A'), db_paragraph('B')])[2].element_order,
+       db_div([db_paragraph('A'), db_paragraph('B')])[3].element_order;
+----
+0	1
+
+# Test db_div with NULL id
+query I
+SELECT db_div(NULL, db_paragraph('content'))[1].attributes['id'] IS NULL;
+----
+true
+
+# Test db_div parent level is 1
+query I
+SELECT db_div(db_paragraph('test'))[1].level;
+----
+1
+
+# ============================================================================
 # Integration: Using v2 builders with manipulation functions
 # ============================================================================
 
