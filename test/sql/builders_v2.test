@@ -500,6 +500,58 @@ SELECT db_raw('<br>')[1].encoding;
 html
 
 # ============================================================================
+# VARCHAR to duck_block Cast Tests (Issue #5)
+# ============================================================================
+
+# Test explicit cast creates text inline element
+query I
+SELECT ('hello'::duck_block).element_type;
+----
+text
+
+# Test explicit cast creates inline kind
+query I
+SELECT ('hello'::duck_block).kind;
+----
+inline
+
+# Test explicit cast preserves content
+query I
+SELECT ('hello world'::duck_block).content;
+----
+hello world
+
+# Test explicit cast sets level to 1
+query I
+SELECT ('test'::duck_block).level;
+----
+1
+
+# Test explicit cast sets encoding to text
+query I
+SELECT ('test'::duck_block).encoding;
+----
+text
+
+# Test explicit cast sets element_order to 0
+query I
+SELECT ('test'::duck_block).element_order;
+----
+0
+
+# Test cast with empty string
+query I
+SELECT (''::duck_block).content;
+----
+(empty)
+
+# Test cast result can be used in list
+query I
+SELECT len([('a'::duck_block), ('b'::duck_block)]);
+----
+2
+
+# ============================================================================
 # Integration: Using v2 builders with manipulation functions
 # ============================================================================
 
