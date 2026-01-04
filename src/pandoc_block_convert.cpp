@@ -1,10 +1,12 @@
 #include "pandoc_block_convert.hpp"
 #include "block_types.hpp"
 #include "duckdb/common/types/value.hpp"
+#include "duckdb/common/exception.hpp"
 
 #include <sstream>
 #include <vector>
 #include <map>
+#include <fstream>
 
 namespace duckdb {
 
@@ -101,50 +103,79 @@ static string ExtractInlinesText(const string &json) {
 	size_t pos = 0;
 
 	while (pos < json.length()) {
-		// Find Str elements
+		// Find next Str or Space element
 		size_t str_pos = json.find("\"t\":\"Str\"", pos);
-		if (str_pos == string::npos) break;
+		size_t space_pos = json.find("\"t\":\"Space\"", pos);
+		size_t softbreak_pos = json.find("\"t\":\"SoftBreak\"", pos);
+		size_t linebreak_pos = json.find("\"t\":\"LineBreak\"", pos);
 
-		size_t c_pos = json.find("\"c\":", str_pos);
-		if (c_pos != string::npos) {
-			size_t quote_start = json.find("\"", c_pos + 4);
-			if (quote_start != string::npos) {
-				quote_start++;
-				size_t quote_end = quote_start;
-				while (quote_end < json.length() && json[quote_end] != '"') {
-					if (json[quote_end] == '\\' && quote_end + 1 < json.length()) {
-						quote_end += 2;
-					} else {
-						quote_end++;
-					}
-				}
-				// Decode escaped string
-				for (size_t i = quote_start; i < quote_end; i++) {
-					if (json[i] == '\\' && i + 1 < quote_end) {
-						i++;
-						switch (json[i]) {
-							case 'n': result += '\n'; break;
-							case 't': result += '\t'; break;
-							case '"': result += '"'; break;
-							case '\\': result += '\\'; break;
-							default: result += json[i];
+		// Find the earliest element
+		size_t next_pos = string::npos;
+		string token_type;
+
+		if (str_pos != string::npos && (next_pos == string::npos || str_pos < next_pos)) {
+			next_pos = str_pos;
+			token_type = "Str";
+		}
+		if (space_pos != string::npos && (next_pos == string::npos || space_pos < next_pos)) {
+			next_pos = space_pos;
+			token_type = "Space";
+		}
+		if (softbreak_pos != string::npos && (next_pos == string::npos || softbreak_pos < next_pos)) {
+			next_pos = softbreak_pos;
+			token_type = "SoftBreak";
+		}
+		if (linebreak_pos != string::npos && (next_pos == string::npos || linebreak_pos < next_pos)) {
+			next_pos = linebreak_pos;
+			token_type = "LineBreak";
+		}
+
+		if (next_pos == string::npos) break;
+
+		if (token_type == "Space") {
+			result += " ";
+			pos = next_pos + 11;  // strlen("\"t\":\"Space\"")
+		} else if (token_type == "SoftBreak") {
+			result += " ";
+			pos = next_pos + 15;  // strlen("\"t\":\"SoftBreak\"")
+		} else if (token_type == "LineBreak") {
+			result += "\n";
+			pos = next_pos + 15;  // strlen("\"t\":\"LineBreak\"")
+		} else if (token_type == "Str") {
+			size_t c_pos = json.find("\"c\":", next_pos);
+			if (c_pos != string::npos) {
+				size_t quote_start = json.find("\"", c_pos + 4);
+				if (quote_start != string::npos) {
+					quote_start++;
+					size_t quote_end = quote_start;
+					while (quote_end < json.length() && json[quote_end] != '"') {
+						if (json[quote_end] == '\\' && quote_end + 1 < json.length()) {
+							quote_end += 2;
+						} else {
+							quote_end++;
 						}
-					} else {
-						result += json[i];
 					}
+					// Decode escaped string
+					for (size_t i = quote_start; i < quote_end; i++) {
+						if (json[i] == '\\' && i + 1 < quote_end) {
+							i++;
+							switch (json[i]) {
+								case 'n': result += '\n'; break;
+								case 't': result += '\t'; break;
+								case '"': result += '"'; break;
+								case '\\': result += '\\'; break;
+								default: result += json[i];
+							}
+						} else {
+							result += json[i];
+						}
+					}
+					pos = quote_end + 1;
+					continue;
 				}
 			}
+			pos = next_pos + 10;  // strlen("\"t\":\"Str\"")
 		}
-
-		// Check for Space
-		size_t space_pos = json.find("\"t\":\"Space\"", pos);
-		if (space_pos != string::npos && (str_pos == string::npos || space_pos < str_pos)) {
-			result += " ";
-			pos = space_pos + 11;
-			continue;
-		}
-
-		pos = str_pos + 10;
 	}
 
 	return result;
@@ -421,6 +452,26 @@ static void ParsePandocBlocks(const string &json, int32_t &order, vector<Value> 
 	}
 }
 
+// Public function for converting Pandoc AST JSON to blocks
+void PandocBlockConvert::ConvertPandocAstToBlocks(const string &json, vector<Value> &blocks) {
+	int32_t order = 0;
+
+	// Check if this is a full Pandoc AST or just blocks array
+	size_t blocks_key = json.find("\"blocks\":");
+	if (blocks_key != string::npos) {
+		// Full AST - find blocks array
+		size_t arr_start = json.find("[", blocks_key);
+		if (arr_start != string::npos) {
+			size_t arr_end = FindMatchingBracket(json, arr_start, '[', ']');
+			string blocks_json = json.substr(arr_start, arr_end - arr_start);
+			ParsePandocBlocks(blocks_json, order, blocks);
+		}
+	} else {
+		// Assume it's just a blocks array
+		ParsePandocBlocks(json, order, blocks);
+	}
+}
+
 void PandocBlockConvert::PandocAstToBlocksFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &json_vec = args.data[0];
 	auto count = args.size();
@@ -436,22 +487,7 @@ void PandocBlockConvert::PandocAstToBlocksFun(DataChunk &args, ExpressionState &
 
 		string json = json_val.GetValue<string>();
 		vector<Value> blocks;
-		int32_t order = 0;
-
-		// Check if this is a full Pandoc AST or just blocks array
-		size_t blocks_key = json.find("\"blocks\":");
-		if (blocks_key != string::npos) {
-			// Full AST - find blocks array
-			size_t arr_start = json.find("[", blocks_key);
-			if (arr_start != string::npos) {
-				size_t arr_end = FindMatchingBracket(json, arr_start, '[', ']');
-				string blocks_json = json.substr(arr_start, arr_end - arr_start);
-				ParsePandocBlocks(blocks_json, order, blocks);
-			}
-		} else {
-			// Assume it's just a blocks array
-			ParsePandocBlocks(json, order, blocks);
-		}
+		ConvertPandocAstToBlocks(json, blocks);
 
 		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(blocks)));
 	}
@@ -580,6 +616,38 @@ void PandocBlockConvert::PandocBlocksToAstFun(DataChunk &args, ExpressionState &
 	}
 }
 
+void PandocBlockConvert::ReadPandocAstFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &path_vec = args.data[0];
+	auto count = args.size();
+
+	for (idx_t i = 0; i < count; i++) {
+		auto path_val = path_vec.GetValue(i);
+
+		// Handle NULL input
+		if (path_val.IsNull()) {
+			result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), vector<Value>()));
+			continue;
+		}
+
+		string file_path = path_val.GetValue<string>();
+
+		// Read file content using standard C++ file I/O
+		std::ifstream file(file_path);
+		if (!file.is_open()) {
+			throw IOException("Could not open file: " + file_path);
+		}
+
+		std::stringstream buffer;
+		buffer << file.rdbuf();
+		string json = buffer.str();
+
+		vector<Value> blocks;
+		ConvertPandocAstToBlocks(json, blocks);
+
+		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(blocks)));
+	}
+}
+
 void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	auto duck_block_list_type = BlockTypes::DuckBlockListType();
 
@@ -600,6 +668,15 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	    PandocBlocksToAstFun
 	);
 	loader.RegisterFunction(blocks_to_ast_func);
+
+	// read_pandoc_ast(file_path VARCHAR) -> LIST(duck_block)
+	auto read_pandoc_ast_func = ScalarFunction(
+	    "read_pandoc_ast",
+	    {LogicalType::VARCHAR},
+	    duck_block_list_type,
+	    ReadPandocAstFun
+	);
+	loader.RegisterFunction(read_pandoc_ast_func);
 }
 
 } // namespace duckdb

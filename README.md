@@ -197,9 +197,10 @@ These overloads accept a list of children and return a flattened list with paren
 
 | Function | Description |
 |----------|-------------|
-| `pandoc_ast_to_blocks(ast, mode)` | Convert Pandoc JSON AST to duck_blocks |
-| `pandoc_blocks_to_ast(blocks, meta)` | Convert duck_blocks to Pandoc JSON AST |
-| `pandoc_inlines_to_text(inlines, mode)` | Convert inline elements to text |
+| `read_pandoc_ast(file_path)` | Read Pandoc JSON file and convert to duck_blocks |
+| `pandoc_ast_to_blocks(json)` | Convert Pandoc JSON AST string to duck_blocks |
+| `pandoc_blocks_to_ast(blocks)` | Convert duck_blocks to Pandoc JSON AST |
+| `pandoc_inlines_to_text(inlines)` | Convert inline elements to text |
 | `pandoc_inlines_to_db_inlines(inlines)` | Convert Pandoc inlines to duck_block inlines |
 | `db_inlines_to_pandoc(inlines)` | Convert duck_block inlines to Pandoc JSON |
 
@@ -275,17 +276,18 @@ SELECT db_paragraph([
 ### Convert Pandoc JSON to Blocks
 
 ```sql
--- Read Pandoc JSON (from any tool that exports it)
--- and convert to duck_blocks without needing Pandoc installed
+-- Read Pandoc JSON file directly (simplest approach)
+SELECT * FROM unnest(read_pandoc_ast('exported_from_pandoc.json'));
+
+-- Or use pandoc_ast_to_blocks with a JSON string
 SELECT unnest(pandoc_ast_to_blocks(
-    read_json_auto('exported_from_pandoc.json')
+    (SELECT content FROM read_text('exported_from_pandoc.json'))
 ));
 
 -- Convert blocks back to Pandoc JSON for other tools
 COPY (
     SELECT pandoc_blocks_to_ast(
-        (SELECT list(b) FROM read_markdown_blocks('doc.md') b),
-        '{"title": {"t": "MetaString", "c": "My Doc"}}'::JSON
+        (SELECT list(b) FROM read_markdown_blocks('doc.md') b)
     )
 ) TO 'for_pandoc.json';
 ```
