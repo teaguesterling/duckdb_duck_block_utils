@@ -601,3 +601,83 @@ list	1
 list_item	2
 bold	3
 text	3
+
+# ============================================================================
+# Table Round-Trip Tests
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Test 1: Basic table parsing
+# ----------------------------------------------------------------------------
+
+# Simple 2x2 table parses as table block type
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"Table","c":[[],[{"t":"AlignDefault"},{"t":"AlignDefault"}],[0,0],[[{"t":"Plain","c":[{"t":"Str","c":"A"}]}],[{"t":"Plain","c":[{"t":"Str","c":"B"}]}]],[[[{"t":"Plain","c":[{"t":"Str","c":"1"}]}],[{"t":"Plain","c":[{"t":"Str","c":"2"}]}]]]]}]')[1].element_type;
+----
+table
+
+# Table content is stored as JSON
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"Table","c":[[],[{"t":"AlignDefault"},{"t":"AlignDefault"}],[0,0],[[{"t":"Plain","c":[{"t":"Str","c":"A"}]}],[{"t":"Plain","c":[{"t":"Str","c":"B"}]}]],[[[{"t":"Plain","c":[{"t":"Str","c":"1"}]}],[{"t":"Plain","c":[{"t":"Str","c":"2"}]}]]]]}]')[1].encoding;
+----
+json
+
+# ----------------------------------------------------------------------------
+# Test 2: Table round-trip preserves structure
+# ----------------------------------------------------------------------------
+
+# Round-trip simple table - verify Table type preserved
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Table","c":[[],[{"t":"AlignDefault"}],[0],[[{"t":"Plain","c":[{"t":"Str","c":"Header"}]}]],[[[{"t":"Plain","c":[{"t":"Str","c":"Cell"}]}]]]]}]')), '$[0].t');
+----
+"Table"
+
+# Round-trip preserves header content
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Table","c":[[],[{"t":"AlignDefault"}],[0],[[{"t":"Plain","c":[{"t":"Str","c":"Header"}]}]],[[[{"t":"Plain","c":[{"t":"Str","c":"Cell"}]}]]]]}]')), '$[0].c[3][0][0].c[0].c');
+----
+"Header"
+
+# Round-trip preserves cell content
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Table","c":[[],[{"t":"AlignDefault"}],[0],[[{"t":"Plain","c":[{"t":"Str","c":"Header"}]}]],[[[{"t":"Plain","c":[{"t":"Str","c":"Cell"}]}]]]]}]')), '$[0].c[4][0][0][0].c[0].c');
+----
+"Cell"
+
+# ----------------------------------------------------------------------------
+# Test 3: Table with rich text formatting
+# ----------------------------------------------------------------------------
+
+# Table with bold header
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Table","c":[[],[{"t":"AlignDefault"}],[0],[[{"t":"Plain","c":[{"t":"Strong","c":[{"t":"Str","c":"Bold"}]}]}]],[[[{"t":"Plain","c":[{"t":"Str","c":"Cell"}]}]]]]}]')), '$[0].c[3][0][0].c[0].t');
+----
+"Strong"
+
+# Table with italic cell
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Table","c":[[],[{"t":"AlignDefault"}],[0],[[{"t":"Plain","c":[{"t":"Str","c":"Header"}]}]],[[[{"t":"Plain","c":[{"t":"Emph","c":[{"t":"Str","c":"Italic"}]}]}]]]]}]')), '$[0].c[4][0][0][0].c[0].t');
+----
+"Emph"
+
+# Table with code in cell
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Table","c":[[],[{"t":"AlignDefault"}],[0],[[{"t":"Plain","c":[{"t":"Str","c":"Header"}]}]],[[[{"t":"Plain","c":[{"t":"Code","c":[["",[],""],"code"]}]}]]]]}]')), '$[0].c[4][0][0][0].c[0].t');
+----
+"Code"
+
+# ----------------------------------------------------------------------------
+# Test 4: Table with multiple columns and rows
+# ----------------------------------------------------------------------------
+
+# 3-column table preserves all alignment specs
+query I
+SELECT json_array_length(json_extract(duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Table","c":[[],[{"t":"AlignDefault"},{"t":"AlignLeft"},{"t":"AlignRight"}],[0,0,0],[[{"t":"Plain","c":[{"t":"Str","c":"A"}]}],[{"t":"Plain","c":[{"t":"Str","c":"B"}]}],[{"t":"Plain","c":[{"t":"Str","c":"C"}]}]],[]]}]')), '$[0].c[1]'));
+----
+3
+
+# 2-row table preserves all rows
+query I
+SELECT json_array_length(json_extract(duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Table","c":[[],[{"t":"AlignDefault"}],[0],[[{"t":"Plain","c":[{"t":"Str","c":"H"}]}]],[[[{"t":"Plain","c":[{"t":"Str","c":"R1"}]}]],[[{"t":"Plain","c":[{"t":"Str","c":"R2"}]}]]]]}]')), '$[0].c[4]'));
+----
+2
