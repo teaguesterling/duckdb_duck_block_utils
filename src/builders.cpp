@@ -1197,6 +1197,83 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
+	// db_list - shorter alias for db_list_block
+	loader.RegisterFunction(ScalarFunction("db_list",
+	    {LogicalType::BOOLEAN, LogicalType::LIST(LogicalType::VARCHAR)}, duck_block_list_type, DbListBlockV2Fun));
+	loader.RegisterFunction(ScalarFunction("db_list",
+	    {LogicalType::LIST(LogicalType::VARCHAR)}, duck_block_list_type, DbListBlockV2NoOrderFun));
+	loader.RegisterFunction(ScalarFunction("db_list",
+	    {LogicalType::BOOLEAN, duck_block_nested_list_type}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &ordered_vec = args.data[0];
+		    auto &nested_vec = args.data[1];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto ordered = ordered_vec.GetValue(i);
+			    auto nested_list = nested_vec.GetValue(i);
+			    bool is_ordered = !ordered.IsNull() && ordered.GetValue<bool>();
+			    map<string, string> attrs;
+			    attrs["ordered"] = is_ordered ? "true" : "false";
+			    auto list_parent = BuilderFunctions::CreateBlockWithNullContent(
+			        BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK,
+			        Value(1), BlockTypes::ENCODING_TEXT, attrs);
+			    vector<Value> result_list;
+			    result_list.push_back(list_parent);
+			    int32_t child_order = 0;
+			    if (!nested_list.IsNull()) {
+				    auto &outer_children = ListValue::GetChildren(nested_list);
+				    for (auto &inner_list : outer_children) {
+					    if (!inner_list.IsNull()) {
+						    auto &inner_children = ListValue::GetChildren(inner_list);
+						    for (auto &item : inner_children) {
+							    if (!item.IsNull()) {
+								    auto child_fields = StructValue::GetChildren(item);
+								    child_fields[BlockTypes::LEVEL_IDX] = Value(child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>() + 1);
+								    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
+								    result_list.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
+							    }
+						    }
+					    }
+				    }
+			    }
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
+		    }
+	    }));
+	loader.RegisterFunction(ScalarFunction("db_list",
+	    {duck_block_nested_list_type}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &nested_vec = args.data[0];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto nested_list = nested_vec.GetValue(i);
+			    map<string, string> attrs;
+			    attrs["ordered"] = "false";
+			    auto list_parent = BuilderFunctions::CreateBlockWithNullContent(
+			        BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK,
+			        Value(1), BlockTypes::ENCODING_TEXT, attrs);
+			    vector<Value> result_list;
+			    result_list.push_back(list_parent);
+			    int32_t child_order = 0;
+			    if (!nested_list.IsNull()) {
+				    auto &outer_children = ListValue::GetChildren(nested_list);
+				    for (auto &inner_list : outer_children) {
+					    if (!inner_list.IsNull()) {
+						    auto &inner_children = ListValue::GetChildren(inner_list);
+						    for (auto &item : inner_children) {
+							    if (!item.IsNull()) {
+								    auto child_fields = StructValue::GetChildren(item);
+								    child_fields[BlockTypes::LEVEL_IDX] = Value(child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>() + 1);
+								    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
+								    result_list.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
+							    }
+						    }
+					    }
+				    }
+			    }
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
+		    }
+	    }));
+
 	// db_list_item(content VARCHAR) -> LIST(duck_block)
 	loader.RegisterFunction(ScalarFunction("db_list_item",
 	    {LogicalType::VARCHAR}, duck_block_list_type, DbListItemV2NoOrderFun));
