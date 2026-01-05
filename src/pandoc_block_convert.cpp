@@ -757,7 +757,15 @@ void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, Expression
 				oss << "{\"t\":\"CodeBlock\",\"c\":[[\"\",[\"" << JsonEscape(language) << "\"],[]],\"" << JsonEscape(content) << "\"]}";
 				block_idx++;
 			} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE) {
-				oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}]}";
+				// BlockQuote contains blocks; use inline children to build Para content
+				if (!inline_children.empty()) {
+					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
+					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":" << inlines_json << "}]}";
+				} else if (!content.empty()) {
+					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}]}";
+				} else {
+					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[]}]}";
+				}
 				block_idx++;
 			} else if (element_type == BlockTypes::TYPE_HR) {
 				oss << "{\"t\":\"HorizontalRule\"}";
@@ -885,7 +893,15 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			oss << "{\"t\":\"CodeBlock\",\"c\":[[\"\",[\"" << JsonEscape(language) << "\"],[]],\"" << JsonEscape(content) << "\"]}";
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE) {
-			oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}]}";
+			// BlockQuote contains blocks; use inline children to build Para content
+			if (!inline_children.empty()) {
+				string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
+				oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":" << inlines_json << "}]}";
+			} else if (!content.empty()) {
+				oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}]}";
+			} else {
+				oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[]}]}";
+			}
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_HR) {
 			oss << "{\"t\":\"HorizontalRule\"}";

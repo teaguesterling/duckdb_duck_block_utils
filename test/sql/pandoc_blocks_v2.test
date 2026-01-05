@@ -538,6 +538,37 @@ SELECT elem.element_type, elem.level FROM (
 blockquote	1
 text	2
 
+# Blockquote converts to Pandoc with content
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(
+    db_blockquote(1, [db_text('Simple quote')])
+), '$[0].t');
+----
+"BlockQuote"
+
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(
+    db_blockquote(1, [db_text('Simple quote')])
+), '$[0].c[0].c[0].c');
+----
+"Simple quote"
+
+# Blockquote with rich inline content
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(
+    db_blockquote(1, [db_bold('Bold quote')])
+), '$[0].c[0].c[0].t');
+----
+"Strong"
+
+# Blockquote round-trip preserves type
+query I
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(
+    db_blockquote(1, [db_text('Round trip')])
+))[1].element_type;
+----
+blockquote
+
 # ----------------------------------------------------------------------------
 # Test 6: Mixed block/inline nesting
 # ----------------------------------------------------------------------------
