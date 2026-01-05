@@ -47,8 +47,6 @@ CREATE OR REPLACE MACRO sup(content) AS db_superscript(content);
 CREATE OR REPLACE MACRO sub(content) AS db_subscript(content);
 CREATE OR REPLACE MACRO span(content) AS db_span(content);
 CREATE OR REPLACE MACRO math(content) AS db_math(content);
-
-SELECT 'Duck block aliases registered: page, doc, h1-h6, p, pre, blockquote, bq, ul, ol, li, hr, img, div, text, b, strong, i, em, a, code, s, del, sup, sub, span, math' AS message;
 )";
 	return sql;
 }

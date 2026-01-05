@@ -1,4 +1,5 @@
 #include "pandoc_block_convert.hpp"
+#include "pandoc_inline_convert.hpp"
 #include "block_types.hpp"
 #include "duckdb/common/types/value.hpp"
 #include "duckdb/common/exception.hpp"
@@ -557,14 +558,32 @@ void PandocBlockConvert::PandocBlocksToAstFun(DataChunk &args, ExpressionState &
 		oss << "[";
 
 		bool first = true;
-		for (auto &block : blocks_list) {
+		for (idx_t block_idx = 0; block_idx < blocks_list.size(); block_idx++) {
+			auto &block = blocks_list[block_idx];
 			if (block.IsNull()) continue;
 
 			auto kind = GetElementStringField(block, BlockTypes::KIND_IDX);
-			if (kind != BlockTypes::KIND_BLOCK) continue;  // Skip inlines
+			if (kind != BlockTypes::KIND_BLOCK) continue;  // Skip inlines at this level
 
 			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
 			auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
+
+			// Skip list_item blocks - they're processed as part of their parent list
+			if (element_type == BlockTypes::TYPE_LIST_ITEM) {
+				continue;
+			}
+
+			// Collect inline children (elements with kind='inline' following this block)
+			vector<Value> inline_children;
+			for (idx_t j = block_idx + 1; j < blocks_list.size(); j++) {
+				auto &child = blocks_list[j];
+				if (child.IsNull()) continue;
+				auto child_kind = GetElementStringField(child, BlockTypes::KIND_IDX);
+				if (child_kind == BlockTypes::KIND_BLOCK) break;  // Stop at next block
+				if (child_kind == BlockTypes::KIND_INLINE) {
+					inline_children.push_back(child);
+				}
+			}
 
 			if (!first) oss << ",";
 			first = false;
@@ -573,9 +592,21 @@ void PandocBlockConvert::PandocBlocksToAstFun(DataChunk &args, ExpressionState &
 				auto level_str = GetElementAttribute(block, "heading_level");
 				int level = level_str.empty() ? 1 : std::stoi(level_str);
 				auto id = GetElementAttribute(block, "id");
-				oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id) << "\",[],[]],[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
+				// If has inline children, convert them; otherwise use content
+				if (!inline_children.empty()) {
+					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
+					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id) << "\",[],[]]," << inlines_json << "]}";
+				} else {
+					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id) << "\",[],[]],[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
+				}
 			} else if (element_type == BlockTypes::TYPE_PARAGRAPH) {
-				oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}";
+				// If has inline children, convert them; otherwise use content
+				if (!inline_children.empty()) {
+					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
+					oss << "{\"t\":\"Para\",\"c\":" << inlines_json << "}";
+				} else {
+					oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}";
+				}
 			} else if (element_type == BlockTypes::TYPE_CODE) {
 				auto language = GetElementAttribute(block, "language");
 				oss << "{\"t\":\"CodeBlock\",\"c\":[[\"\",[\"" << JsonEscape(language) << "\"],[]],\"" << JsonEscape(content) << "\"]}";
@@ -590,18 +621,49 @@ void PandocBlockConvert::PandocBlocksToAstFun(DataChunk &args, ExpressionState &
 			} else if (element_type == BlockTypes::TYPE_LIST) {
 				auto list_type = GetElementAttribute(block, "list_type");
 				string pandoc_type = (list_type == "ordered") ? "OrderedList" : "BulletList";
-				// If content is already JSON, use it directly
-				auto encoding = GetElementStringField(block, BlockTypes::ENCODING_IDX);
-				if (encoding == "json" && !content.empty()) {
-					if (pandoc_type == "OrderedList") {
-						oss << "{\"t\":\"OrderedList\",\"c\":[[1,{\"t\":\"Decimal\"},{\"t\":\"Period\"}]," << content << "]}";
-					} else {
-						oss << "{\"t\":\"BulletList\",\"c\":" << content << "}";
+
+				// Collect list_item children and their inline content
+				vector<vector<Value>> list_items;
+				vector<Value> current_item_inlines;
+				bool in_list_item = false;
+
+				for (idx_t j = block_idx + 1; j < blocks_list.size(); j++) {
+					auto &child = blocks_list[j];
+					if (child.IsNull()) continue;
+					auto child_kind = GetElementStringField(child, BlockTypes::KIND_IDX);
+					auto child_type = GetElementStringField(child, BlockTypes::ELEMENT_TYPE_IDX);
+
+					// Stop at next block-level element that's not part of this list
+					if (child_kind == BlockTypes::KIND_BLOCK && child_type != BlockTypes::TYPE_LIST_ITEM) {
+						break;
 					}
-				} else {
-					// Simple list representation
-					oss << "{\"t\":\"" << pandoc_type << "\",\"c\":[]}";
+
+					if (child_type == BlockTypes::TYPE_LIST_ITEM) {
+						// Save previous item if any
+						if (in_list_item && !current_item_inlines.empty()) {
+							list_items.push_back(current_item_inlines);
+						}
+						current_item_inlines.clear();
+						in_list_item = true;
+					} else if (child_kind == BlockTypes::KIND_INLINE && in_list_item) {
+						current_item_inlines.push_back(child);
+					}
 				}
+				// Don't forget the last item
+				if (in_list_item && !current_item_inlines.empty()) {
+					list_items.push_back(current_item_inlines);
+				}
+
+				// Build list JSON
+				oss << "{\"t\":\"" << pandoc_type << "\",\"c\":[";
+				bool first_item = true;
+				for (auto &item_inlines : list_items) {
+					if (!first_item) oss << ",";
+					first_item = false;
+					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(item_inlines);
+					oss << "[{\"t\":\"Plain\",\"c\":" << inlines_json << "}]";
+				}
+				oss << "]}";
 			} else if (element_type == BlockTypes::TYPE_TABLE) {
 				// Simplified table output
 				oss << "{\"t\":\"Table\",\"c\":[[\"\",[],[]],[[{\"t\":\"AlignDefault\"}]],[[[]]]]}";

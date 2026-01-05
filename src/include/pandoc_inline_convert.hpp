@@ -10,6 +10,9 @@ public:
 	// Register Pandoc inline conversion functions
 	static void Register(ExtensionLoader &loader);
 
+	// Convert a list of duck_block inline Values to Pandoc JSON string
+	static string ConvertInlinesToPandocJson(const vector<Value> &inlines);
+
 private:
 	// pandoc_inlines_to_db_inlines(json) -> LIST(duck_block)
 	// Converts nested Pandoc inline JSON to flat duck_block inline rows

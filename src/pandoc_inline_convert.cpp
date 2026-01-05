@@ -488,32 +488,57 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			// Find nested content at level+1
 			idx_t nested_end = i + 1;
 			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
-			json << "{\"t\":\"Strong\",\"c\":" << nested << "}";
+			// If no nested children but has content, create Str from content
+			if (nested == "[]" && !content.empty()) {
+				json << "{\"t\":\"Strong\",\"c\":[{\"t\":\"Str\",\"c\":\"" << escaped_content << "\"}]}";
+			} else {
+				json << "{\"t\":\"Strong\",\"c\":" << nested << "}";
+			}
 			i = nested_end - 1; // Adjust for loop increment
 		} else if (inline_type == BlockTypes::INLINE_ITALIC) {
 			idx_t nested_end = i + 1;
 			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
-			json << "{\"t\":\"Emph\",\"c\":" << nested << "}";
+			if (nested == "[]" && !content.empty()) {
+				json << "{\"t\":\"Emph\",\"c\":[{\"t\":\"Str\",\"c\":\"" << escaped_content << "\"}]}";
+			} else {
+				json << "{\"t\":\"Emph\",\"c\":" << nested << "}";
+			}
 			i = nested_end - 1;
 		} else if (inline_type == BlockTypes::INLINE_STRIKETHROUGH) {
 			idx_t nested_end = i + 1;
 			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
-			json << "{\"t\":\"Strikeout\",\"c\":" << nested << "}";
+			if (nested == "[]" && !content.empty()) {
+				json << "{\"t\":\"Strikeout\",\"c\":[{\"t\":\"Str\",\"c\":\"" << escaped_content << "\"}]}";
+			} else {
+				json << "{\"t\":\"Strikeout\",\"c\":" << nested << "}";
+			}
 			i = nested_end - 1;
 		} else if (inline_type == BlockTypes::INLINE_SUPERSCRIPT) {
 			idx_t nested_end = i + 1;
 			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
-			json << "{\"t\":\"Superscript\",\"c\":" << nested << "}";
+			if (nested == "[]" && !content.empty()) {
+				json << "{\"t\":\"Superscript\",\"c\":[{\"t\":\"Str\",\"c\":\"" << escaped_content << "\"}]}";
+			} else {
+				json << "{\"t\":\"Superscript\",\"c\":" << nested << "}";
+			}
 			i = nested_end - 1;
 		} else if (inline_type == BlockTypes::INLINE_SUBSCRIPT) {
 			idx_t nested_end = i + 1;
 			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
-			json << "{\"t\":\"Subscript\",\"c\":" << nested << "}";
+			if (nested == "[]" && !content.empty()) {
+				json << "{\"t\":\"Subscript\",\"c\":[{\"t\":\"Str\",\"c\":\"" << escaped_content << "\"}]}";
+			} else {
+				json << "{\"t\":\"Subscript\",\"c\":" << nested << "}";
+			}
 			i = nested_end - 1;
 		} else if (inline_type == BlockTypes::INLINE_SMALLCAPS) {
 			idx_t nested_end = i + 1;
 			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
-			json << "{\"t\":\"SmallCaps\",\"c\":" << nested << "}";
+			if (nested == "[]" && !content.empty()) {
+				json << "{\"t\":\"SmallCaps\",\"c\":[{\"t\":\"Str\",\"c\":\"" << escaped_content << "\"}]}";
+			} else {
+				json << "{\"t\":\"SmallCaps\",\"c\":" << nested << "}";
+			}
 			i = nested_end - 1;
 		} else if (inline_type == BlockTypes::INLINE_CODE) {
 			json << "{\"t\":\"Code\",\"c\":[[\"\",[],[]],\"" << escaped_content << "\"]}";
@@ -527,38 +552,41 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			string href = "";
 			// Extract href from attributes
 			if (!attrs.IsNull()) {
-				auto &map_children = StructValue::GetChildren(attrs);
-				if (map_children.size() >= 2) {
-					auto &keys = ListValue::GetChildren(map_children[0]);
-					auto &values = ListValue::GetChildren(map_children[1]);
-					for (idx_t j = 0; j < keys.size(); j++) {
-						if (keys[j].GetValue<string>() == "href") {
-							href = values[j].GetValue<string>();
-							break;
+				auto &map_entries = MapValue::GetChildren(attrs);
+				for (auto &entry : map_entries) {
+					if (entry.IsNull()) continue;
+					auto &kv = StructValue::GetChildren(entry);
+					if (kv.size() >= 2 && !kv[0].IsNull() && kv[0].GetValue<string>() == "href") {
+						if (!kv[1].IsNull()) {
+							href = kv[1].GetValue<string>();
 						}
+						break;
 					}
 				}
 			}
 
-			// TODO: Issue #2 - Currently expects nested inlines at level+1
-			// Should also support content field for simple text links
 			idx_t nested_end = i + 1;
 			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
-			json << "{\"t\":\"Link\",\"c\":[[\"\",[],[]]," << nested << ",[\"" << href << "\",\"\"]]}";
+			// If no nested children but has content, create Str from content
+			if (nested == "[]" && !content.empty()) {
+				json << "{\"t\":\"Link\",\"c\":[[\"\",[],[]],[{\"t\":\"Str\",\"c\":\"" << escaped_content << "\"}],[\"" << href << "\",\"\"]]}";
+			} else {
+				json << "{\"t\":\"Link\",\"c\":[[\"\",[],[]]," << nested << ",[\"" << href << "\",\"\"]]}";
+			}
 			i = nested_end - 1;
 		} else if (inline_type == BlockTypes::INLINE_IMAGE) {
 			auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
 			string src = "";
 			if (!attrs.IsNull()) {
-				auto &map_children = StructValue::GetChildren(attrs);
-				if (map_children.size() >= 2) {
-					auto &keys = ListValue::GetChildren(map_children[0]);
-					auto &values = ListValue::GetChildren(map_children[1]);
-					for (idx_t j = 0; j < keys.size(); j++) {
-						if (keys[j].GetValue<string>() == "src") {
-							src = values[j].GetValue<string>();
-							break;
+				auto &map_entries = MapValue::GetChildren(attrs);
+				for (auto &entry : map_entries) {
+					if (entry.IsNull()) continue;
+					auto &kv = StructValue::GetChildren(entry);
+					if (kv.size() >= 2 && !kv[0].IsNull() && kv[0].GetValue<string>() == "src") {
+						if (!kv[1].IsNull()) {
+							src = kv[1].GetValue<string>();
 						}
+						break;
 					}
 				}
 			}
@@ -567,15 +595,15 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
 			string format = "html";
 			if (!attrs.IsNull()) {
-				auto &map_children = StructValue::GetChildren(attrs);
-				if (map_children.size() >= 2) {
-					auto &keys = ListValue::GetChildren(map_children[0]);
-					auto &values = ListValue::GetChildren(map_children[1]);
-					for (idx_t j = 0; j < keys.size(); j++) {
-						if (keys[j].GetValue<string>() == "format") {
-							format = values[j].GetValue<string>();
-							break;
+				auto &map_entries = MapValue::GetChildren(attrs);
+				for (auto &entry : map_entries) {
+					if (entry.IsNull()) continue;
+					auto &kv = StructValue::GetChildren(entry);
+					if (kv.size() >= 2 && !kv[0].IsNull() && kv[0].GetValue<string>() == "format") {
+						if (!kv[1].IsNull()) {
+							format = kv[1].GetValue<string>();
 						}
+						break;
 					}
 				}
 			}
@@ -584,13 +612,12 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
 			string quote_type = "DoubleQuote";
 			if (!attrs.IsNull()) {
-				auto &map_children = StructValue::GetChildren(attrs);
-				if (map_children.size() >= 2) {
-					auto &keys = ListValue::GetChildren(map_children[0]);
-					auto &values = ListValue::GetChildren(map_children[1]);
-					for (idx_t j = 0; j < keys.size(); j++) {
-						if (keys[j].GetValue<string>() == "quote_type" &&
-						    values[j].GetValue<string>() == "single") {
+				auto &map_entries = MapValue::GetChildren(attrs);
+				for (auto &entry : map_entries) {
+					if (entry.IsNull()) continue;
+					auto &kv = StructValue::GetChildren(entry);
+					if (kv.size() >= 2 && !kv[0].IsNull() && kv[0].GetValue<string>() == "quote_type") {
+						if (!kv[1].IsNull() && kv[1].GetValue<string>() == "single") {
 							quote_type = "SingleQuote";
 							break;
 						}
@@ -636,6 +663,20 @@ void PandocInlineConvert::DbInlinesToPandocFun(DataChunk &args, ExpressionState 
 		string json = DocInlinesToPandocJson(inlines, 0, 1, end_idx);
 		result.SetValue(i, Value(json));
 	}
+}
+
+// Public method to convert inline Values to Pandoc JSON
+string PandocInlineConvert::ConvertInlinesToPandocJson(const vector<Value> &inlines) {
+	if (inlines.empty()) {
+		return "[]";
+	}
+	// Determine the level of the first inline and use that as target level
+	auto &first = inlines[0];
+	auto first_children = StructValue::GetChildren(first);
+	int32_t target_level = first_children[BlockTypes::LEVEL_IDX].IsNull() ? 1 : first_children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+
+	idx_t end_idx = 0;
+	return DocInlinesToPandocJson(inlines, 0, target_level, end_idx);
 }
 
 // Render inlines to text/markdown
@@ -789,8 +830,38 @@ void PandocInlineConvert::PandocInlinesToTextFun(DataChunk &args, ExpressionStat
 	}
 }
 
+// Overload that accepts nested lists and flattens them
+static void DbInlinesToPandocNestedFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &list_vec = args.data[0];
+	auto count = args.size();
+
+	for (idx_t i = 0; i < count; i++) {
+		auto list_val = list_vec.GetValue(i);
+
+		if (list_val.IsNull()) {
+			result.SetValue(i, Value("[]"));
+			continue;
+		}
+
+		// Flatten the nested list
+		auto &outer_list = ListValue::GetChildren(list_val);
+		vector<Value> flattened;
+		for (auto &inner : outer_list) {
+			if (inner.IsNull()) continue;
+			auto &inner_list = ListValue::GetChildren(inner);
+			for (auto &elem : inner_list) {
+				flattened.push_back(elem);
+			}
+		}
+
+		string json = PandocInlineConvert::ConvertInlinesToPandocJson(flattened);
+		result.SetValue(i, Value(json));
+	}
+}
+
 void PandocInlineConvert::Register(ExtensionLoader &loader) {
 	auto duck_block_list_type = BlockTypes::DuckBlockListType();
+	auto duck_block_nested_list_type = LogicalType::LIST(duck_block_list_type);
 
 	// pandoc_inlines_to_db_inlines(json VARCHAR) -> LIST(duck_block)
 	loader.RegisterFunction(ScalarFunction(
@@ -806,6 +877,14 @@ void PandocInlineConvert::Register(ExtensionLoader &loader) {
 	    {duck_block_list_type},
 	    LogicalType::VARCHAR,
 	    DbInlinesToPandocFun
+	));
+
+	// db_inlines_to_pandoc(LIST(LIST(duck_block))) -> VARCHAR (JSON) - auto-flattening
+	loader.RegisterFunction(ScalarFunction(
+	    "db_inlines_to_pandoc",
+	    {duck_block_nested_list_type},
+	    LogicalType::VARCHAR,
+	    DbInlinesToPandocNestedFun
 	));
 
 	// pandoc_inlines_to_text(json VARCHAR) -> VARCHAR
