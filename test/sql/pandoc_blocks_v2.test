@@ -297,13 +297,28 @@ SELECT json_extract(duck_blocks_to_pandoc_ast(db_assemble([
 ----
 "Strong"
 
-# Test list block type
+# Test list block type with inline children
 query I
 SELECT json_extract(duck_blocks_to_pandoc_ast(db_assemble([
     db_list([db_list_item([db_text('Item 1')]), db_list_item([db_text('Item 2')])])
 ])), '$.blocks[0].t');
 ----
 "BulletList"
+
+# Test list with simple string items (no inline children)
+query I
+SELECT json_extract(duck_blocks_to_pandoc_ast(db_assemble([
+    db_list([db_list_item('Simple 1'), db_list_item('Simple 2')])
+])), '$.blocks[0].c[0][0].c[0].c');
+----
+"Simple 1"
+
+query I
+SELECT json_array_length(json_extract(duck_blocks_to_pandoc_ast(db_assemble([
+    db_list([db_list_item('A'), db_list_item('B'), db_list_item('C')])
+])), '$.blocks[0].c'));
+----
+3
 
 # Test code block with language
 query I
