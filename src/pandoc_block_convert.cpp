@@ -710,6 +710,134 @@ void PandocBlockConvert::ReadPandocAstFun(DataChunk &args, ExpressionState &stat
 	}
 }
 
+// duck_blocks_to_pandoc_ast - creates complete Pandoc JSON AST
+static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &blocks_vec = args.data[0];
+	auto count = args.size();
+
+	// Default API version for Pandoc 2.x
+	string api_version = "[1,20]";
+
+	for (idx_t i = 0; i < count; i++) {
+		auto blocks_val = blocks_vec.GetValue(i);
+
+		if (blocks_val.IsNull()) {
+			result.SetValue(i, Value("{\"pandoc-api-version\":" + api_version + ",\"meta\":{},\"blocks\":[]}"));
+			continue;
+		}
+
+		// Reuse PandocBlocksToAstFun logic by calling it
+		auto &blocks_list = ListValue::GetChildren(blocks_val);
+		std::ostringstream oss;
+		oss << "{\"pandoc-api-version\":" << api_version << ",\"meta\":{},\"blocks\":";
+
+		// Build blocks array (same logic as PandocBlocksToAstFun)
+		oss << "[";
+		bool first = true;
+		for (idx_t block_idx = 0; block_idx < blocks_list.size(); block_idx++) {
+			auto &block = blocks_list[block_idx];
+			if (block.IsNull()) continue;
+
+			auto kind = GetElementStringField(block, BlockTypes::KIND_IDX);
+			if (kind != BlockTypes::KIND_BLOCK) continue;
+
+			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
+			auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
+
+			// Skip list_item blocks
+			if (element_type == BlockTypes::TYPE_LIST_ITEM) continue;
+
+			// Collect inline children
+			vector<Value> inline_children;
+			for (idx_t j = block_idx + 1; j < blocks_list.size(); j++) {
+				auto &child = blocks_list[j];
+				if (child.IsNull()) continue;
+				auto child_kind = GetElementStringField(child, BlockTypes::KIND_IDX);
+				if (child_kind == BlockTypes::KIND_BLOCK) break;
+				if (child_kind == BlockTypes::KIND_INLINE) {
+					inline_children.push_back(child);
+				}
+			}
+
+			if (!first) oss << ",";
+			first = false;
+
+			if (element_type == BlockTypes::TYPE_HEADING) {
+				auto level_str = GetElementAttribute(block, "heading_level");
+				int level = level_str.empty() ? 1 : std::stoi(level_str);
+				auto id = GetElementAttribute(block, "id");
+				if (!inline_children.empty()) {
+					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
+					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id) << "\",[],[]]," << inlines_json << "]}";
+				} else {
+					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id) << "\",[],[]],[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
+				}
+			} else if (element_type == BlockTypes::TYPE_PARAGRAPH) {
+				if (!inline_children.empty()) {
+					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
+					oss << "{\"t\":\"Para\",\"c\":" << inlines_json << "}";
+				} else {
+					oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}";
+				}
+			} else if (element_type == BlockTypes::TYPE_CODE) {
+				auto language = GetElementAttribute(block, "language");
+				oss << "{\"t\":\"CodeBlock\",\"c\":[[\"\",[\"" << JsonEscape(language) << "\"],[]],\"" << JsonEscape(content) << "\"]}";
+			} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE) {
+				oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}]}";
+			} else if (element_type == BlockTypes::TYPE_HR) {
+				oss << "{\"t\":\"HorizontalRule\"}";
+			} else if (element_type == BlockTypes::TYPE_RAW) {
+				auto format = GetElementAttribute(block, "format");
+				if (format.empty()) format = "html";
+				oss << "{\"t\":\"RawBlock\",\"c\":[\"" << JsonEscape(format) << "\",\"" << JsonEscape(content) << "\"]}";
+			} else if (element_type == BlockTypes::TYPE_LIST) {
+				auto list_type = GetElementAttribute(block, "list_type");
+				string pandoc_type = (list_type == "ordered") ? "OrderedList" : "BulletList";
+
+				vector<vector<Value>> list_items;
+				vector<Value> current_item_inlines;
+				bool in_list_item = false;
+
+				for (idx_t j = block_idx + 1; j < blocks_list.size(); j++) {
+					auto &child = blocks_list[j];
+					if (child.IsNull()) continue;
+					auto child_kind = GetElementStringField(child, BlockTypes::KIND_IDX);
+					auto child_type = GetElementStringField(child, BlockTypes::ELEMENT_TYPE_IDX);
+
+					if (child_kind == BlockTypes::KIND_BLOCK && child_type != BlockTypes::TYPE_LIST_ITEM) break;
+
+					if (child_type == BlockTypes::TYPE_LIST_ITEM) {
+						if (in_list_item && !current_item_inlines.empty()) {
+							list_items.push_back(current_item_inlines);
+						}
+						current_item_inlines.clear();
+						in_list_item = true;
+					} else if (child_kind == BlockTypes::KIND_INLINE && in_list_item) {
+						current_item_inlines.push_back(child);
+					}
+				}
+				if (in_list_item && !current_item_inlines.empty()) {
+					list_items.push_back(current_item_inlines);
+				}
+
+				oss << "{\"t\":\"" << pandoc_type << "\",\"c\":[";
+				bool first_item = true;
+				for (auto &item_inlines : list_items) {
+					if (!first_item) oss << ",";
+					first_item = false;
+					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(item_inlines);
+					oss << "[{\"t\":\"Plain\",\"c\":" << inlines_json << "}]";
+				}
+				oss << "]}";
+			} else {
+				oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}";
+			}
+		}
+		oss << "]}";
+		result.SetValue(i, Value(oss.str()));
+	}
+}
+
 void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	auto duck_block_list_type = BlockTypes::DuckBlockListType();
 
@@ -739,6 +867,16 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	    ReadPandocAstFun
 	);
 	loader.RegisterFunction(read_pandoc_ast_func);
+
+	// duck_blocks_to_pandoc_ast(blocks LIST(duck_block)) -> JSON
+	// Creates complete Pandoc JSON AST with version, meta, and blocks
+	auto duck_blocks_to_ast_func = ScalarFunction(
+	    "duck_blocks_to_pandoc_ast",
+	    {duck_block_list_type},
+	    LogicalType::JSON(),
+	    DuckBlocksToPandocAstFun
+	);
+	loader.RegisterFunction(duck_blocks_to_ast_func);
 }
 
 } // namespace duckdb
