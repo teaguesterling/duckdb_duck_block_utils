@@ -496,16 +496,32 @@ list_item	3
 
 # ----------------------------------------------------------------------------
 # Test 4: Nested lists convert to correct Pandoc JSON
-# (This test documents expected behavior - may need fixing)
 # ----------------------------------------------------------------------------
 
-# A nested list should produce BulletList with nested BulletList inside an item
-# For now, test that we at least get two BulletList blocks
+# A nested list produces one BulletList with the nested list inside the first item
 query I
 SELECT json_array_length(duck_blocks_to_pandoc_blocks(db_list([
     db_list_item('First'),
     db_list([db_list_item('Nested')])
 ])));
+----
+1
+
+# Verify the nested structure: outer list has 1 item, inner list has 1 item
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(db_list([
+    db_list_item('First'),
+    db_list([db_list_item('Nested A'), db_list_item('Nested B')])
+])), '$[0].c[0][1].t');
+----
+"BulletList"
+
+# Nested list has 2 items
+query I
+SELECT json_array_length(json_extract(duck_blocks_to_pandoc_blocks(db_list([
+    db_list_item('First'),
+    db_list([db_list_item('Nested A'), db_list_item('Nested B')])
+])), '$[0].c[0][1].c'));
 ----
 2
 
