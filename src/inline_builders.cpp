@@ -705,6 +705,7 @@ void InlineBuilderFunctions::Register(ExtensionLoader &loader) {
 	auto duck_block_nested_list_type = LogicalType::LIST(duck_block_list_type);
 
 	// Helper lambda to create a nested list flattening function
+	// Preserves relative nesting levels among children
 	auto make_nested_flatten = [](const char *element_type) {
 		return [element_type](DataChunk &args, ExpressionState &state, Vector &result) {
 			auto &nested_vec = args.data[0];
@@ -713,21 +714,38 @@ void InlineBuilderFunctions::Register(ExtensionLoader &loader) {
 				auto nested_list = nested_vec.GetValue(i);
 				auto flat_children = FlattenNestedList(nested_list);
 
-				// Create parent inline element with NULL content
+				// Create parent inline element with NULL content at level 1
 				auto parent = InlineBuilderFunctions::CreateInlineWithNullContent(element_type, {}, 1, 0);
 
-				// Flatten: parent + children at level+1
+				// Flatten: parent + children with preserved relative nesting
 				vector<Value> flattened;
 				flattened.push_back(parent);
 				if (!flat_children.IsNull()) {
 					auto &children = ListValue::GetChildren(flat_children);
-					int32_t child_order = 0;
-					for (auto &child : children) {
-						if (!child.IsNull()) {
-							auto child_fields = StructValue::GetChildren(child);
-							child_fields[BlockTypes::LEVEL_IDX] = Value(2);
-							child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
-							flattened.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
+					if (!children.empty()) {
+						// Find minimum level among children to calculate offset
+						int32_t min_child_level = INT32_MAX;
+						for (auto &child : children) {
+							if (!child.IsNull()) {
+								auto child_fields = StructValue::GetChildren(child);
+								int32_t child_level = child_fields[BlockTypes::LEVEL_IDX].IsNull() ? 1 : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+								if (child_level < min_child_level) {
+									min_child_level = child_level;
+								}
+							}
+						}
+						// Calculate offset: children should start at level 2 (parent is 1)
+						int32_t level_offset = 2 - min_child_level;
+						int32_t child_order = 0;
+						for (auto &child : children) {
+							if (!child.IsNull()) {
+								auto child_fields = StructValue::GetChildren(child);
+								int32_t child_level = child_fields[BlockTypes::LEVEL_IDX].IsNull() ? 1 : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+								// Apply offset to preserve relative nesting
+								child_fields[BlockTypes::LEVEL_IDX] = Value(child_level + level_offset);
+								child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
+								flattened.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
+							}
 						}
 					}
 				}
@@ -765,13 +783,29 @@ void InlineBuilderFunctions::Register(ExtensionLoader &loader) {
 			    flattened.push_back(parent);
 			    if (!flat_children.IsNull()) {
 				    auto &children = ListValue::GetChildren(flat_children);
-				    int32_t child_order = 0;
-				    for (auto &child : children) {
-					    if (!child.IsNull()) {
-						    auto child_fields = StructValue::GetChildren(child);
-						    child_fields[BlockTypes::LEVEL_IDX] = Value(2);
-						    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
-						    flattened.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
+				    if (!children.empty()) {
+					    // Find minimum level among children to calculate offset
+					    int32_t min_child_level = INT32_MAX;
+					    for (auto &child : children) {
+						    if (!child.IsNull()) {
+							    auto child_fields = StructValue::GetChildren(child);
+							    int32_t child_level = child_fields[BlockTypes::LEVEL_IDX].IsNull() ? 1 : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+							    if (child_level < min_child_level) {
+								    min_child_level = child_level;
+							    }
+						    }
+					    }
+					    // Calculate offset: children should start at level 2 (parent is 1)
+					    int32_t level_offset = 2 - min_child_level;
+					    int32_t child_order = 0;
+					    for (auto &child : children) {
+						    if (!child.IsNull()) {
+							    auto child_fields = StructValue::GetChildren(child);
+							    int32_t child_level = child_fields[BlockTypes::LEVEL_IDX].IsNull() ? 1 : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+							    child_fields[BlockTypes::LEVEL_IDX] = Value(child_level + level_offset);
+							    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
+							    flattened.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
+						    }
 					    }
 				    }
 			    }
@@ -807,13 +841,29 @@ void InlineBuilderFunctions::Register(ExtensionLoader &loader) {
 			    flattened.push_back(parent);
 			    if (!flat_children.IsNull()) {
 				    auto &children = ListValue::GetChildren(flat_children);
-				    int32_t child_order = 0;
-				    for (auto &child : children) {
-					    if (!child.IsNull()) {
-						    auto child_fields = StructValue::GetChildren(child);
-						    child_fields[BlockTypes::LEVEL_IDX] = Value(2);
-						    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
-						    flattened.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
+				    if (!children.empty()) {
+					    // Find minimum level among children to calculate offset
+					    int32_t min_child_level = INT32_MAX;
+					    for (auto &child : children) {
+						    if (!child.IsNull()) {
+							    auto child_fields = StructValue::GetChildren(child);
+							    int32_t child_level = child_fields[BlockTypes::LEVEL_IDX].IsNull() ? 1 : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+							    if (child_level < min_child_level) {
+								    min_child_level = child_level;
+							    }
+						    }
+					    }
+					    // Calculate offset: children should start at level 2 (parent is 1)
+					    int32_t level_offset = 2 - min_child_level;
+					    int32_t child_order = 0;
+					    for (auto &child : children) {
+						    if (!child.IsNull()) {
+							    auto child_fields = StructValue::GetChildren(child);
+							    int32_t child_level = child_fields[BlockTypes::LEVEL_IDX].IsNull() ? 1 : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+							    child_fields[BlockTypes::LEVEL_IDX] = Value(child_level + level_offset);
+							    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
+							    flattened.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
+						    }
 					    }
 				    }
 			    }
