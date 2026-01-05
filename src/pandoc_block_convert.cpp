@@ -405,26 +405,64 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 			}
 		}
 	} else if (pandoc_type == "Div") {
-		// Div is a container - process its children recursively
+		block_type = BlockTypes::TYPE_DIV;
+		// Div format: [attr, [blocks]] where attr is [id, [classes], [[key,val]...]]
 		size_t c_pos = block_json.find("\"c\":");
 		if (c_pos != string::npos) {
-			// Div format: [attr, [blocks]]
 			size_t arr_start = block_json.find("[", c_pos);
 			if (arr_start != string::npos) {
-				// Skip attr array
+				// Find attr array [id, [classes], [...]]
 				size_t attr_arr = block_json.find("[", arr_start + 1);
 				if (attr_arr != string::npos) {
+					// Extract id (first element)
+					size_t id_quote = block_json.find("\"", attr_arr + 1);
+					if (id_quote != string::npos) {
+						size_t id_end = block_json.find("\"", id_quote + 1);
+						if (id_end != string::npos) {
+							string id = block_json.substr(id_quote + 1, id_end - id_quote - 1);
+							if (!id.empty()) {
+								attrs["id"] = id;
+							}
+						}
+					}
+					// Extract classes (second element - array)
+					size_t classes_start = block_json.find("[", attr_arr + 1);
+					if (classes_start != string::npos) {
+						size_t classes_end = FindMatchingBracket(block_json, classes_start, '[', ']');
+						// Look for class strings inside
+						size_t class_quote = block_json.find("\"", classes_start + 1);
+						if (class_quote != string::npos && class_quote < classes_end) {
+							size_t class_end = block_json.find("\"", class_quote + 1);
+							if (class_end != string::npos && class_end < classes_end) {
+								attrs["class"] = block_json.substr(class_quote + 1, class_end - class_quote - 1);
+							}
+						}
+					}
+
 					size_t attr_end = FindMatchingBracket(block_json, attr_arr, '[', ']');
 					size_t blocks_start = block_json.find("[", attr_end);
 					if (blocks_start != string::npos) {
 						size_t blocks_end = FindMatchingBracket(block_json, blocks_start, '[', ']');
-						string blocks = block_json.substr(blocks_start + 1, blocks_end - blocks_start - 2);
-						// Process nested blocks... (simplified for now)
+						string nested_blocks = block_json.substr(blocks_start, blocks_end - blocks_start);
+
+						// First add the div block itself
+						result.push_back(CreateDocBlock(block_type, "", attrs, order++, encoding));
+
+						// Inline parsing of nested blocks (can't call ParsePandocBlocks - defined later)
+						size_t nested_pos = 0;
+						while (nested_pos < nested_blocks.length()) {
+							size_t obj_start = nested_blocks.find("{\"t\":", nested_pos);
+							if (obj_start == string::npos) break;
+							size_t obj_end = FindMatchingBracket(nested_blocks, obj_start, '{', '}');
+							string child_block = nested_blocks.substr(obj_start, obj_end - obj_start);
+							ProcessPandocBlock(child_block, order, result);
+							nested_pos = obj_end;
+						}
+						return;  // Already added blocks
 					}
 				}
 			}
 		}
-		return;  // Skip Div container itself
 	} else {
 		// Unknown block type - skip
 		return;
@@ -554,6 +592,9 @@ static int32_t GetElementLevel(const Value &element) {
 // Forward declaration for recursive list processing
 static string ConvertListToPandocJson(const vector<Value> &blocks_list, idx_t &start_idx, int32_t list_level);
 
+// Forward declaration for recursive div processing
+static string ConvertDivToPandocJson(const vector<Value> &blocks_list, idx_t &start_idx, int32_t div_level);
+
 // Convert a list block and its children to Pandoc JSON, handling nested lists recursively
 static string ConvertListToPandocJson(const vector<Value> &blocks_list, idx_t &start_idx, int32_t list_level) {
 	auto &list_block = blocks_list[start_idx];
@@ -676,6 +717,126 @@ static string ConvertListToPandocJson(const vector<Value> &blocks_list, idx_t &s
 	return oss.str();
 }
 
+// Convert a div block and its children to Pandoc JSON
+// Div format: {"t":"Div","c":[["id",["classes"],[]],...blocks...]}
+static string ConvertDivToPandocJson(const vector<Value> &blocks_list, idx_t &start_idx, int32_t div_level) {
+	auto &div_block = blocks_list[start_idx];
+	auto id = GetElementAttribute(div_block, "id");
+	auto classes = GetElementAttribute(div_block, "class");
+
+	std::ostringstream oss;
+	oss << "{\"t\":\"Div\",\"c\":[[\"" << JsonEscape(id) << "\",[";
+
+	// Output classes (split by space if multiple)
+	if (!classes.empty()) {
+		oss << "\"" << JsonEscape(classes) << "\"";
+	}
+	oss << "],[]],[";
+
+	// Collect and convert child blocks
+	bool first_child = true;
+	idx_t j = start_idx + 1;
+	while (j < blocks_list.size()) {
+		auto &child = blocks_list[j];
+		if (child.IsNull()) {
+			j++;
+			continue;
+		}
+
+		auto child_kind = GetElementStringField(child, BlockTypes::KIND_IDX);
+		auto child_type = GetElementStringField(child, BlockTypes::ELEMENT_TYPE_IDX);
+		int32_t child_level = GetElementLevel(child);
+
+		// Stop when we reach blocks at or above div level
+		if (child_level <= div_level && child_kind == BlockTypes::KIND_BLOCK) {
+			break;
+		}
+
+		// Skip inlines - they're handled by their parent blocks
+		if (child_kind == BlockTypes::KIND_INLINE) {
+			j++;
+			continue;
+		}
+
+		// Skip list_item - handled by list converter
+		if (child_type == BlockTypes::TYPE_LIST_ITEM) {
+			j++;
+			continue;
+		}
+
+		// Convert child blocks
+		if (child_kind == BlockTypes::KIND_BLOCK) {
+			auto content = GetElementStringField(child, BlockTypes::CONTENT_IDX);
+
+			// Collect inline children for this block
+			vector<Value> inline_children;
+			for (idx_t k = j + 1; k < blocks_list.size(); k++) {
+				auto &inl = blocks_list[k];
+				if (inl.IsNull()) continue;
+				auto inl_kind = GetElementStringField(inl, BlockTypes::KIND_IDX);
+				if (inl_kind == BlockTypes::KIND_BLOCK) break;
+				if (inl_kind == BlockTypes::KIND_INLINE) {
+					inline_children.push_back(inl);
+				}
+			}
+
+			if (!first_child) oss << ",";
+			first_child = false;
+
+			if (child_type == BlockTypes::TYPE_PARAGRAPH) {
+				if (!inline_children.empty()) {
+					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
+					oss << "{\"t\":\"Para\",\"c\":" << inlines_json << "}";
+				} else {
+					oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}";
+				}
+				j++;
+			} else if (child_type == BlockTypes::TYPE_HEADING) {
+				auto level_str = GetElementAttribute(child, "heading_level");
+				int level = level_str.empty() ? 1 : std::stoi(level_str);
+				auto hid = GetElementAttribute(child, "id");
+				if (!inline_children.empty()) {
+					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
+					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(hid) << "\",[],[]]," << inlines_json << "]}";
+				} else {
+					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(hid) << "\",[],[]],[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
+				}
+				j++;
+			} else if (child_type == BlockTypes::TYPE_CODE) {
+				auto language = GetElementAttribute(child, "language");
+				oss << "{\"t\":\"CodeBlock\",\"c\":[[\"\",[\"" << JsonEscape(language) << "\"],[]],\"" << JsonEscape(content) << "\"]}";
+				j++;
+			} else if (child_type == BlockTypes::TYPE_BLOCKQUOTE) {
+				if (!inline_children.empty()) {
+					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
+					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":" << inlines_json << "}]}";
+				} else if (!content.empty()) {
+					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}]}";
+				} else {
+					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[]}]}";
+				}
+				j++;
+			} else if (child_type == BlockTypes::TYPE_HR) {
+				oss << "{\"t\":\"HorizontalRule\"}";
+				j++;
+			} else if (child_type == BlockTypes::TYPE_LIST) {
+				oss << ConvertListToPandocJson(blocks_list, j, child_level);
+			} else if (child_type == BlockTypes::TYPE_DIV) {
+				oss << ConvertDivToPandocJson(blocks_list, j, child_level);
+			} else {
+				// Unknown block - skip
+				j++;
+			}
+		} else {
+			j++;
+		}
+	}
+
+	oss << "]]}";
+	start_idx = j;
+	return oss.str();
+}
+
 void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &blocks_vec = args.data[0];
 	auto count = args.size();
@@ -780,6 +941,11 @@ void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, Expression
 				int32_t list_level = GetElementLevel(block);
 				oss << ConvertListToPandocJson(blocks_list, block_idx, list_level);
 				// block_idx is advanced by ConvertListToPandocJson
+			} else if (element_type == BlockTypes::TYPE_DIV) {
+				// Use recursive div converter
+				int32_t div_level = GetElementLevel(block);
+				oss << ConvertDivToPandocJson(blocks_list, block_idx, div_level);
+				// block_idx is advanced by ConvertDivToPandocJson
 			} else if (element_type == BlockTypes::TYPE_TABLE) {
 				// Simplified table output
 				oss << "{\"t\":\"Table\",\"c\":[[\"\",[],[]],[[{\"t\":\"AlignDefault\"}]],[[[]]]]}";
@@ -916,6 +1082,11 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			int32_t list_level = GetElementLevel(block);
 			oss << ConvertListToPandocJson(blocks_list, block_idx, list_level);
 			// block_idx is advanced by ConvertListToPandocJson
+		} else if (element_type == BlockTypes::TYPE_DIV) {
+			// Use recursive div converter
+			int32_t div_level = GetElementLevel(block);
+			oss << ConvertDivToPandocJson(blocks_list, block_idx, div_level);
+			// block_idx is advanced by ConvertDivToPandocJson
 		} else {
 			oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}";
 			block_idx++;
