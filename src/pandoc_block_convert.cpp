@@ -947,8 +947,8 @@ void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, Expression
 				oss << ConvertDivToPandocJson(blocks_list, block_idx, div_level);
 				// block_idx is advanced by ConvertDivToPandocJson
 			} else if (element_type == BlockTypes::TYPE_TABLE) {
-				// Simplified table output
-				oss << "{\"t\":\"Table\",\"c\":[[\"\",[],[]],[[{\"t\":\"AlignDefault\"}]],[[[]]]]}";
+				// Table content is stored as JSON - output directly
+				oss << "{\"t\":\"Table\",\"c\":" << content << "}";
 				block_idx++;
 			} else {
 				// Unknown - output as paragraph
@@ -1087,6 +1087,10 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			int32_t div_level = GetElementLevel(block);
 			oss << ConvertDivToPandocJson(blocks_list, block_idx, div_level);
 			// block_idx is advanced by ConvertDivToPandocJson
+		} else if (element_type == BlockTypes::TYPE_TABLE) {
+			// Table content is stored as JSON - output directly
+			oss << "{\"t\":\"Table\",\"c\":" << content << "}";
+			block_idx++;
 		} else {
 			oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}";
 			block_idx++;
