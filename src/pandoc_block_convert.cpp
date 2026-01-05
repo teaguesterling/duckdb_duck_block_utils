@@ -620,8 +620,11 @@ void PandocBlockConvert::PandocBlocksToAstFun(DataChunk &args, ExpressionState &
 				if (format.empty()) format = "html";
 				oss << "{\"t\":\"RawBlock\",\"c\":[\"" << JsonEscape(format) << "\",\"" << JsonEscape(content) << "\"]}";
 			} else if (element_type == BlockTypes::TYPE_LIST) {
+				// Check both list_type and ordered attributes for compatibility
 				auto list_type = GetElementAttribute(block, "list_type");
-				string pandoc_type = (list_type == "ordered") ? "OrderedList" : "BulletList";
+				auto ordered_attr = GetElementAttribute(block, "ordered");
+				bool is_ordered = (list_type == "ordered") || (ordered_attr == "true");
+				string pandoc_type = is_ordered ? "OrderedList" : "BulletList";
 
 				// Collect list items with their content (either inline children or simple content)
 				vector<pair<string, vector<Value>>> list_items;  // (content, inlines)
@@ -658,7 +661,14 @@ void PandocBlockConvert::PandocBlocksToAstFun(DataChunk &args, ExpressionState &
 				}
 
 				// Build list JSON
-				oss << "{\"t\":\"" << pandoc_type << "\",\"c\":[";
+				oss << "{\"t\":\"" << pandoc_type << "\",\"c\":";
+				if (is_ordered) {
+					// OrderedList: [[start, style, delim], [[items]]]
+					oss << "[[1,{\"t\":\"Decimal\"},{\"t\":\"Period\"}],[";
+				} else {
+					// BulletList: [[items]]
+					oss << "[";
+				}
 				bool first_item = true;
 				for (auto &item : list_items) {
 					if (!first_item) oss << ",";
@@ -675,7 +685,11 @@ void PandocBlockConvert::PandocBlocksToAstFun(DataChunk &args, ExpressionState &
 						oss << "[{\"t\":\"Plain\",\"c\":[]}]";
 					}
 				}
-				oss << "]}";
+				if (is_ordered) {
+					oss << "]]}";
+				} else {
+					oss << "]}";
+				}
 			} else if (element_type == BlockTypes::TYPE_TABLE) {
 				// Simplified table output
 				oss << "{\"t\":\"Table\",\"c\":[[\"\",[],[]],[[{\"t\":\"AlignDefault\"}]],[[[]]]]}";
@@ -803,8 +817,11 @@ static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Ve
 				if (format.empty()) format = "html";
 				oss << "{\"t\":\"RawBlock\",\"c\":[\"" << JsonEscape(format) << "\",\"" << JsonEscape(content) << "\"]}";
 			} else if (element_type == BlockTypes::TYPE_LIST) {
+				// Check both list_type and ordered attributes for compatibility
 				auto list_type = GetElementAttribute(block, "list_type");
-				string pandoc_type = (list_type == "ordered") ? "OrderedList" : "BulletList";
+				auto ordered_attr = GetElementAttribute(block, "ordered");
+				bool is_ordered = (list_type == "ordered") || (ordered_attr == "true");
+				string pandoc_type = is_ordered ? "OrderedList" : "BulletList";
 
 				// Collect list items with their content (either inline children or simple content)
 				vector<pair<string, vector<Value>>> list_items;  // (content, inlines)
@@ -837,7 +854,14 @@ static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Ve
 					list_items.push_back({current_item_content, current_item_inlines});
 				}
 
-				oss << "{\"t\":\"" << pandoc_type << "\",\"c\":[";
+				oss << "{\"t\":\"" << pandoc_type << "\",\"c\":";
+				if (is_ordered) {
+					// OrderedList: [[start, style, delim], [[items]]]
+					oss << "[[1,{\"t\":\"Decimal\"},{\"t\":\"Period\"}],[";
+				} else {
+					// BulletList: [[items]]
+					oss << "[";
+				}
 				bool first_item = true;
 				for (auto &item : list_items) {
 					if (!first_item) oss << ",";
@@ -854,7 +878,11 @@ static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Ve
 						oss << "[{\"t\":\"Plain\",\"c\":[]}]";
 					}
 				}
-				oss << "]}";
+				if (is_ordered) {
+					oss << "]]}";
+				} else {
+					oss << "]}";
+				}
 			} else {
 				oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}";
 			}
