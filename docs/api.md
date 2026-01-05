@@ -810,10 +810,10 @@ Convert Pandoc JSON AST to duck_blocks.
 
 ---
 
-### pandoc_blocks_to_ast
+### duck_blocks_to_pandoc_blocks
 
 ```sql
-pandoc_blocks_to_ast(blocks LIST(duck_block)) → VARCHAR
+duck_blocks_to_pandoc_blocks(blocks LIST(duck_block)) → VARCHAR
 ```
 
 Convert duck_blocks to Pandoc JSON AST.

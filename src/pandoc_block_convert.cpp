@@ -3,6 +3,7 @@
 #include "block_types.hpp"
 #include "duckdb/common/types/value.hpp"
 #include "duckdb/common/exception.hpp"
+#include "duckdb/function/table_function.hpp"
 
 #include <sstream>
 #include <vector>
@@ -541,7 +542,7 @@ static string GetElementAttribute(const Value &element, const string &key) {
 	return "";
 }
 
-void PandocBlockConvert::PandocBlocksToAstFun(DataChunk &args, ExpressionState &state, Vector &result) {
+void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &blocks_vec = args.data[0];
 	auto count = args.size();
 
@@ -736,28 +737,335 @@ void PandocBlockConvert::ReadPandocAstFun(DataChunk &args, ExpressionState &stat
 	}
 }
 
-// duck_blocks_to_pandoc_ast - creates complete Pandoc JSON AST
+// Helper to build blocks JSON array from duck_blocks
+static string BuildBlocksJson(const vector<Value> &blocks_list) {
+	std::ostringstream oss;
+	oss << "[";
+	bool first = true;
+
+	for (idx_t block_idx = 0; block_idx < blocks_list.size(); block_idx++) {
+		auto &block = blocks_list[block_idx];
+		if (block.IsNull()) continue;
+
+		auto kind = GetElementStringField(block, BlockTypes::KIND_IDX);
+		if (kind != BlockTypes::KIND_BLOCK) continue;
+
+		auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
+		auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
+
+		if (element_type == BlockTypes::TYPE_LIST_ITEM) continue;
+
+		vector<Value> inline_children;
+		for (idx_t j = block_idx + 1; j < blocks_list.size(); j++) {
+			auto &child = blocks_list[j];
+			if (child.IsNull()) continue;
+			auto child_kind = GetElementStringField(child, BlockTypes::KIND_IDX);
+			if (child_kind == BlockTypes::KIND_BLOCK) break;
+			if (child_kind == BlockTypes::KIND_INLINE) {
+				inline_children.push_back(child);
+			}
+		}
+
+		if (!first) oss << ",";
+		first = false;
+
+		if (element_type == BlockTypes::TYPE_HEADING) {
+			auto level_str = GetElementAttribute(block, "heading_level");
+			int level = level_str.empty() ? 1 : std::stoi(level_str);
+			auto id = GetElementAttribute(block, "id");
+			if (!inline_children.empty()) {
+				string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
+				oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id) << "\",[],[]]," << inlines_json << "]}";
+			} else {
+				oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id) << "\",[],[]],[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
+			}
+		} else if (element_type == BlockTypes::TYPE_PARAGRAPH) {
+			if (!inline_children.empty()) {
+				string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
+				oss << "{\"t\":\"Para\",\"c\":" << inlines_json << "}";
+			} else {
+				oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}";
+			}
+		} else if (element_type == BlockTypes::TYPE_CODE) {
+			auto language = GetElementAttribute(block, "language");
+			oss << "{\"t\":\"CodeBlock\",\"c\":[[\"\",[\"" << JsonEscape(language) << "\"],[]],\"" << JsonEscape(content) << "\"]}";
+		} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE) {
+			oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}]}";
+		} else if (element_type == BlockTypes::TYPE_HR) {
+			oss << "{\"t\":\"HorizontalRule\"}";
+		} else if (element_type == BlockTypes::TYPE_RAW) {
+			auto format = GetElementAttribute(block, "format");
+			if (format.empty()) format = "html";
+			oss << "{\"t\":\"RawBlock\",\"c\":[\"" << JsonEscape(format) << "\",\"" << JsonEscape(content) << "\"]}";
+		} else if (element_type == BlockTypes::TYPE_LIST) {
+			auto list_type = GetElementAttribute(block, "list_type");
+			auto ordered_attr = GetElementAttribute(block, "ordered");
+			bool is_ordered = (list_type == "ordered") || (ordered_attr == "true");
+			string pandoc_type = is_ordered ? "OrderedList" : "BulletList";
+
+			vector<pair<string, vector<Value>>> list_items;
+			vector<Value> current_item_inlines;
+			string current_item_content;
+			bool in_list_item = false;
+
+			for (idx_t j = block_idx + 1; j < blocks_list.size(); j++) {
+				auto &child = blocks_list[j];
+				if (child.IsNull()) continue;
+				auto child_kind = GetElementStringField(child, BlockTypes::KIND_IDX);
+				auto child_type = GetElementStringField(child, BlockTypes::ELEMENT_TYPE_IDX);
+
+				if (child_kind == BlockTypes::KIND_BLOCK && child_type != BlockTypes::TYPE_LIST_ITEM) break;
+
+				if (child_type == BlockTypes::TYPE_LIST_ITEM) {
+					if (in_list_item) {
+						list_items.push_back({current_item_content, current_item_inlines});
+					}
+					current_item_inlines.clear();
+					current_item_content = GetElementStringField(child, BlockTypes::CONTENT_IDX);
+					in_list_item = true;
+				} else if (child_kind == BlockTypes::KIND_INLINE && in_list_item) {
+					current_item_inlines.push_back(child);
+				}
+			}
+			if (in_list_item) {
+				list_items.push_back({current_item_content, current_item_inlines});
+			}
+
+			oss << "{\"t\":\"" << pandoc_type << "\",\"c\":";
+			if (is_ordered) {
+				oss << "[[1,{\"t\":\"Decimal\"},{\"t\":\"Period\"}],[";
+			} else {
+				oss << "[";
+			}
+			bool first_item = true;
+			for (auto &item : list_items) {
+				if (!first_item) oss << ",";
+				first_item = false;
+				if (!item.second.empty()) {
+					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(item.second);
+					oss << "[{\"t\":\"Plain\",\"c\":" << inlines_json << "}]";
+				} else if (!item.first.empty()) {
+					oss << "[{\"t\":\"Plain\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(item.first) << "\"}]}]";
+				} else {
+					oss << "[{\"t\":\"Plain\",\"c\":[]}]";
+				}
+			}
+			if (is_ordered) {
+				oss << "]]}";
+			} else {
+				oss << "]}";
+			}
+		} else {
+			oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}";
+		}
+	}
+	oss << "]";
+	return oss.str();
+}
+
+// Get the Pandoc AST struct type
+static LogicalType GetPandocAstType() {
+	child_list_t<LogicalType> struct_children;
+	struct_children.push_back(make_pair("pandoc-api-version", LogicalType::LIST(LogicalType::INTEGER)));
+	struct_children.push_back(make_pair("meta", LogicalType::JSON()));
+	struct_children.push_back(make_pair("blocks", LogicalType::JSON()));
+	return LogicalType::STRUCT(std::move(struct_children));
+}
+
+// duck_blocks_to_pandoc_ast - creates complete Pandoc AST as a struct
 static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &blocks_vec = args.data[0];
 	auto count = args.size();
 
-	// Default API version for Pandoc 2.x
-	string api_version = "[1,20]";
-
 	for (idx_t i = 0; i < count; i++) {
 		auto blocks_val = blocks_vec.GetValue(i);
 
+		// Build API version list
+		vector<Value> api_version_vals = {Value::INTEGER(1), Value::INTEGER(20)};
+		Value api_version = Value::LIST(LogicalType::INTEGER, api_version_vals);
+
+		// Empty meta
+		Value meta = Value("{}");
+
 		if (blocks_val.IsNull()) {
-			result.SetValue(i, Value("{\"pandoc-api-version\":" + api_version + ",\"meta\":{},\"blocks\":[]}"));
+			// Empty blocks
+			child_list_t<Value> struct_values;
+			struct_values.push_back(make_pair("pandoc-api-version", api_version));
+			struct_values.push_back(make_pair("meta", meta));
+			struct_values.push_back(make_pair("blocks", Value("[]")));
+			result.SetValue(i, Value::STRUCT(std::move(struct_values)));
 			continue;
 		}
 
-		// Reuse PandocBlocksToAstFun logic by calling it
+		auto &blocks_list = ListValue::GetChildren(blocks_val);
+
+		// Build blocks JSON using helper
+		string blocks_json = BuildBlocksJson(blocks_list);
+
+		// Create struct
+		child_list_t<Value> struct_values;
+		struct_values.push_back(make_pair("pandoc-api-version", api_version));
+		struct_values.push_back(make_pair("meta", meta));
+		struct_values.push_back(make_pair("blocks", Value(blocks_json)));
+		result.SetValue(i, Value::STRUCT(std::move(struct_values)));
+	}
+}
+
+// ============================================================================
+// Table function: pandoc_ast(blocks, meta := {}, api_version := [1,20])
+// Returns a single row with Pandoc AST fields for clean JSON output
+// meta is a MAP(VARCHAR, VARCHAR) that gets converted to Pandoc MetaInlines format
+// ============================================================================
+
+struct PandocAstBindData : public TableFunctionData {
+	vector<Value> blocks;
+	string meta_json = "{}";
+	vector<int32_t> api_version = {1, 20};
+	bool done = false;
+};
+
+// Convert a simple string value to Pandoc MetaInlines format
+// e.g., "My Title" -> {"t":"MetaInlines","c":[{"t":"Str","c":"My Title"}]}
+static string ConvertToMetaInlines(const string &value) {
+	std::ostringstream oss;
+	oss << "{\"t\":\"MetaInlines\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(value) << "\"}]}";
+	return oss.str();
+}
+
+// Convert MAP(VARCHAR, VARCHAR) to Pandoc meta JSON
+static string ConvertMetaMapToJson(const Value &meta_map) {
+	if (meta_map.IsNull()) {
+		return "{}";
+	}
+
+	auto &map_entries = MapValue::GetChildren(meta_map);
+	if (map_entries.empty()) {
+		return "{}";
+	}
+
+	std::ostringstream oss;
+	oss << "{";
+	bool first = true;
+	for (auto &entry : map_entries) {
+		if (entry.IsNull()) continue;
+		auto &kv = StructValue::GetChildren(entry);
+		if (kv.size() < 2 || kv[0].IsNull() || kv[1].IsNull()) continue;
+
+		string key = kv[0].GetValue<string>();
+		string value = kv[1].GetValue<string>();
+
+		if (!first) oss << ",";
+		first = false;
+
+		oss << "\"" << JsonEscape(key) << "\":" << ConvertToMetaInlines(value);
+	}
+	oss << "}";
+	return oss.str();
+}
+
+static unique_ptr<FunctionData> PandocAstBind(ClientContext &context, TableFunctionBindInput &input,
+                                               vector<LogicalType> &return_types, vector<string> &names) {
+	auto result = make_uniq<PandocAstBindData>();
+
+	// Get the blocks parameter (first positional argument)
+	if (!input.inputs.empty() && !input.inputs[0].IsNull()) {
+		auto &blocks_val = input.inputs[0];
+		auto &blocks_list = ListValue::GetChildren(blocks_val);
+		for (auto &block : blocks_list) {
+			result->blocks.push_back(block);
+		}
+	}
+
+	// Process named parameters
+	for (auto &kv : input.named_parameters) {
+		if (kv.first == "meta") {
+			if (!kv.second.IsNull()) {
+				result->meta_json = ConvertMetaMapToJson(kv.second);
+			}
+		} else if (kv.first == "api_version") {
+			if (!kv.second.IsNull()) {
+				auto &version_list = ListValue::GetChildren(kv.second);
+				result->api_version.clear();
+				for (auto &v : version_list) {
+					result->api_version.push_back(v.GetValue<int32_t>());
+				}
+			}
+		}
+	}
+
+	// Define output columns with Pandoc-compatible names
+	names.push_back("pandoc-api-version");
+	return_types.push_back(LogicalType::LIST(LogicalType::INTEGER));
+
+	names.push_back("meta");
+	return_types.push_back(LogicalType::JSON());
+
+	names.push_back("blocks");
+	return_types.push_back(LogicalType::JSON());
+
+	return std::move(result);
+}
+
+static void PandocAstFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
+	auto &bind_data = data_p.bind_data->CastNoConst<PandocAstBindData>();
+
+	if (bind_data.done) {
+		return;
+	}
+
+	// Build API version from bind data
+	vector<Value> api_version_vals;
+	for (auto v : bind_data.api_version) {
+		api_version_vals.push_back(Value::INTEGER(v));
+	}
+	Value api_version = Value::LIST(LogicalType::INTEGER, api_version_vals);
+
+	// Build blocks JSON
+	string blocks_json = BuildBlocksJson(bind_data.blocks);
+
+	// Output single row
+	output.SetCardinality(1);
+	output.data[0].SetValue(0, api_version);
+	output.data[1].SetValue(0, Value(bind_data.meta_json));
+	output.data[2].SetValue(0, Value(blocks_json));
+
+	bind_data.done = true;
+}
+
+// write_pandoc_ast - writes duck_blocks to a file as Pandoc JSON AST
+static void WritePandocAstFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &path_vec = args.data[0];
+	auto &blocks_vec = args.data[1];
+	auto count = args.size();
+
+	string api_version = "[1,20]";
+
+	for (idx_t i = 0; i < count; i++) {
+		auto path_val = path_vec.GetValue(i);
+		auto blocks_val = blocks_vec.GetValue(i);
+
+		if (path_val.IsNull()) {
+			result.SetValue(i, Value(false));
+			continue;
+		}
+
+		string file_path = path_val.GetValue<string>();
+		std::ofstream file(file_path);
+		if (!file.is_open()) {
+			throw IOException("Could not open file for writing: " + file_path);
+		}
+
+		if (blocks_val.IsNull()) {
+			file << "{\"pandoc-api-version\":" << api_version << ",\"meta\":{},\"blocks\":[]}";
+			file.close();
+			result.SetValue(i, Value(true));
+			continue;
+		}
+
 		auto &blocks_list = ListValue::GetChildren(blocks_val);
 		std::ostringstream oss;
 		oss << "{\"pandoc-api-version\":" << api_version << ",\"meta\":{},\"blocks\":";
 
-		// Build blocks array (same logic as PandocBlocksToAstFun)
 		oss << "[";
 		bool first = true;
 		for (idx_t block_idx = 0; block_idx < blocks_list.size(); block_idx++) {
@@ -770,10 +1078,8 @@ static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Ve
 			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
 			auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
 
-			// Skip list_item blocks
 			if (element_type == BlockTypes::TYPE_LIST_ITEM) continue;
 
-			// Collect inline children
 			vector<Value> inline_children;
 			for (idx_t j = block_idx + 1; j < blocks_list.size(); j++) {
 				auto &child = blocks_list[j];
@@ -817,14 +1123,12 @@ static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Ve
 				if (format.empty()) format = "html";
 				oss << "{\"t\":\"RawBlock\",\"c\":[\"" << JsonEscape(format) << "\",\"" << JsonEscape(content) << "\"]}";
 			} else if (element_type == BlockTypes::TYPE_LIST) {
-				// Check both list_type and ordered attributes for compatibility
 				auto list_type = GetElementAttribute(block, "list_type");
 				auto ordered_attr = GetElementAttribute(block, "ordered");
 				bool is_ordered = (list_type == "ordered") || (ordered_attr == "true");
 				string pandoc_type = is_ordered ? "OrderedList" : "BulletList";
 
-				// Collect list items with their content (either inline children or simple content)
-				vector<pair<string, vector<Value>>> list_items;  // (content, inlines)
+				vector<pair<string, vector<Value>>> list_items;
 				vector<Value> current_item_inlines;
 				string current_item_content;
 				bool in_list_item = false;
@@ -838,7 +1142,6 @@ static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Ve
 					if (child_kind == BlockTypes::KIND_BLOCK && child_type != BlockTypes::TYPE_LIST_ITEM) break;
 
 					if (child_type == BlockTypes::TYPE_LIST_ITEM) {
-						// Save previous item
 						if (in_list_item) {
 							list_items.push_back({current_item_content, current_item_inlines});
 						}
@@ -849,17 +1152,14 @@ static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Ve
 						current_item_inlines.push_back(child);
 					}
 				}
-				// Don't forget the last item
 				if (in_list_item) {
 					list_items.push_back({current_item_content, current_item_inlines});
 				}
 
 				oss << "{\"t\":\"" << pandoc_type << "\",\"c\":";
 				if (is_ordered) {
-					// OrderedList: [[start, style, delim], [[items]]]
 					oss << "[[1,{\"t\":\"Decimal\"},{\"t\":\"Period\"}],[";
 				} else {
-					// BulletList: [[items]]
 					oss << "[";
 				}
 				bool first_item = true;
@@ -867,14 +1167,11 @@ static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Ve
 					if (!first_item) oss << ",";
 					first_item = false;
 					if (!item.second.empty()) {
-						// Has inline children - use them
 						string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(item.second);
 						oss << "[{\"t\":\"Plain\",\"c\":" << inlines_json << "}]";
 					} else if (!item.first.empty()) {
-						// No inline children but has content - use content as Str
 						oss << "[{\"t\":\"Plain\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(item.first) << "\"}]}]";
 					} else {
-						// Empty item
 						oss << "[{\"t\":\"Plain\",\"c\":[]}]";
 					}
 				}
@@ -888,7 +1185,10 @@ static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Ve
 			}
 		}
 		oss << "]}";
-		result.SetValue(i, Value(oss.str()));
+
+		file << oss.str();
+		file.close();
+		result.SetValue(i, Value(true));
 	}
 }
 
@@ -904,12 +1204,12 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	);
 	loader.RegisterFunction(ast_to_blocks_func);
 
-	// pandoc_blocks_to_ast(blocks LIST(duck_block)) -> VARCHAR
+	// duck_blocks_to_pandoc_blocks(blocks LIST(duck_block)) -> VARCHAR (JSON array of Pandoc blocks)
 	auto blocks_to_ast_func = ScalarFunction(
-	    "pandoc_blocks_to_ast",
+	    "duck_blocks_to_pandoc_blocks",
 	    {duck_block_list_type},
 	    LogicalType::VARCHAR,
-	    PandocBlocksToAstFun
+	    DuckBlocksToPandocBlocksFun
 	);
 	loader.RegisterFunction(blocks_to_ast_func);
 
@@ -922,15 +1222,33 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	);
 	loader.RegisterFunction(read_pandoc_ast_func);
 
-	// duck_blocks_to_pandoc_ast(blocks LIST(duck_block)) -> JSON
-	// Creates complete Pandoc JSON AST with version, meta, and blocks
+	// duck_blocks_to_pandoc_ast(blocks LIST(duck_block)) -> STRUCT(pandoc-api-version, meta, blocks)
+	// Creates complete Pandoc AST as a struct for proper JSON serialization
 	auto duck_blocks_to_ast_func = ScalarFunction(
 	    "duck_blocks_to_pandoc_ast",
 	    {duck_block_list_type},
-	    LogicalType::JSON(),
+	    GetPandocAstType(),
 	    DuckBlocksToPandocAstFun
 	);
 	loader.RegisterFunction(duck_blocks_to_ast_func);
+
+	// write_pandoc_ast(file_path VARCHAR, blocks LIST(duck_block)) -> BOOLEAN
+	// Writes duck_blocks directly to a file as Pandoc JSON AST
+	auto write_pandoc_ast_func = ScalarFunction(
+	    "write_pandoc_ast",
+	    {LogicalType::VARCHAR, duck_block_list_type},
+	    LogicalType::BOOLEAN,
+	    WritePandocAstFun
+	);
+	loader.RegisterFunction(write_pandoc_ast_func);
+
+	// pandoc_ast(blocks, meta := {}, api_version := [1,20]) -> TABLE(pandoc-api-version, meta, blocks)
+	// Table function for clean JSON output with COPY FORMAT JSON
+	// meta is MAP(VARCHAR, VARCHAR) - simple key-value pairs converted to Pandoc MetaInlines
+	TableFunction pandoc_ast_table_func("pandoc_ast", {duck_block_list_type}, PandocAstFunction, PandocAstBind);
+	pandoc_ast_table_func.named_parameters["meta"] = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
+	pandoc_ast_table_func.named_parameters["api_version"] = LogicalType::LIST(LogicalType::INTEGER);
+	loader.RegisterFunction(pandoc_ast_table_func);
 }
 
 } // namespace duckdb

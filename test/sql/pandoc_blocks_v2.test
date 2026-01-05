@@ -94,51 +94,51 @@ SELECT len(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23],"meta":{},"blocks"
 1
 
 # ============================================================================
-# pandoc_blocks_to_ast Tests (v2: builders return LIST)
+# duck_blocks_to_pandoc_blocks Tests (v2: builders return LIST)
 # ============================================================================
 
 # Test converting heading to Pandoc AST (db_heading returns LIST, can pass directly)
 query I
-SELECT pandoc_blocks_to_ast(db_heading(1, 'Title')) LIKE '%Header%';
+SELECT duck_blocks_to_pandoc_blocks(db_heading(1, 'Title')) LIKE '%Header%';
 ----
 true
 
 query I
-SELECT pandoc_blocks_to_ast(db_heading(1, 'Title')) LIKE '%Title%';
+SELECT duck_blocks_to_pandoc_blocks(db_heading(1, 'Title')) LIKE '%Title%';
 ----
 true
 
 # Test converting paragraph to Pandoc AST
 query I
-SELECT pandoc_blocks_to_ast(db_paragraph('Hello')) LIKE '%Para%';
+SELECT duck_blocks_to_pandoc_blocks(db_paragraph('Hello')) LIKE '%Para%';
 ----
 true
 
 query I
-SELECT pandoc_blocks_to_ast(db_paragraph('Hello')) LIKE '%Hello%';
+SELECT duck_blocks_to_pandoc_blocks(db_paragraph('Hello')) LIKE '%Hello%';
 ----
 true
 
 # Test converting code block to Pandoc AST (v2: language first)
 query I
-SELECT pandoc_blocks_to_ast(db_code('python', 'x=1')) LIKE '%CodeBlock%';
+SELECT duck_blocks_to_pandoc_blocks(db_code('python', 'x=1')) LIKE '%CodeBlock%';
 ----
 true
 
 query I
-SELECT pandoc_blocks_to_ast(db_code('python', 'x=1')) LIKE '%python%';
+SELECT duck_blocks_to_pandoc_blocks(db_code('python', 'x=1')) LIKE '%python%';
 ----
 true
 
 # Test converting hr to Pandoc AST
 query I
-SELECT pandoc_blocks_to_ast(db_hr()) LIKE '%HorizontalRule%';
+SELECT duck_blocks_to_pandoc_blocks(db_hr()) LIKE '%HorizontalRule%';
 ----
 true
 
 # Test converting multiple blocks (use db_assemble to flatten)
 query I
-SELECT pandoc_blocks_to_ast(db_assemble([
+SELECT duck_blocks_to_pandoc_blocks(db_assemble([
     db_heading(1, 'Title'),
     db_paragraph('Text')
 ])) LIKE '%Header%Para%';
@@ -147,19 +147,19 @@ true
 
 # Test empty list returns empty array
 query I
-SELECT pandoc_blocks_to_ast([]);
+SELECT duck_blocks_to_pandoc_blocks([]);
 ----
 []
 
 # Test NULL input returns NULL (standard SQL NULL propagation)
 query I
-SELECT pandoc_blocks_to_ast(NULL) IS NULL;
+SELECT duck_blocks_to_pandoc_blocks(NULL) IS NULL;
 ----
 true
 
 # Test inline elements are skipped in block output
 query I
-SELECT pandoc_blocks_to_ast(db_text('inline'));
+SELECT duck_blocks_to_pandoc_blocks(db_text('inline'));
 ----
 []
 
@@ -169,25 +169,25 @@ SELECT pandoc_blocks_to_ast(db_text('inline'));
 
 # Test simple round-trip: Para
 query I
-SELECT pandoc_ast_to_blocks(pandoc_blocks_to_ast(db_paragraph('Hello')))[1].element_type;
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_paragraph('Hello')))[1].element_type;
 ----
 paragraph
 
 # Test simple round-trip: Header (v2: level first)
 query I
-SELECT pandoc_ast_to_blocks(pandoc_blocks_to_ast(db_heading(1, 'Title')))[1].element_type;
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_heading(1, 'Title')))[1].element_type;
 ----
 heading
 
 # Test simple round-trip: CodeBlock (v2: language first)
 query I
-SELECT pandoc_ast_to_blocks(pandoc_blocks_to_ast(db_code('py', 'x=1')))[1].element_type;
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_code('py', 'x=1')))[1].element_type;
 ----
 code
 
 # Test content preserved in round-trip
 query I
-SELECT pandoc_ast_to_blocks(pandoc_blocks_to_ast(db_paragraph('Test content')))[1].content;
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_paragraph('Test content')))[1].content;
 ----
 Test content
 
@@ -197,7 +197,7 @@ Test content
 
 # Test assembled document round-trip
 query I
-SELECT len(pandoc_ast_to_blocks(pandoc_blocks_to_ast(db_assemble([
+SELECT len(pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_assemble([
     db_heading(1, 'Title'),
     db_paragraph('Introduction'),
     db_code('python', 'print("hello")'),
@@ -208,61 +208,62 @@ SELECT len(pandoc_ast_to_blocks(pandoc_blocks_to_ast(db_assemble([
 
 # ============================================================================
 # duck_blocks_to_pandoc_ast Tests (complete Pandoc AST with wrapper)
+# Returns STRUCT with pandoc-api-version, meta, and blocks fields
 # ============================================================================
 
-# Test returns valid JSON type
+# Test returns STRUCT type
 query I
-SELECT typeof(duck_blocks_to_pandoc_ast(db_heading(1, 'Test')));
+SELECT typeof(duck_blocks_to_pandoc_ast(db_heading(1, 'Test'))) LIKE 'STRUCT%';
 ----
-JSON
+true
 
-# Test JSON has pandoc-api-version field
+# Test struct has pandoc-api-version field
 query I
-SELECT json_extract(duck_blocks_to_pandoc_ast(db_heading(1, 'Test')), '$."pandoc-api-version"') IS NOT NULL;
+SELECT duck_blocks_to_pandoc_ast(db_heading(1, 'Test'))."pandoc-api-version" IS NOT NULL;
 ----
 true
 
 # Test API version is [1,20]
 query I
-SELECT json_extract(duck_blocks_to_pandoc_ast(db_heading(1, 'Test')), '$."pandoc-api-version"[0]');
+SELECT duck_blocks_to_pandoc_ast(db_heading(1, 'Test'))."pandoc-api-version"[1];
 ----
 1
 
 query I
-SELECT json_extract(duck_blocks_to_pandoc_ast(db_heading(1, 'Test')), '$."pandoc-api-version"[1]');
+SELECT duck_blocks_to_pandoc_ast(db_heading(1, 'Test'))."pandoc-api-version"[2];
 ----
 20
 
-# Test JSON has meta field (empty object)
+# Test struct has meta field (empty object)
 query I
-SELECT json_extract(duck_blocks_to_pandoc_ast(db_heading(1, 'Test')), '$.meta');
+SELECT duck_blocks_to_pandoc_ast(db_heading(1, 'Test')).meta;
 ----
 {}
 
-# Test JSON has blocks array
+# Test blocks array has correct length
 query I
-SELECT json_array_length(json_extract(duck_blocks_to_pandoc_ast(db_heading(1, 'Test')), '$.blocks'));
+SELECT json_array_length(duck_blocks_to_pandoc_ast(db_heading(1, 'Test')).blocks);
 ----
 1
 
 # Test block type in output
 query I
-SELECT json_extract(duck_blocks_to_pandoc_ast(db_heading(1, 'Test')), '$.blocks[0].t');
+SELECT json_extract(duck_blocks_to_pandoc_ast(db_heading(1, 'Test')).blocks, '$[0].t');
 ----
 "Header"
 
 query I
-SELECT json_extract(duck_blocks_to_pandoc_ast(db_paragraph('Hello')), '$.blocks[0].t');
+SELECT json_extract(duck_blocks_to_pandoc_ast(db_paragraph('Hello')).blocks, '$[0].t');
 ----
 "Para"
 
 # Test multiple blocks
 query I
-SELECT json_array_length(json_extract(duck_blocks_to_pandoc_ast(db_assemble([
+SELECT json_array_length(duck_blocks_to_pandoc_ast(db_assemble([
     db_heading(1, 'Title'),
     db_paragraph('Body'),
     db_hr()
-])), '$.blocks'));
+])).blocks);
 ----
 3
 
@@ -274,7 +275,7 @@ true
 
 # Test empty list returns valid empty AST
 query I
-SELECT json_extract(duck_blocks_to_pandoc_ast([]), '$.blocks');
+SELECT duck_blocks_to_pandoc_ast([]).blocks;
 ----
 []
 
@@ -286,14 +287,14 @@ SELECT json_extract(duck_blocks_to_pandoc_ast([]), '$.blocks');
 query I
 SELECT json_extract(duck_blocks_to_pandoc_ast(db_assemble([
     db_paragraph([db_text('Hello '), db_bold('world')])
-])), '$.blocks[0].c[0].t');
+])).blocks, '$[0].c[0].t');
 ----
 "Str"
 
 query I
 SELECT json_extract(duck_blocks_to_pandoc_ast(db_assemble([
     db_paragraph([db_text('Hello '), db_bold('world')])
-])), '$.blocks[0].c[1].t');
+])).blocks, '$[0].c[1].t');
 ----
 "Strong"
 
@@ -301,7 +302,7 @@ SELECT json_extract(duck_blocks_to_pandoc_ast(db_assemble([
 query I
 SELECT json_extract(duck_blocks_to_pandoc_ast(db_assemble([
     db_list([db_list_item([db_text('Item 1')]), db_list_item([db_text('Item 2')])])
-])), '$.blocks[0].t');
+])).blocks, '$[0].t');
 ----
 "BulletList"
 
@@ -309,58 +310,103 @@ SELECT json_extract(duck_blocks_to_pandoc_ast(db_assemble([
 query I
 SELECT json_extract(duck_blocks_to_pandoc_ast(db_assemble([
     db_list([db_list_item('Simple 1'), db_list_item('Simple 2')])
-])), '$.blocks[0].c[0][0].c[0].c');
+])).blocks, '$[0].c[0][0].c[0].c');
 ----
 "Simple 1"
 
 query I
 SELECT json_array_length(json_extract(duck_blocks_to_pandoc_ast(db_assemble([
     db_list([db_list_item('A'), db_list_item('B'), db_list_item('C')])
-])), '$.blocks[0].c'));
+])).blocks, '$[0].c'));
 ----
 3
 
 # Test code block with language
 query I
-SELECT json_extract(duck_blocks_to_pandoc_ast(db_code('sql', 'SELECT 1')), '$.blocks[0].c[0][1][0]');
+SELECT json_extract(duck_blocks_to_pandoc_ast(db_code('sql', 'SELECT 1')).blocks, '$[0].c[0][1][0]');
 ----
 "sql"
 
 # ============================================================================
 # Full Round-trip with duck_blocks_to_pandoc_ast
+# Uses to_json() to convert struct to JSON string for round-trip parsing
 # ============================================================================
 
 # Test round-trip through complete AST
 query I
-SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_ast(db_heading(1, 'Test'))::VARCHAR)[1].element_type;
+SELECT pandoc_ast_to_blocks(to_json(duck_blocks_to_pandoc_ast(db_heading(1, 'Test'))))[1].element_type;
 ----
 heading
 
 query I
-SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_ast(db_paragraph('Hello'))::VARCHAR)[1].content;
+SELECT pandoc_ast_to_blocks(to_json(duck_blocks_to_pandoc_ast(db_paragraph('Hello'))))[1].content;
 ----
 Hello
 
 # Test complex document round-trip preserves block count
 query I
-SELECT len(pandoc_ast_to_blocks(duck_blocks_to_pandoc_ast(db_assemble([
+SELECT len(pandoc_ast_to_blocks(to_json(duck_blocks_to_pandoc_ast(db_assemble([
     db_heading(1, 'Title'),
     db_paragraph('Intro'),
     db_code('python', 'x=1'),
     db_hr(),
     db_paragraph('Conclusion')
-]))::VARCHAR));
+])))));
 ----
 5
 
 # Test heading level preserved in round-trip
 query I
-SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_ast(db_heading(2, 'Section'))::VARCHAR)[1].attributes['heading_level'];
+SELECT pandoc_ast_to_blocks(to_json(duck_blocks_to_pandoc_ast(db_heading(2, 'Section'))))[1].attributes['heading_level'];
 ----
 2
 
 # Test code language preserved in round-trip
 query I
-SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_ast(db_code('javascript', 'let x'))::VARCHAR)[1].attributes['language'];
+SELECT pandoc_ast_to_blocks(to_json(duck_blocks_to_pandoc_ast(db_code('javascript', 'let x'))))[1].attributes['language'];
 ----
 javascript
+
+# ============================================================================
+# pandoc_ast table function tests with named parameters
+# ============================================================================
+
+# Test basic table function
+query I
+SELECT "pandoc-api-version" FROM pandoc_ast(db_heading(1, 'Test'));
+----
+[1, 20]
+
+# Test custom api_version parameter
+query I
+SELECT "pandoc-api-version" FROM pandoc_ast(db_heading(1, 'Test'), api_version := [1, 23]);
+----
+[1, 23]
+
+# Test meta parameter with simple MAP - title only
+query I
+SELECT json_extract(meta, '$.title.t') FROM pandoc_ast(db_heading(1, 'Test'), meta := {'title': 'My Document'});
+----
+"MetaInlines"
+
+query I
+SELECT json_extract(meta, '$.title.c[0].c') FROM pandoc_ast(db_heading(1, 'Test'), meta := {'title': 'My Document'});
+----
+"My Document"
+
+# Test meta with multiple fields
+query I
+SELECT json_extract(meta, '$.author.c[0].c') FROM pandoc_ast(db_heading(1, 'Test'), meta := {'title': 'Doc', 'author': 'John Doe'});
+----
+"John Doe"
+
+query I
+SELECT json_extract(meta, '$.date.c[0].c') FROM pandoc_ast(db_heading(1, 'Test'), meta := {'title': 'Doc', 'author': 'Jane', 'date': '2024-01-05'});
+----
+"2024-01-05"
+
+# Test empty meta (default)
+query I
+SELECT meta FROM pandoc_ast(db_heading(1, 'Test'));
+----
+{}

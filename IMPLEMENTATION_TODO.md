@@ -347,7 +347,7 @@ void FlattenBlocks(const Value &input, vector<Value> &output, int &order) {
 | Function | Description |
 |----------|-------------|
 | `pandoc_ast_to_blocks` | Convert Pandoc JSON AST → LIST(duck_block) |
-| `pandoc_blocks_to_ast` | Convert LIST(duck_block) → Pandoc JSON AST |
+| `duck_blocks_to_pandoc_blocks` | Convert LIST(duck_block) → Pandoc JSON AST |
 | `pandoc_inlines_to_text` | Convert inline array to plain text |
 | `pandoc_inlines_to_db_inlines` | Convert Pandoc inline JSON → LIST(duck_block) |
 | `db_inlines_to_pandoc` | Convert LIST(duck_block) → Pandoc inline JSON |
@@ -379,7 +379,7 @@ See `docs/pandoc_ast_spec.md` for complete mapping.
 - [x] Decide on JSON library (using yyjson)
 - [x] Create `src/include/pandoc_inline_convert.hpp`
 - [x] Implement `pandoc_ast_to_blocks` (block-level conversion)
-- [x] Implement `pandoc_blocks_to_ast` (block-level conversion)
+- [x] Implement `duck_blocks_to_pandoc_blocks` (block-level conversion)
 - [x] Implement `pandoc_inlines_to_text`
 - [x] Implement `pandoc_inlines_to_db_inlines`
 - [x] Implement `db_inlines_to_pandoc`

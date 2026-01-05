@@ -18,9 +18,9 @@ private:
 	// Convert Pandoc JSON AST blocks to duck_block list
 	static void PandocAstToBlocksFun(DataChunk &args, ExpressionState &state, Vector &result);
 
-	// pandoc_blocks_to_ast(blocks LIST(duck_block)) -> VARCHAR
-	// Convert duck_block list back to Pandoc JSON AST
-	static void PandocBlocksToAstFun(DataChunk &args, ExpressionState &state, Vector &result);
+	// duck_blocks_to_pandoc_blocks(blocks LIST(duck_block)) -> VARCHAR
+	// Convert duck_block list to Pandoc JSON blocks array
+	static void DuckBlocksToPandocBlocksFun(DataChunk &args, ExpressionState &state, Vector &result);
 
 	// read_pandoc_ast(file_path VARCHAR) -> LIST(duck_block)
 	// Read a Pandoc JSON file and convert to duck_blocks

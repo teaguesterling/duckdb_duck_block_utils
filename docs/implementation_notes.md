@@ -349,7 +349,7 @@ src/
 
 ### Phase 6: Pandoc AST
 1. `pandoc_ast_to_blocks` (JSON parsing)
-2. `pandoc_blocks_to_ast` (JSON generation)
+2. `duck_blocks_to_pandoc_blocks` (JSON generation)
 3. `pandoc_inlines_to_text`
 
 ### Phase 7: Query Transformers

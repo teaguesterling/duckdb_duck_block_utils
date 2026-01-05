@@ -12,7 +12,7 @@ The `duck_block_utils` extension provides these conversions without requiring Pa
 │  (nested structure, inline elements, rich attributes)            │
 └─────────────────────────────────────────────────────────────────┘
                               │
-            pandoc_ast_to_blocks() / pandoc_blocks_to_ast()
+            pandoc_ast_to_blocks() / duck_blocks_to_pandoc_blocks()
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -279,13 +279,13 @@ SELECT unnest(pandoc_ast_to_blocks(
 ));
 ```
 
-### pandoc_blocks_to_ast
+### duck_blocks_to_pandoc_blocks
 
 Convert duck_blocks to Pandoc JSON AST.
 
 **Signature:**
 ```sql
-pandoc_blocks_to_ast(
+duck_blocks_to_pandoc_blocks(
     blocks LIST(duck_block),
     meta JSON DEFAULT '{}',
     api_version INTEGER[] DEFAULT [1, 23, 1]
@@ -302,7 +302,7 @@ pandoc_blocks_to_ast(
 **Example:**
 ```sql
 -- Convert blocks to Pandoc AST
-SELECT pandoc_blocks_to_ast(
+SELECT duck_blocks_to_pandoc_blocks(
     (SELECT list(b) FROM read_markdown_blocks('doc.md') b)
 );
 ```
@@ -578,7 +578,7 @@ FROM pandoc_docs;
 ```sql
 -- Convert blocks to Pandoc AST and export
 COPY (
-    SELECT pandoc_blocks_to_ast(
+    SELECT duck_blocks_to_pandoc_blocks(
         (SELECT list(b) FROM read_markdown_blocks('doc.md') b),
         '{"title": {"t": "MetaString", "c": "My Document"}}'::JSON
     ) as ast
@@ -601,7 +601,7 @@ transformed AS (
     SELECT * FROM parsed
     WHERE block.block_type != 'pandoc:div'  -- Remove divs
 )
-SELECT pandoc_blocks_to_ast(list(block))
+SELECT duck_blocks_to_pandoc_blocks(list(block))
 FROM transformed;
 ```
 

@@ -199,7 +199,10 @@ These overloads accept a list of children and return a flattened list with paren
 |----------|-------------|
 | `read_pandoc_ast(file_path)` | Read Pandoc JSON file and convert to duck_blocks |
 | `pandoc_ast_to_blocks(json)` | Convert Pandoc JSON AST string to duck_blocks |
-| `pandoc_blocks_to_ast(blocks)` | Convert duck_blocks to Pandoc JSON AST |
+| `duck_blocks_to_pandoc_blocks(blocks)` | Convert duck_blocks to Pandoc JSON blocks array |
+| `duck_blocks_to_pandoc_ast(blocks)` | Convert to complete Pandoc AST struct |
+| `pandoc_ast(blocks, meta, api_version)` | Table function for JSON file output |
+| `write_pandoc_ast(path, blocks)` | Write duck_blocks directly to Pandoc JSON file |
 | `pandoc_inlines_to_text(inlines)` | Convert inline elements to text |
 | `pandoc_inlines_to_db_inlines(inlines)` | Convert Pandoc inlines to duck_block inlines |
 | `db_inlines_to_pandoc(inlines)` | Convert duck_block inlines to Pandoc JSON |
@@ -283,13 +286,35 @@ SELECT * FROM unnest(read_pandoc_ast('exported_from_pandoc.json'));
 SELECT unnest(pandoc_ast_to_blocks(
     (SELECT content FROM read_text('exported_from_pandoc.json'))
 ));
+```
 
--- Convert blocks back to Pandoc JSON for other tools
+### Export to Pandoc JSON (for PDF, Word, etc.)
+
+```sql
+LOAD json;  -- Required for COPY FORMAT JSON
+
+-- Basic export - creates Pandoc-compatible JSON
 COPY (
-    SELECT pandoc_blocks_to_ast(
-        (SELECT list(b) FROM read_markdown_blocks('doc.md') b)
+    SELECT * FROM pandoc_ast(db_assemble([
+        db_heading(1, 'My Document'),
+        db_paragraph('Hello world.')
+    ]))
+) TO 'document.json' (FORMAT JSON);
+
+-- With document metadata (title, author, date)
+COPY (
+    SELECT * FROM pandoc_ast(
+        db_assemble([
+            db_heading(1, 'Report'),
+            db_paragraph('Introduction text...')
+        ]),
+        meta := {'title': 'Annual Report', 'author': 'Jane Doe', 'date': '2024-01-05'}
     )
-) TO 'for_pandoc.json';
+) TO 'report.json' (FORMAT JSON);
+
+-- Then convert with Pandoc CLI:
+-- pandoc report.json -f json -o report.pdf
+-- pandoc report.json -f json -o report.docx
 ```
 
 ## Short Aliases
