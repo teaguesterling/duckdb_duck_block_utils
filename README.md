@@ -185,7 +185,7 @@ These overloads accept a list of children and return a flattened list with paren
 | `db_underline(content)` | Create underlined text |
 | `db_inline_code(content)` | Create inline code |
 | `db_math(content, display)` | Create math expression |
-| `db_link(text, href, title)` | Create hyperlink |
+| `db_link(href, text, title)` | Create hyperlink |
 | `db_inline_image(src, alt, title)` | Create inline image |
 | `db_quoted(content, quote_type)` | Create quoted text |
 | `db_cite(key, prefix, suffix)` | Create citation |
@@ -261,7 +261,7 @@ WHERE severity = 'error';
 -- Create a paragraph with formatted inline content
 SELECT [
     db_text('Click '),
-    db_link('here', 'https://example.com'),
+    db_link('https://example.com', 'here'),
     db_text(' to learn more about '),
     db_bold('DuckDB'),
     db_text('.')

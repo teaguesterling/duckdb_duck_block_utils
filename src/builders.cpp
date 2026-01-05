@@ -122,8 +122,9 @@ vector<Value> BuilderFunctions::BuildWithContent(const Value &parent_block, cons
 	return result;
 }
 
-// Helper to flatten a parent block with children into a list (legacy)
+// Helper to flatten a parent block with children into a list
 // Returns: [parent at level n, child1 at level n+1 order 0, child2 at level n+1 order 1, ...]
+// Preserves relative nesting: if children already have levels, they're adjusted relative to the new base
 static vector<Value> FlattenBlockWithChildren(const Value &parent_block, const Value &children_list, int32_t base_level) {
 	vector<Value> result;
 
@@ -133,13 +134,33 @@ static vector<Value> FlattenBlockWithChildren(const Value &parent_block, const V
 	parent_children[BlockTypes::ELEMENT_ORDER_IDX] = Value(0);
 	result.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(parent_children)));
 
-	// Add flattened children at level+1 with sequential element_order
+	// Add flattened children with adjusted levels to preserve nesting
 	if (!children_list.IsNull()) {
 		auto &child_blocks = ListValue::GetChildren(children_list);
-		int32_t child_order = 0;
-		for (auto &child : child_blocks) {
-			if (!child.IsNull()) {
-				result.push_back(CreateChildWithLevelAndOrder(child, base_level + 1, child_order++));
+		if (!child_blocks.empty()) {
+			// Find the minimum level among children to calculate the offset
+			int32_t min_child_level = INT32_MAX;
+			for (auto &child : child_blocks) {
+				if (!child.IsNull()) {
+					auto child_fields = StructValue::GetChildren(child);
+					int32_t child_level = child_fields[BlockTypes::LEVEL_IDX].IsNull() ? 1 : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+					if (child_level < min_child_level) {
+						min_child_level = child_level;
+					}
+				}
+			}
+
+			// Calculate level offset: children should start at base_level + 1
+			int32_t level_offset = (base_level + 1) - min_child_level;
+
+			int32_t child_order = 0;
+			for (auto &child : child_blocks) {
+				if (!child.IsNull()) {
+					auto child_fields = StructValue::GetChildren(child);
+					int32_t child_level = child_fields[BlockTypes::LEVEL_IDX].IsNull() ? 1 : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+					// Adjust level by offset to preserve relative nesting
+					result.push_back(CreateChildWithLevelAndOrder(child, child_level + level_offset, child_order++));
+				}
 			}
 		}
 	}
