@@ -805,3 +805,56 @@ query I
 SELECT duck_blocks_to_pandoc_blocks(list_concat(db_metadata('{"title": "Doc"}'), db_paragraph('Content')));
 ----
 [{"t":"Para","c":[{"t":"Str","c":"Content"}]}]
+
+# ============================================================================
+# Code Block Round-Trip Tests
+# ============================================================================
+
+# Code block outputs as CodeBlock
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(db_code('python', 'x = 1')), '$[0].t');
+----
+"CodeBlock"
+
+# Code block language is in classes array
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(db_code('python', 'x = 1')), '$[0].c[0][1][0]');
+----
+"python"
+
+# Code block content is preserved
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(db_code('python', 'print("Hello")')), '$[0].c[1]');
+----
+"print(\"Hello\")"
+
+# Code block round-trip preserves type
+query I
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_code('sql', 'SELECT 1')))[1].element_type;
+----
+code
+
+# Code block round-trip preserves language
+query I
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_code('javascript', 'let x')))[1].attributes['language'];
+----
+javascript
+
+# Code block round-trip preserves content
+query I
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_code('rust', 'fn main() {}')))[1].content;
+----
+fn main() {}
+
+# Code block with multiline content
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(db_code('sql', 'SELECT *
+FROM t')), '$[0].c[1]');
+----
+"SELECT *\nFROM t"
+
+# Parsing CodeBlock from Pandoc preserves language
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"CodeBlock","c":[["",["haskell"],[]],"main = putStrLn"]}]')[1].attributes['language'];
+----
+haskell
