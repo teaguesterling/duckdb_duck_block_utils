@@ -789,3 +789,19 @@ query I
 SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_hr()))[1].content;
 ----
 (empty)
+
+# ============================================================================
+# Metadata Block Handling Tests
+# ============================================================================
+
+# Metadata blocks are skipped in Pandoc output (they belong in meta, not blocks)
+query I
+SELECT duck_blocks_to_pandoc_blocks(db_metadata('{"title": "Test"}'));
+----
+[]
+
+# Metadata mixed with other blocks - only non-metadata blocks output
+query I
+SELECT duck_blocks_to_pandoc_blocks(list_concat(db_metadata('{"title": "Doc"}'), db_paragraph('Content')));
+----
+[{"t":"Para","c":[{"t":"Str","c":"Content"}]}]

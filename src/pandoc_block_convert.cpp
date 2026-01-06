@@ -877,6 +877,12 @@ void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, Expression
 				continue;
 			}
 
+			// Skip metadata blocks - they don't belong in Pandoc's blocks array
+			if (element_type == BlockTypes::TYPE_METADATA) {
+				block_idx++;
+				continue;
+			}
+
 			// Collect inline children (elements with kind='inline' following this block)
 			vector<Value> inline_children;
 			for (idx_t j = block_idx + 1; j < blocks_list.size(); j++) {
@@ -1026,6 +1032,12 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 		auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
 
 		if (element_type == BlockTypes::TYPE_LIST_ITEM) {
+			block_idx++;
+			continue;
+		}
+
+		// Skip metadata blocks - they don't belong in Pandoc's blocks array
+		if (element_type == BlockTypes::TYPE_METADATA) {
 			block_idx++;
 			continue;
 		}
