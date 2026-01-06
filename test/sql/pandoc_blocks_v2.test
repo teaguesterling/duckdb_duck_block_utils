@@ -761,3 +761,31 @@ query I
 SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_raw('html', '<span>X</span>')))[1].content;
 ----
 <span>X</span>
+
+# ============================================================================
+# Horizontal Rule Round-Trip Tests
+# ============================================================================
+
+# HR outputs as HorizontalRule
+query I
+SELECT duck_blocks_to_pandoc_blocks(db_hr());
+----
+[{"t":"HorizontalRule"}]
+
+# HR parses from Pandoc
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"HorizontalRule"}]')[1].element_type;
+----
+hr
+
+# HR round-trip preserves type
+query I
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_hr()))[1].element_type;
+----
+hr
+
+# HR has empty content
+query I
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_hr()))[1].content;
+----
+(empty)
