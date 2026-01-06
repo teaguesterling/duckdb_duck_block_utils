@@ -950,6 +950,15 @@ void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, Expression
 				// Table content is stored as JSON - output directly
 				oss << "{\"t\":\"Table\",\"c\":" << content << "}";
 				block_idx++;
+			} else if (element_type == BlockTypes::TYPE_IMAGE) {
+				// Image is an inline element - wrap in Para
+				// Image format: {"t":"Image","c":[["",[]],[alt_inlines],["url","title"]]}
+				auto src = GetElementAttribute(block, "src");
+				auto alt = GetElementAttribute(block, "alt");
+				auto title = GetElementAttribute(block, "title");
+				oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Image\",\"c\":[[\"\",[],[]],[{\"t\":\"Str\",\"c\":\""
+				    << JsonEscape(alt) << "\"}],[\"" << JsonEscape(src) << "\",\"" << JsonEscape(title) << "\"]]}]}";
+				block_idx++;
 			} else {
 				// Unknown - output as paragraph
 				oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}";
@@ -1090,6 +1099,14 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 		} else if (element_type == BlockTypes::TYPE_TABLE) {
 			// Table content is stored as JSON - output directly
 			oss << "{\"t\":\"Table\",\"c\":" << content << "}";
+			block_idx++;
+		} else if (element_type == BlockTypes::TYPE_IMAGE) {
+			// Image is an inline element - wrap in Para
+			auto src = GetElementAttribute(block, "src");
+			auto alt = GetElementAttribute(block, "alt");
+			auto title = GetElementAttribute(block, "title");
+			oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Image\",\"c\":[[\"\",[],[]],[{\"t\":\"Str\",\"c\":\""
+			    << JsonEscape(alt) << "\"}],[\"" << JsonEscape(src) << "\",\"" << JsonEscape(title) << "\"]]}]}";
 			block_idx++;
 		} else {
 			oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}";

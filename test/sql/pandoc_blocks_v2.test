@@ -681,3 +681,83 @@ query I
 SELECT json_array_length(json_extract(duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Table","c":[[],[{"t":"AlignDefault"}],[0],[[{"t":"Plain","c":[{"t":"Str","c":"H"}]}]],[[[{"t":"Plain","c":[{"t":"Str","c":"R1"}]}]],[[{"t":"Plain","c":[{"t":"Str","c":"R2"}]}]]]]}]')), '$[0].c[4]'));
 ----
 2
+
+# ============================================================================
+# Image Block Pandoc Conversion Tests
+# ============================================================================
+
+# Image block outputs as Para containing Image inline
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(db_image('http://example.com/img.png', 'Alt', 'Title')), '$[0].t');
+----
+"Para"
+
+# Image inline is inside the Para
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(db_image('http://example.com/img.png', 'Alt', 'Title')), '$[0].c[0].t');
+----
+"Image"
+
+# Image URL is preserved
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(db_image('http://example.com/img.png', 'Alt', 'Title')), '$[0].c[0].c[2][0]');
+----
+"http://example.com/img.png"
+
+# Image alt text is preserved
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(db_image('http://example.com/img.png', 'Alt', 'Title')), '$[0].c[0].c[1][0].c');
+----
+"Alt"
+
+# Image title is preserved
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(db_image('http://example.com/img.png', 'Alt', 'Title')), '$[0].c[0].c[2][1]');
+----
+"Title"
+
+# ============================================================================
+# Raw Block Round-Trip Tests
+# ============================================================================
+
+# Raw block outputs as RawBlock
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(db_raw('html', '<div>Test</div>')), '$[0].t');
+----
+"RawBlock"
+
+# Raw block format is preserved
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(db_raw('html', '<div>Test</div>')), '$[0].c[0]');
+----
+"html"
+
+# Raw block content is preserved
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(db_raw('html', '<div>Test</div>')), '$[0].c[1]');
+----
+"<div>Test</div>"
+
+# Raw block with latex format
+query I
+SELECT json_extract(duck_blocks_to_pandoc_blocks(db_raw('latex', '\\textbf{bold}')), '$[0].c[0]');
+----
+"latex"
+
+# Raw block round-trip preserves type
+query I
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_raw('html', '<span>X</span>')))[1].element_type;
+----
+raw
+
+# Raw block round-trip preserves format attribute
+query I
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_raw('html', '<span>X</span>')))[1].attributes['format'];
+----
+html
+
+# Raw block round-trip preserves content
+query I
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_raw('html', '<span>X</span>')))[1].content;
+----
+<span>X</span>
