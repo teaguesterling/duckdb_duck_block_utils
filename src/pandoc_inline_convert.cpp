@@ -19,8 +19,8 @@ static Value CreateAttrsMap(const map<string, string> &attrs) {
 }
 
 // Helper to create a single duck_block Value (for inline)
-static Value CreateDocInline(const string &inline_type, const string &content,
-                             int32_t level, const map<string, string> &attrs, int32_t order) {
+static Value CreateDocInline(const string &inline_type, const string &content, int32_t level,
+                             const map<string, string> &attrs, int32_t order) {
 	child_list_t<Value> struct_values;
 	struct_values.push_back(make_pair("kind", Value(BlockTypes::KIND_INLINE)));
 	struct_values.push_back(make_pair("element_type", Value(inline_type)));
@@ -36,12 +36,15 @@ static Value CreateDocInline(const string &inline_type, const string &content,
 static string ExtractJsonString(const string &json, const string &key) {
 	string search = "\"" + key + "\":";
 	size_t pos = json.find(search);
-	if (pos == string::npos) return "";
+	if (pos == string::npos)
+		return "";
 
 	pos += search.length();
-	while (pos < json.length() && (json[pos] == ' ' || json[pos] == '\t')) pos++;
+	while (pos < json.length() && (json[pos] == ' ' || json[pos] == '\t'))
+		pos++;
 
-	if (pos >= json.length()) return "";
+	if (pos >= json.length())
+		return "";
 
 	if (json[pos] == '"') {
 		pos++;
@@ -50,12 +53,23 @@ static string ExtractJsonString(const string &json, const string &key) {
 			if (json[pos] == '\\' && pos + 1 < json.length()) {
 				pos++;
 				switch (json[pos]) {
-					case 'n': result += '\n'; break;
-					case 'r': result += '\r'; break;
-					case 't': result += '\t'; break;
-					case '"': result += '"'; break;
-					case '\\': result += '\\'; break;
-					default: result += json[pos];
+				case 'n':
+					result += '\n';
+					break;
+				case 'r':
+					result += '\r';
+					break;
+				case 't':
+					result += '\t';
+					break;
+				case '"':
+					result += '"';
+					break;
+				case '\\':
+					result += '\\';
+					break;
+				default:
+					result += json[pos];
 				}
 			} else {
 				result += json[pos];
@@ -68,8 +82,7 @@ static string ExtractJsonString(const string &json, const string &key) {
 }
 
 // Recursively flatten Pandoc inlines
-static void FlattenPandocInlines(const string &json, int32_t level, int32_t &order,
-                                 vector<Value> &result) {
+static void FlattenPandocInlines(const string &json, int32_t level, int32_t &order, vector<Value> &result) {
 	// Find array elements - simplified parser for Pandoc inline format
 	// Each inline is {"t": "Type", "c": content} or just {"t": "Type"}
 
@@ -77,15 +90,18 @@ static void FlattenPandocInlines(const string &json, int32_t level, int32_t &ord
 	while (pos < json.length()) {
 		// Find next object
 		size_t obj_start = json.find("{\"t\":", pos);
-		if (obj_start == string::npos) break;
+		if (obj_start == string::npos)
+			break;
 
 		// Find the type
 		size_t type_start = json.find("\"", obj_start + 5);
-		if (type_start == string::npos) break;
+		if (type_start == string::npos)
+			break;
 		type_start++;
 
 		size_t type_end = json.find("\"", type_start);
-		if (type_end == string::npos) break;
+		if (type_end == string::npos)
+			break;
 
 		string pandoc_type = json.substr(type_start, type_end - type_start);
 
@@ -97,8 +113,10 @@ static void FlattenPandocInlines(const string &json, int32_t level, int32_t &ord
 		int brace_count = 1;
 		size_t obj_end = obj_start + 1;
 		while (obj_end < json.length() && brace_count > 0) {
-			if (json[obj_end] == '{') brace_count++;
-			else if (json[obj_end] == '}') brace_count--;
+			if (json[obj_end] == '{')
+				brace_count++;
+			else if (json[obj_end] == '}')
+				brace_count--;
 			obj_end++;
 		}
 
@@ -228,7 +246,7 @@ static void FlattenPandocInlines(const string &json, int32_t level, int32_t &ord
 						if (str_start != string::npos) {
 							str_start++;
 							size_t str_end = obj_content.find("\"", str_start);
-							while (str_end != string::npos && str_end > 0 && obj_content[str_end-1] == '\\') {
+							while (str_end != string::npos && str_end > 0 && obj_content[str_end - 1] == '\\') {
 								str_end = obj_content.find("\"", str_end + 1);
 							}
 							if (str_end != string::npos) {
@@ -290,8 +308,10 @@ static void FlattenPandocInlines(const string &json, int32_t level, int32_t &ord
 						int bracket_count = 1;
 						size_t arr_end = arr_start + 1;
 						while (arr_end < obj_content.length() && bracket_count > 0) {
-							if (obj_content[arr_end] == '[') bracket_count++;
-							else if (obj_content[arr_end] == ']') bracket_count--;
+							if (obj_content[arr_end] == '[')
+								bracket_count++;
+							else if (obj_content[arr_end] == ']')
+								bracket_count--;
 							arr_end++;
 						}
 						string children = obj_content.substr(arr_start, arr_end - arr_start);
@@ -435,7 +455,8 @@ void PandocInlineConvert::PandocInlinesToDbInlinesFun(DataChunk &args, Expressio
 }
 
 // Convert doc_inlines back to Pandoc JSON
-static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_idx, int32_t target_level, idx_t &end_idx) {
+static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_idx, int32_t target_level,
+                                     idx_t &end_idx) {
 	std::ostringstream json;
 	json << "[";
 
@@ -447,8 +468,10 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 		auto children = StructValue::GetChildren(inline_val);
 
 		string inline_type = children[BlockTypes::ELEMENT_TYPE_IDX].GetValue<string>();
-		string content = children[BlockTypes::CONTENT_IDX].IsNull() ? "" : children[BlockTypes::CONTENT_IDX].GetValue<string>();
-		int32_t level = children[BlockTypes::LEVEL_IDX].IsNull() ? 1 : children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+		string content =
+		    children[BlockTypes::CONTENT_IDX].IsNull() ? "" : children[BlockTypes::CONTENT_IDX].GetValue<string>();
+		int32_t level =
+		    children[BlockTypes::LEVEL_IDX].IsNull() ? 1 : children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
 
 		// If this inline is at a lower level, we've exited the current scope
 		if (level < target_level) {
@@ -461,18 +484,25 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			continue;
 		}
 
-		if (!first) json << ",";
+		if (!first)
+			json << ",";
 		first = false;
 
 		// Escape content for JSON
 		string escaped_content;
 		for (char c : content) {
-			if (c == '"') escaped_content += "\\\"";
-			else if (c == '\\') escaped_content += "\\\\";
-			else if (c == '\n') escaped_content += "\\n";
-			else if (c == '\r') escaped_content += "\\r";
-			else if (c == '\t') escaped_content += "\\t";
-			else escaped_content += c;
+			if (c == '"')
+				escaped_content += "\\\"";
+			else if (c == '\\')
+				escaped_content += "\\\\";
+			else if (c == '\n')
+				escaped_content += "\\n";
+			else if (c == '\r')
+				escaped_content += "\\r";
+			else if (c == '\t')
+				escaped_content += "\\t";
+			else
+				escaped_content += c;
 		}
 
 		// Map our types back to Pandoc
@@ -554,7 +584,8 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			if (!attrs.IsNull()) {
 				auto &map_entries = MapValue::GetChildren(attrs);
 				for (auto &entry : map_entries) {
-					if (entry.IsNull()) continue;
+					if (entry.IsNull())
+						continue;
 					auto &kv = StructValue::GetChildren(entry);
 					if (kv.size() >= 2 && !kv[0].IsNull() && kv[0].GetValue<string>() == "href") {
 						if (!kv[1].IsNull()) {
@@ -569,7 +600,8 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
 			// If no nested children but has content, create Str from content
 			if (nested == "[]" && !content.empty()) {
-				json << "{\"t\":\"Link\",\"c\":[[\"\",[],[]],[{\"t\":\"Str\",\"c\":\"" << escaped_content << "\"}],[\"" << href << "\",\"\"]]}";
+				json << "{\"t\":\"Link\",\"c\":[[\"\",[],[]],[{\"t\":\"Str\",\"c\":\"" << escaped_content << "\"}],[\""
+				     << href << "\",\"\"]]}";
 			} else {
 				json << "{\"t\":\"Link\",\"c\":[[\"\",[],[]]," << nested << ",[\"" << href << "\",\"\"]]}";
 			}
@@ -580,7 +612,8 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			if (!attrs.IsNull()) {
 				auto &map_entries = MapValue::GetChildren(attrs);
 				for (auto &entry : map_entries) {
-					if (entry.IsNull()) continue;
+					if (entry.IsNull())
+						continue;
 					auto &kv = StructValue::GetChildren(entry);
 					if (kv.size() >= 2 && !kv[0].IsNull() && kv[0].GetValue<string>() == "src") {
 						if (!kv[1].IsNull()) {
@@ -597,7 +630,8 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			if (!attrs.IsNull()) {
 				auto &map_entries = MapValue::GetChildren(attrs);
 				for (auto &entry : map_entries) {
-					if (entry.IsNull()) continue;
+					if (entry.IsNull())
+						continue;
 					auto &kv = StructValue::GetChildren(entry);
 					if (kv.size() >= 2 && !kv[0].IsNull() && kv[0].GetValue<string>() == "format") {
 						if (!kv[1].IsNull()) {
@@ -614,7 +648,8 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			if (!attrs.IsNull()) {
 				auto &map_entries = MapValue::GetChildren(attrs);
 				for (auto &entry : map_entries) {
-					if (entry.IsNull()) continue;
+					if (entry.IsNull())
+						continue;
 					auto &kv = StructValue::GetChildren(entry);
 					if (kv.size() >= 2 && !kv[0].IsNull() && kv[0].GetValue<string>() == "quote_type") {
 						if (!kv[1].IsNull() && kv[1].GetValue<string>() == "single") {
@@ -673,7 +708,8 @@ string PandocInlineConvert::ConvertInlinesToPandocJson(const vector<Value> &inli
 	// Determine the level of the first inline and use that as target level
 	auto &first = inlines[0];
 	auto first_children = StructValue::GetChildren(first);
-	int32_t target_level = first_children[BlockTypes::LEVEL_IDX].IsNull() ? 1 : first_children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+	int32_t target_level =
+	    first_children[BlockTypes::LEVEL_IDX].IsNull() ? 1 : first_children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
 
 	idx_t end_idx = 0;
 	return DocInlinesToPandocJson(inlines, 0, target_level, end_idx);
@@ -687,14 +723,17 @@ static string RenderInlinesToText(const string &json, const string &mode) {
 	size_t pos = 0;
 	while (pos < json.length()) {
 		size_t obj_start = json.find("{\"t\":", pos);
-		if (obj_start == string::npos) break;
+		if (obj_start == string::npos)
+			break;
 
 		size_t type_start = json.find("\"", obj_start + 5);
-		if (type_start == string::npos) break;
+		if (type_start == string::npos)
+			break;
 		type_start++;
 
 		size_t type_end = json.find("\"", type_start);
-		if (type_end == string::npos) break;
+		if (type_end == string::npos)
+			break;
 
 		string pandoc_type = json.substr(type_start, type_end - type_start);
 
@@ -702,8 +741,10 @@ static string RenderInlinesToText(const string &json, const string &mode) {
 		int brace_count = 1;
 		size_t obj_end = obj_start + 1;
 		while (obj_end < json.length() && brace_count > 0) {
-			if (json[obj_end] == '{') brace_count++;
-			else if (json[obj_end] == '}') brace_count--;
+			if (json[obj_end] == '{')
+				brace_count++;
+			else if (json[obj_end] == '}')
+				brace_count--;
 			obj_end++;
 		}
 
@@ -718,7 +759,8 @@ static string RenderInlinesToText(const string &json, const string &mode) {
 		} else if (pandoc_type == "LineBreak") {
 			out << "\n";
 		} else if (pandoc_type == "Strong") {
-			if (mode == "markdown") out << "**";
+			if (mode == "markdown")
+				out << "**";
 			// Recurse for children
 			size_t c_start = obj_content.find("\"c\":");
 			if (c_start != string::npos) {
@@ -728,9 +770,11 @@ static string RenderInlinesToText(const string &json, const string &mode) {
 					out << RenderInlinesToText(obj_content.substr(arr_start, arr_end - arr_start + 1), mode);
 				}
 			}
-			if (mode == "markdown") out << "**";
+			if (mode == "markdown")
+				out << "**";
 		} else if (pandoc_type == "Emph") {
-			if (mode == "markdown") out << "*";
+			if (mode == "markdown")
+				out << "*";
 			size_t c_start = obj_content.find("\"c\":");
 			if (c_start != string::npos) {
 				size_t arr_start = obj_content.find("[", c_start);
@@ -739,9 +783,11 @@ static string RenderInlinesToText(const string &json, const string &mode) {
 					out << RenderInlinesToText(obj_content.substr(arr_start, arr_end - arr_start + 1), mode);
 				}
 			}
-			if (mode == "markdown") out << "*";
+			if (mode == "markdown")
+				out << "*";
 		} else if (pandoc_type == "Code") {
-			if (mode == "markdown") out << "`";
+			if (mode == "markdown")
+				out << "`";
 			// Extract code content
 			size_t c_start = obj_content.find("\"c\":");
 			if (c_start != string::npos) {
@@ -757,7 +803,8 @@ static string RenderInlinesToText(const string &json, const string &mode) {
 					}
 				}
 			}
-			if (mode == "markdown") out << "`";
+			if (mode == "markdown")
+				out << "`";
 		} else if (pandoc_type == "Link") {
 			// Extract link text and URL
 			size_t c_start = obj_content.find("\"c\":");
@@ -773,8 +820,10 @@ static string RenderInlinesToText(const string &json, const string &mode) {
 							int bracket_count = 1;
 							size_t arr_end = arr_start + 1;
 							while (arr_end < obj_content.length() && bracket_count > 0) {
-								if (obj_content[arr_end] == '[') bracket_count++;
-								else if (obj_content[arr_end] == ']') bracket_count--;
+								if (obj_content[arr_end] == '[')
+									bracket_count++;
+								else if (obj_content[arr_end] == ']')
+									bracket_count--;
 								arr_end++;
 							}
 							out << RenderInlinesToText(obj_content.substr(arr_start, arr_end - arr_start), mode);
@@ -847,7 +896,8 @@ static void DbInlinesToPandocNestedFun(DataChunk &args, ExpressionState &state, 
 		auto &outer_list = ListValue::GetChildren(list_val);
 		vector<Value> flattened;
 		for (auto &inner : outer_list) {
-			if (inner.IsNull()) continue;
+			if (inner.IsNull())
+				continue;
 			auto &inner_list = ListValue::GetChildren(inner);
 			for (auto &elem : inner_list) {
 				flattened.push_back(elem);
@@ -864,44 +914,24 @@ void PandocInlineConvert::Register(ExtensionLoader &loader) {
 	auto duck_block_nested_list_type = LogicalType::LIST(duck_block_list_type);
 
 	// pandoc_inlines_to_db_inlines(json VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction(
-	    "pandoc_inlines_to_db_inlines",
-	    {LogicalType::VARCHAR},
-	    duck_block_list_type,
-	    PandocInlinesToDbInlinesFun
-	));
+	loader.RegisterFunction(ScalarFunction("pandoc_inlines_to_db_inlines", {LogicalType::VARCHAR}, duck_block_list_type,
+	                                       PandocInlinesToDbInlinesFun));
 
 	// db_inlines_to_pandoc(LIST(duck_block)) -> VARCHAR (JSON)
-	loader.RegisterFunction(ScalarFunction(
-	    "db_inlines_to_pandoc",
-	    {duck_block_list_type},
-	    LogicalType::VARCHAR,
-	    DbInlinesToPandocFun
-	));
+	loader.RegisterFunction(
+	    ScalarFunction("db_inlines_to_pandoc", {duck_block_list_type}, LogicalType::VARCHAR, DbInlinesToPandocFun));
 
 	// db_inlines_to_pandoc(LIST(LIST(duck_block))) -> VARCHAR (JSON) - auto-flattening
-	loader.RegisterFunction(ScalarFunction(
-	    "db_inlines_to_pandoc",
-	    {duck_block_nested_list_type},
-	    LogicalType::VARCHAR,
-	    DbInlinesToPandocNestedFun
-	));
+	loader.RegisterFunction(ScalarFunction("db_inlines_to_pandoc", {duck_block_nested_list_type}, LogicalType::VARCHAR,
+	                                       DbInlinesToPandocNestedFun));
 
 	// pandoc_inlines_to_text(json VARCHAR) -> VARCHAR
-	loader.RegisterFunction(ScalarFunction(
-	    "pandoc_inlines_to_text",
-	    {LogicalType::VARCHAR},
-	    LogicalType::VARCHAR,
-	    PandocInlinesToTextFun
-	));
+	loader.RegisterFunction(
+	    ScalarFunction("pandoc_inlines_to_text", {LogicalType::VARCHAR}, LogicalType::VARCHAR, PandocInlinesToTextFun));
 
 	// pandoc_inlines_to_text(json VARCHAR, mode VARCHAR) -> VARCHAR
-	loader.RegisterFunction(ScalarFunction(
-	    "pandoc_inlines_to_text",
-	    {LogicalType::VARCHAR, LogicalType::VARCHAR},
-	    LogicalType::VARCHAR,
-	    PandocInlinesToTextFun
-	));
+	loader.RegisterFunction(ScalarFunction("pandoc_inlines_to_text", {LogicalType::VARCHAR, LogicalType::VARCHAR},
+	                                       LogicalType::VARCHAR, PandocInlinesToTextFun));
 }
 
 } // namespace duckdb

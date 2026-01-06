@@ -15,9 +15,7 @@ static bool VarcharToDuckBlockCast(Vector &source, Vector &result, idx_t count, 
 	auto &result_entries = StructVector::GetEntries(result);
 
 	UnaryExecutor::Execute<string_t, string_t>(source, *result_entries[BlockTypes::CONTENT_IDX], count,
-	    [&](string_t input) {
-		    return input;
-	    });
+	                                           [&](string_t input) { return input; });
 
 	// Set constant values for the other struct fields
 	auto empty_attrs = CreateEmptyAttributesMap();
@@ -40,8 +38,7 @@ LogicalType BlockTypes::DuckBlockType() {
 	struct_children.push_back(make_pair("content", LogicalType::VARCHAR));
 	struct_children.push_back(make_pair("level", LogicalType::INTEGER));
 	struct_children.push_back(make_pair("encoding", LogicalType::VARCHAR));
-	struct_children.push_back(make_pair("attributes",
-	                                    LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR)));
+	struct_children.push_back(make_pair("attributes", LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR)));
 	struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
 
 	return LogicalType::STRUCT(std::move(struct_children));
@@ -58,8 +55,7 @@ LogicalType BlockTypes::DuckBlockExtType() {
 	struct_children.push_back(make_pair("content", LogicalType::VARCHAR));
 	struct_children.push_back(make_pair("level", LogicalType::INTEGER));
 	struct_children.push_back(make_pair("encoding", LogicalType::VARCHAR));
-	struct_children.push_back(make_pair("attributes",
-	                                    LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR)));
+	struct_children.push_back(make_pair("attributes", LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR)));
 	struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
 	// Extended fields for provenance
 	struct_children.push_back(make_pair("source_format", LogicalType::VARCHAR));
@@ -76,8 +72,7 @@ void BlockTypes::Register(ExtensionLoader &loader) {
 	// Register cast from VARCHAR to duck_block (creates text inline element)
 	// Using implicit_cast_cost = -1 means explicit cast only (not implicit)
 	// This avoids ambiguity in function overload resolution
-	loader.RegisterCastFunction(LogicalType::VARCHAR, duck_block_type,
-	                            BoundCastInfo(VarcharToDuckBlockCast), -1);
+	loader.RegisterCastFunction(LogicalType::VARCHAR, duck_block_type, BoundCastInfo(VarcharToDuckBlockCast), -1);
 }
 
 } // namespace duckdb

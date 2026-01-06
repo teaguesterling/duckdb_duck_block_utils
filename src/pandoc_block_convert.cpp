@@ -25,14 +25,13 @@ static Value CreateAttrsMap(const map<string, string> &attrs) {
 }
 
 // Helper to create a single duck_block Value (for block)
-static Value CreateDocBlock(const string &block_type, const string &content,
-                            const map<string, string> &attrs, int32_t order,
-                            const string &encoding = "text") {
+static Value CreateDocBlock(const string &block_type, const string &content, const map<string, string> &attrs,
+                            int32_t order, const string &encoding = "text") {
 	child_list_t<Value> struct_values;
 	struct_values.push_back(make_pair("kind", Value(BlockTypes::KIND_BLOCK)));
 	struct_values.push_back(make_pair("element_type", Value(block_type)));
 	struct_values.push_back(make_pair("content", Value(content)));
-	struct_values.push_back(make_pair("level", Value()));  // NULL for blocks
+	struct_values.push_back(make_pair("level", Value())); // NULL for blocks
 	struct_values.push_back(make_pair("encoding", Value(encoding)));
 	struct_values.push_back(make_pair("attributes", CreateAttrsMap(attrs)));
 	struct_values.push_back(make_pair("element_order", Value(order)));
@@ -43,12 +42,15 @@ static Value CreateDocBlock(const string &block_type, const string &content,
 static string ExtractJsonString(const string &json, const string &key) {
 	string search = "\"" + key + "\":";
 	size_t pos = json.find(search);
-	if (pos == string::npos) return "";
+	if (pos == string::npos)
+		return "";
 
 	pos += search.length();
-	while (pos < json.length() && (json[pos] == ' ' || json[pos] == '\t')) pos++;
+	while (pos < json.length() && (json[pos] == ' ' || json[pos] == '\t'))
+		pos++;
 
-	if (pos >= json.length()) return "";
+	if (pos >= json.length())
+		return "";
 
 	if (json[pos] == '"') {
 		pos++;
@@ -57,12 +59,23 @@ static string ExtractJsonString(const string &json, const string &key) {
 			if (json[pos] == '\\' && pos + 1 < json.length()) {
 				pos++;
 				switch (json[pos]) {
-					case 'n': result += '\n'; break;
-					case 'r': result += '\r'; break;
-					case 't': result += '\t'; break;
-					case '"': result += '"'; break;
-					case '\\': result += '\\'; break;
-					default: result += json[pos];
+				case 'n':
+					result += '\n';
+					break;
+				case 'r':
+					result += '\r';
+					break;
+				case 't':
+					result += '\t';
+					break;
+				case '"':
+					result += '"';
+					break;
+				case '\\':
+					result += '\\';
+					break;
+				default:
+					result += json[pos];
 				}
 			} else {
 				result += json[pos];
@@ -79,7 +92,8 @@ static int32_t ExtractJsonInt(const string &json, size_t start_pos) {
 	while (start_pos < json.length() && !isdigit(json[start_pos]) && json[start_pos] != '-') {
 		start_pos++;
 	}
-	if (start_pos >= json.length()) return 0;
+	if (start_pos >= json.length())
+		return 0;
 
 	string num_str;
 	while (start_pos < json.length() && (isdigit(json[start_pos]) || json[start_pos] == '-')) {
@@ -93,8 +107,10 @@ static size_t FindMatchingBracket(const string &json, size_t start, char open, c
 	int count = 1;
 	size_t pos = start + 1;
 	while (pos < json.length() && count > 0) {
-		if (json[pos] == open) count++;
-		else if (json[pos] == close) count--;
+		if (json[pos] == open)
+			count++;
+		else if (json[pos] == close)
+			count--;
 		pos++;
 	}
 	return pos;
@@ -133,17 +149,18 @@ static string ExtractInlinesText(const string &json) {
 			token_type = "LineBreak";
 		}
 
-		if (next_pos == string::npos) break;
+		if (next_pos == string::npos)
+			break;
 
 		if (token_type == "Space") {
 			result += " ";
-			pos = next_pos + 11;  // strlen("\"t\":\"Space\"")
+			pos = next_pos + 11; // strlen("\"t\":\"Space\"")
 		} else if (token_type == "SoftBreak") {
 			result += " ";
-			pos = next_pos + 15;  // strlen("\"t\":\"SoftBreak\"")
+			pos = next_pos + 15; // strlen("\"t\":\"SoftBreak\"")
 		} else if (token_type == "LineBreak") {
 			result += "\n";
-			pos = next_pos + 15;  // strlen("\"t\":\"LineBreak\"")
+			pos = next_pos + 15; // strlen("\"t\":\"LineBreak\"")
 		} else if (token_type == "Str") {
 			size_t c_pos = json.find("\"c\":", next_pos);
 			if (c_pos != string::npos) {
@@ -163,11 +180,20 @@ static string ExtractInlinesText(const string &json) {
 						if (json[i] == '\\' && i + 1 < quote_end) {
 							i++;
 							switch (json[i]) {
-								case 'n': result += '\n'; break;
-								case 't': result += '\t'; break;
-								case '"': result += '"'; break;
-								case '\\': result += '\\'; break;
-								default: result += json[i];
+							case 'n':
+								result += '\n';
+								break;
+							case 't':
+								result += '\t';
+								break;
+							case '"':
+								result += '"';
+								break;
+							case '\\':
+								result += '\\';
+								break;
+							default:
+								result += json[i];
 							}
 						} else {
 							result += json[i];
@@ -177,7 +203,7 @@ static string ExtractInlinesText(const string &json) {
 					continue;
 				}
 			}
-			pos = next_pos + 10;  // strlen("\"t\":\"Str\"")
+			pos = next_pos + 10; // strlen("\"t\":\"Str\"")
 		}
 	}
 
@@ -188,14 +214,17 @@ static string ExtractInlinesText(const string &json) {
 static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<Value> &result) {
 	// Find the type
 	size_t type_start = block_json.find("\"t\":");
-	if (type_start == string::npos) return;
+	if (type_start == string::npos)
+		return;
 
 	size_t quote_start = block_json.find("\"", type_start + 4);
-	if (quote_start == string::npos) return;
+	if (quote_start == string::npos)
+		return;
 	quote_start++;
 
 	size_t quote_end = block_json.find("\"", quote_start);
-	if (quote_end == string::npos) return;
+	if (quote_end == string::npos)
+		return;
 
 	string pandoc_type = block_json.substr(quote_start, quote_end - quote_start);
 
@@ -253,7 +282,7 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 			}
 		}
 	} else if (pandoc_type == "Plain") {
-		block_type = BlockTypes::TYPE_PARAGRAPH;  // Treat Plain as paragraph
+		block_type = BlockTypes::TYPE_PARAGRAPH; // Treat Plain as paragraph
 		size_t c_pos = block_json.find("\"c\":");
 		if (c_pos != string::npos) {
 			size_t arr_start = block_json.find("[", c_pos);
@@ -294,7 +323,8 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 						size_t code_end = code_quote;
 						// Find end quote (handling escapes)
 						while (code_end < block_json.length()) {
-							if (block_json[code_end] == '"') break;
+							if (block_json[code_end] == '"')
+								break;
 							if (block_json[code_end] == '\\' && code_end + 1 < block_json.length()) {
 								code_end += 2;
 							} else {
@@ -306,11 +336,20 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 							if (block_json[i] == '\\' && i + 1 < code_end) {
 								i++;
 								switch (block_json[i]) {
-									case 'n': content += '\n'; break;
-									case 't': content += '\t'; break;
-									case '"': content += '"'; break;
-									case '\\': content += '\\'; break;
-									default: content += block_json[i];
+								case 'n':
+									content += '\n';
+									break;
+								case 't':
+									content += '\t';
+									break;
+								case '"':
+									content += '"';
+									break;
+								case '\\':
+									content += '\\';
+									break;
+								default:
+									content += block_json[i];
 								}
 							} else {
 								content += block_json[i];
@@ -329,7 +368,7 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 			if (arr_start != string::npos) {
 				size_t arr_end = FindMatchingBracket(block_json, arr_start, '[', ']');
 				string inner = block_json.substr(arr_start, arr_end - arr_start);
-				content = ExtractInlinesText(inner);  // Simplified
+				content = ExtractInlinesText(inner); // Simplified
 			}
 		}
 	} else if (pandoc_type == "BulletList" || pandoc_type == "OrderedList") {
@@ -381,7 +420,8 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 						content_quote++;
 						size_t content_end = content_quote;
 						while (content_end < block_json.length()) {
-							if (block_json[content_end] == '"') break;
+							if (block_json[content_end] == '"')
+								break;
 							if (block_json[content_end] == '\\' && content_end + 1 < block_json.length()) {
 								content_end += 2;
 							} else {
@@ -392,9 +432,14 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 							if (block_json[i] == '\\' && i + 1 < content_end) {
 								i++;
 								switch (block_json[i]) {
-									case 'n': content += '\n'; break;
-									case 't': content += '\t'; break;
-									default: content += block_json[i];
+								case 'n':
+									content += '\n';
+									break;
+								case 't':
+									content += '\t';
+									break;
+								default:
+									content += block_json[i];
 								}
 							} else {
 								content += block_json[i];
@@ -452,13 +497,14 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 						size_t nested_pos = 0;
 						while (nested_pos < nested_blocks.length()) {
 							size_t obj_start = nested_blocks.find("{\"t\":", nested_pos);
-							if (obj_start == string::npos) break;
+							if (obj_start == string::npos)
+								break;
 							size_t obj_end = FindMatchingBracket(nested_blocks, obj_start, '{', '}');
 							string child_block = nested_blocks.substr(obj_start, obj_end - obj_start);
 							ProcessPandocBlock(child_block, order, result);
 							nested_pos = obj_end;
 						}
-						return;  // Already added blocks
+						return; // Already added blocks
 					}
 				}
 			}
@@ -481,7 +527,8 @@ static void ParsePandocBlocks(const string &json, int32_t &order, vector<Value> 
 	while (pos < json.length()) {
 		// Find next block object
 		size_t obj_start = json.find("{\"t\":", pos);
-		if (obj_start == string::npos) break;
+		if (obj_start == string::npos)
+			break;
 
 		// Find matching closing brace
 		size_t obj_end = FindMatchingBracket(json, obj_start, '{', '}');
@@ -539,12 +586,23 @@ static string JsonEscape(const string &s) {
 	string result;
 	for (char c : s) {
 		switch (c) {
-			case '"': result += "\\\""; break;
-			case '\\': result += "\\\\"; break;
-			case '\n': result += "\\n"; break;
-			case '\r': result += "\\r"; break;
-			case '\t': result += "\\t"; break;
-			default: result += c;
+		case '"':
+			result += "\\\"";
+			break;
+		case '\\':
+			result += "\\\\";
+			break;
+		case '\n':
+			result += "\\n";
+			break;
+		case '\r':
+			result += "\\r";
+			break;
+		case '\t':
+			result += "\\t";
+			break;
+		default:
+			result += c;
 		}
 	}
 	return result;
@@ -569,7 +627,8 @@ static string GetElementAttribute(const Value &element, const string &key) {
 
 	auto &map_entries = MapValue::GetChildren(attrs);
 	for (auto &entry : map_entries) {
-		if (entry.IsNull()) continue;
+		if (entry.IsNull())
+			continue;
 		auto &kv = StructValue::GetChildren(entry);
 		if (kv.size() >= 2 && !kv[0].IsNull() && kv[0].GetValue<string>() == key) {
 			if (!kv[1].IsNull()) {
@@ -684,7 +743,8 @@ static string ConvertListToPandocJson(const vector<Value> &blocks_list, idx_t &s
 
 	bool first_item = true;
 	for (auto &item : items) {
-		if (!first_item) oss << ",";
+		if (!first_item)
+			oss << ",";
 		first_item = false;
 
 		// Each item is an array of blocks
@@ -772,15 +832,18 @@ static string ConvertDivToPandocJson(const vector<Value> &blocks_list, idx_t &st
 			vector<Value> inline_children;
 			for (idx_t k = j + 1; k < blocks_list.size(); k++) {
 				auto &inl = blocks_list[k];
-				if (inl.IsNull()) continue;
+				if (inl.IsNull())
+					continue;
 				auto inl_kind = GetElementStringField(inl, BlockTypes::KIND_IDX);
-				if (inl_kind == BlockTypes::KIND_BLOCK) break;
+				if (inl_kind == BlockTypes::KIND_BLOCK)
+					break;
 				if (inl_kind == BlockTypes::KIND_INLINE) {
 					inline_children.push_back(inl);
 				}
 			}
 
-			if (!first_child) oss << ",";
+			if (!first_child)
+				oss << ",";
 			first_child = false;
 
 			if (child_type == BlockTypes::TYPE_PARAGRAPH) {
@@ -797,21 +860,25 @@ static string ConvertDivToPandocJson(const vector<Value> &blocks_list, idx_t &st
 				auto hid = GetElementAttribute(child, "id");
 				if (!inline_children.empty()) {
 					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
-					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(hid) << "\",[],[]]," << inlines_json << "]}";
+					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(hid) << "\",[],[]],"
+					    << inlines_json << "]}";
 				} else {
-					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(hid) << "\",[],[]],[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
+					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(hid)
+					    << "\",[],[]],[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
 				}
 				j++;
 			} else if (child_type == BlockTypes::TYPE_CODE) {
 				auto language = GetElementAttribute(child, "language");
-				oss << "{\"t\":\"CodeBlock\",\"c\":[[\"\",[\"" << JsonEscape(language) << "\"],[]],\"" << JsonEscape(content) << "\"]}";
+				oss << "{\"t\":\"CodeBlock\",\"c\":[[\"\",[\"" << JsonEscape(language) << "\"],[]],\""
+				    << JsonEscape(content) << "\"]}";
 				j++;
 			} else if (child_type == BlockTypes::TYPE_BLOCKQUOTE) {
 				if (!inline_children.empty()) {
 					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
 					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":" << inlines_json << "}]}";
 				} else if (!content.empty()) {
-					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}]}";
+					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\""
+					    << JsonEscape(content) << "\"}]}]}";
 				} else {
 					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[]}]}";
 				}
@@ -855,7 +922,7 @@ void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, Expression
 		oss << "[";
 
 		bool first = true;
-		for (idx_t block_idx = 0; block_idx < blocks_list.size(); ) {
+		for (idx_t block_idx = 0; block_idx < blocks_list.size();) {
 			auto &block = blocks_list[block_idx];
 			if (block.IsNull()) {
 				block_idx++;
@@ -865,7 +932,7 @@ void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, Expression
 			auto kind = GetElementStringField(block, BlockTypes::KIND_IDX);
 			if (kind != BlockTypes::KIND_BLOCK) {
 				block_idx++;
-				continue;  // Skip inlines at this level
+				continue; // Skip inlines at this level
 			}
 
 			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
@@ -887,15 +954,18 @@ void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, Expression
 			vector<Value> inline_children;
 			for (idx_t j = block_idx + 1; j < blocks_list.size(); j++) {
 				auto &child = blocks_list[j];
-				if (child.IsNull()) continue;
+				if (child.IsNull())
+					continue;
 				auto child_kind = GetElementStringField(child, BlockTypes::KIND_IDX);
-				if (child_kind == BlockTypes::KIND_BLOCK) break;  // Stop at next block
+				if (child_kind == BlockTypes::KIND_BLOCK)
+					break; // Stop at next block
 				if (child_kind == BlockTypes::KIND_INLINE) {
 					inline_children.push_back(child);
 				}
 			}
 
-			if (!first) oss << ",";
+			if (!first)
+				oss << ",";
 			first = false;
 
 			if (element_type == BlockTypes::TYPE_HEADING) {
@@ -905,9 +975,11 @@ void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, Expression
 				// If has inline children, convert them; otherwise use content
 				if (!inline_children.empty()) {
 					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
-					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id) << "\",[],[]]," << inlines_json << "]}";
+					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id) << "\",[],[]],"
+					    << inlines_json << "]}";
 				} else {
-					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id) << "\",[],[]],[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
+					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id)
+					    << "\",[],[]],[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
 				}
 				block_idx++;
 			} else if (element_type == BlockTypes::TYPE_PARAGRAPH) {
@@ -921,7 +993,8 @@ void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, Expression
 				block_idx++;
 			} else if (element_type == BlockTypes::TYPE_CODE) {
 				auto language = GetElementAttribute(block, "language");
-				oss << "{\"t\":\"CodeBlock\",\"c\":[[\"\",[\"" << JsonEscape(language) << "\"],[]],\"" << JsonEscape(content) << "\"]}";
+				oss << "{\"t\":\"CodeBlock\",\"c\":[[\"\",[\"" << JsonEscape(language) << "\"],[]],\""
+				    << JsonEscape(content) << "\"]}";
 				block_idx++;
 			} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE) {
 				// BlockQuote contains blocks; use inline children to build Para content
@@ -929,7 +1002,8 @@ void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, Expression
 					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
 					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":" << inlines_json << "}]}";
 				} else if (!content.empty()) {
-					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}]}";
+					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\""
+					    << JsonEscape(content) << "\"}]}]}";
 				} else {
 					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[]}]}";
 				}
@@ -939,8 +1013,10 @@ void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, Expression
 				block_idx++;
 			} else if (element_type == BlockTypes::TYPE_RAW) {
 				auto format = GetElementAttribute(block, "format");
-				if (format.empty()) format = "html";
-				oss << "{\"t\":\"RawBlock\",\"c\":[\"" << JsonEscape(format) << "\",\"" << JsonEscape(content) << "\"]}";
+				if (format.empty())
+					format = "html";
+				oss << "{\"t\":\"RawBlock\",\"c\":[\"" << JsonEscape(format) << "\",\"" << JsonEscape(content)
+				    << "\"]}";
 				block_idx++;
 			} else if (element_type == BlockTypes::TYPE_LIST) {
 				// Use recursive list converter that handles nested lists properly
@@ -1015,7 +1091,7 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 	oss << "[";
 	bool first = true;
 
-	for (idx_t block_idx = 0; block_idx < blocks_list.size(); ) {
+	for (idx_t block_idx = 0; block_idx < blocks_list.size();) {
 		auto &block = blocks_list[block_idx];
 		if (block.IsNull()) {
 			block_idx++;
@@ -1045,15 +1121,18 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 		vector<Value> inline_children;
 		for (idx_t j = block_idx + 1; j < blocks_list.size(); j++) {
 			auto &child = blocks_list[j];
-			if (child.IsNull()) continue;
+			if (child.IsNull())
+				continue;
 			auto child_kind = GetElementStringField(child, BlockTypes::KIND_IDX);
-			if (child_kind == BlockTypes::KIND_BLOCK) break;
+			if (child_kind == BlockTypes::KIND_BLOCK)
+				break;
 			if (child_kind == BlockTypes::KIND_INLINE) {
 				inline_children.push_back(child);
 			}
 		}
 
-		if (!first) oss << ",";
+		if (!first)
+			oss << ",";
 		first = false;
 
 		if (element_type == BlockTypes::TYPE_HEADING) {
@@ -1062,9 +1141,11 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			auto id = GetElementAttribute(block, "id");
 			if (!inline_children.empty()) {
 				string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
-				oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id) << "\",[],[]]," << inlines_json << "]}";
+				oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id) << "\",[],[]]," << inlines_json
+				    << "]}";
 			} else {
-				oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id) << "\",[],[]],[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
+				oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id)
+				    << "\",[],[]],[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
 			}
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_PARAGRAPH) {
@@ -1077,7 +1158,8 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_CODE) {
 			auto language = GetElementAttribute(block, "language");
-			oss << "{\"t\":\"CodeBlock\",\"c\":[[\"\",[\"" << JsonEscape(language) << "\"],[]],\"" << JsonEscape(content) << "\"]}";
+			oss << "{\"t\":\"CodeBlock\",\"c\":[[\"\",[\"" << JsonEscape(language) << "\"],[]],\""
+			    << JsonEscape(content) << "\"]}";
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE) {
 			// BlockQuote contains blocks; use inline children to build Para content
@@ -1085,7 +1167,8 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 				string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
 				oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":" << inlines_json << "}]}";
 			} else if (!content.empty()) {
-				oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}]}";
+				oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\""
+				    << JsonEscape(content) << "\"}]}]}";
 			} else {
 				oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[]}]}";
 			}
@@ -1095,7 +1178,8 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_RAW) {
 			auto format = GetElementAttribute(block, "format");
-			if (format.empty()) format = "html";
+			if (format.empty())
+				format = "html";
 			oss << "{\"t\":\"RawBlock\",\"c\":[\"" << JsonEscape(format) << "\",\"" << JsonEscape(content) << "\"]}";
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_LIST) {
@@ -1213,14 +1297,17 @@ static string ConvertMetaMapToJson(const Value &meta_map) {
 	oss << "{";
 	bool first = true;
 	for (auto &entry : map_entries) {
-		if (entry.IsNull()) continue;
+		if (entry.IsNull())
+			continue;
 		auto &kv = StructValue::GetChildren(entry);
-		if (kv.size() < 2 || kv[0].IsNull() || kv[1].IsNull()) continue;
+		if (kv.size() < 2 || kv[0].IsNull() || kv[1].IsNull())
+			continue;
 
 		string key = kv[0].GetValue<string>();
 		string value = kv[1].GetValue<string>();
 
-		if (!first) oss << ",";
+		if (!first)
+			oss << ",";
 		first = false;
 
 		oss << "\"" << JsonEscape(key) << "\":" << ConvertToMetaInlines(value);
@@ -1230,7 +1317,7 @@ static string ConvertMetaMapToJson(const Value &meta_map) {
 }
 
 static unique_ptr<FunctionData> PandocAstBind(ClientContext &context, TableFunctionBindInput &input,
-                                               vector<LogicalType> &return_types, vector<string> &names) {
+                                              vector<LogicalType> &return_types, vector<string> &names) {
 	auto result = make_uniq<PandocAstBindData>();
 
 	// Get the blocks parameter (first positional argument)
@@ -1342,50 +1429,30 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	auto duck_block_list_type = BlockTypes::DuckBlockListType();
 
 	// pandoc_ast_to_blocks(json VARCHAR) -> LIST(duck_block)
-	auto ast_to_blocks_func = ScalarFunction(
-	    "pandoc_ast_to_blocks",
-	    {LogicalType::VARCHAR},
-	    duck_block_list_type,
-	    PandocAstToBlocksFun
-	);
+	auto ast_to_blocks_func =
+	    ScalarFunction("pandoc_ast_to_blocks", {LogicalType::VARCHAR}, duck_block_list_type, PandocAstToBlocksFun);
 	loader.RegisterFunction(ast_to_blocks_func);
 
 	// duck_blocks_to_pandoc_blocks(blocks LIST(duck_block)) -> VARCHAR (JSON array of Pandoc blocks)
-	auto blocks_to_ast_func = ScalarFunction(
-	    "duck_blocks_to_pandoc_blocks",
-	    {duck_block_list_type},
-	    LogicalType::VARCHAR,
-	    DuckBlocksToPandocBlocksFun
-	);
+	auto blocks_to_ast_func = ScalarFunction("duck_blocks_to_pandoc_blocks", {duck_block_list_type},
+	                                         LogicalType::VARCHAR, DuckBlocksToPandocBlocksFun);
 	loader.RegisterFunction(blocks_to_ast_func);
 
 	// read_pandoc_ast(file_path VARCHAR) -> LIST(duck_block)
-	auto read_pandoc_ast_func = ScalarFunction(
-	    "read_pandoc_ast",
-	    {LogicalType::VARCHAR},
-	    duck_block_list_type,
-	    ReadPandocAstFun
-	);
+	auto read_pandoc_ast_func =
+	    ScalarFunction("read_pandoc_ast", {LogicalType::VARCHAR}, duck_block_list_type, ReadPandocAstFun);
 	loader.RegisterFunction(read_pandoc_ast_func);
 
 	// duck_blocks_to_pandoc_ast(blocks LIST(duck_block)) -> STRUCT(pandoc-api-version, meta, blocks)
 	// Creates complete Pandoc AST as a struct for proper JSON serialization
-	auto duck_blocks_to_ast_func = ScalarFunction(
-	    "duck_blocks_to_pandoc_ast",
-	    {duck_block_list_type},
-	    GetPandocAstType(),
-	    DuckBlocksToPandocAstFun
-	);
+	auto duck_blocks_to_ast_func = ScalarFunction("duck_blocks_to_pandoc_ast", {duck_block_list_type},
+	                                              GetPandocAstType(), DuckBlocksToPandocAstFun);
 	loader.RegisterFunction(duck_blocks_to_ast_func);
 
 	// write_pandoc_ast(file_path VARCHAR, blocks LIST(duck_block)) -> BOOLEAN
 	// Writes duck_blocks directly to a file as Pandoc JSON AST
-	auto write_pandoc_ast_func = ScalarFunction(
-	    "write_pandoc_ast",
-	    {LogicalType::VARCHAR, duck_block_list_type},
-	    LogicalType::BOOLEAN,
-	    WritePandocAstFun
-	);
+	auto write_pandoc_ast_func = ScalarFunction("write_pandoc_ast", {LogicalType::VARCHAR, duck_block_list_type},
+	                                            LogicalType::BOOLEAN, WritePandocAstFun);
 	loader.RegisterFunction(write_pandoc_ast_func);
 
 	// pandoc_ast(blocks, meta := {}, api_version := [1,20]) -> TABLE(pandoc-api-version, meta, blocks)

@@ -1,6 +1,6 @@
 # name: test/sql/pragma_aliases.test
 # description: test duck_block_utils PRAGMA duck_block_aliases
-# group: [duck_block_utils]
+# group: [sql]
 
 require duck_block_utils
 

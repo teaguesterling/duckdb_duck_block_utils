@@ -49,14 +49,10 @@ static string GetElementAttribute(const Value &element, const string &key) {
 }
 
 // Valid encodings
-static const std::set<string> VALID_ENCODINGS = {
-	"text", "json", "yaml", "html", "xml", "latex", "markdown"
-};
+static const std::set<string> VALID_ENCODINGS = {"text", "json", "yaml", "html", "xml", "latex", "markdown"};
 
 // Valid kinds
-static const std::set<string> VALID_KINDS = {
-	"block", "inline"
-};
+static const std::set<string> VALID_KINDS = {"block", "inline"};
 
 void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &blocks_vec = args.data[0];
@@ -107,7 +103,8 @@ void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &
 				child_list_t<Value> error_values;
 				error_values.push_back(make_pair("element_order", Value(element_order)));
 				error_values.push_back(make_pair("field", Value("kind")));
-				error_values.push_back(make_pair("message", Value("Invalid kind '" + kind + "', must be 'block' or 'inline'")));
+				error_values.push_back(
+				    make_pair("message", Value("Invalid kind '" + kind + "', must be 'block' or 'inline'")));
 				errors.push_back(Value::STRUCT(std::move(error_values)));
 			}
 
@@ -205,9 +202,9 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				if (last_heading_level > 0 && heading_level > last_heading_level + 1) {
 					child_list_t<Value> warning_values;
 					warning_values.push_back(make_pair("severity", Value("warning")));
-					warning_values.push_back(make_pair("message",
-						Value("Heading level skipped from h" + std::to_string(last_heading_level) +
-							  " to h" + std::to_string(heading_level))));
+					warning_values.push_back(
+					    make_pair("message", Value("Heading level skipped from h" + std::to_string(last_heading_level) +
+					                               " to h" + std::to_string(heading_level))));
 					warning_values.push_back(make_pair("element_order", Value(element_order)));
 					warnings.push_back(Value::STRUCT(std::move(warning_values)));
 				}
@@ -215,18 +212,13 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 			}
 
 			// Check for empty content (except hr/image/raw)
-			if (content.empty() &&
-				element_type != BlockTypes::TYPE_HR &&
-				element_type != BlockTypes::TYPE_IMAGE &&
-				element_type != BlockTypes::INLINE_IMAGE &&
-				element_type != BlockTypes::TYPE_RAW &&
-				element_type != BlockTypes::INLINE_SPACE &&
-				element_type != BlockTypes::INLINE_SOFTBREAK &&
-				element_type != BlockTypes::INLINE_LINEBREAK) {
+			if (content.empty() && element_type != BlockTypes::TYPE_HR && element_type != BlockTypes::TYPE_IMAGE &&
+			    element_type != BlockTypes::INLINE_IMAGE && element_type != BlockTypes::TYPE_RAW &&
+			    element_type != BlockTypes::INLINE_SPACE && element_type != BlockTypes::INLINE_SOFTBREAK &&
+			    element_type != BlockTypes::INLINE_LINEBREAK) {
 				child_list_t<Value> warning_values;
 				warning_values.push_back(make_pair("severity", Value("info")));
-				warning_values.push_back(make_pair("message",
-					Value("Empty content in " + element_type + " element")));
+				warning_values.push_back(make_pair("message", Value("Empty content in " + element_type + " element")));
 				warning_values.push_back(make_pair("element_order", Value(element_order)));
 				warnings.push_back(Value::STRUCT(std::move(warning_values)));
 			}
@@ -247,9 +239,9 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 			if (last_order >= 0 && element_order > last_order + 10) {
 				child_list_t<Value> warning_values;
 				warning_values.push_back(make_pair("severity", Value("info")));
-				warning_values.push_back(make_pair("message",
-					Value("Large gap in element_order (from " + std::to_string(last_order) +
-						  " to " + std::to_string(element_order) + ")")));
+				warning_values.push_back(
+				    make_pair("message", Value("Large gap in element_order (from " + std::to_string(last_order) +
+				                               " to " + std::to_string(element_order) + ")")));
 				warning_values.push_back(make_pair("element_order", Value(element_order)));
 				warnings.push_back(Value::STRUCT(std::move(warning_values)));
 			}
@@ -310,8 +302,10 @@ void ValidationFunctions::DbBlocksStructureFun(DataChunk &args, ExpressionState 
 					} else {
 						heading_level = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
 					}
-					if (heading_level > max_heading_level) max_heading_level = heading_level;
-					if (heading_level < min_heading_level) min_heading_level = heading_level;
+					if (heading_level > max_heading_level)
+						max_heading_level = heading_level;
+					if (heading_level < min_heading_level)
+						min_heading_level = heading_level;
 				} else if (element_type == BlockTypes::TYPE_PARAGRAPH) {
 					paragraph_count++;
 				} else if (element_type == BlockTypes::TYPE_CODE) {
@@ -365,12 +359,8 @@ void ValidationFunctions::Register(ExtensionLoader &loader) {
 	auto validate_result_type = LogicalType::STRUCT(std::move(validate_result_children));
 
 	// db_blocks_validate(blocks LIST(duck_block)) -> STRUCT(valid, errors)
-	auto validate_func = ScalarFunction(
-	    "db_blocks_validate",
-	    {duck_block_list_type},
-	    validate_result_type,
-	    DbBlocksValidateFun
-	);
+	auto validate_func =
+	    ScalarFunction("db_blocks_validate", {duck_block_list_type}, validate_result_type, DbBlocksValidateFun);
 	loader.RegisterFunction(validate_func);
 
 	// Define warning struct type for lint
@@ -381,12 +371,7 @@ void ValidationFunctions::Register(ExtensionLoader &loader) {
 	auto warning_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(warning_struct_children)));
 
 	// db_blocks_lint(blocks LIST(duck_block)) -> LIST(STRUCT)
-	auto lint_func = ScalarFunction(
-	    "db_blocks_lint",
-	    {duck_block_list_type},
-	    warning_list_type,
-	    DbBlocksLintFun
-	);
+	auto lint_func = ScalarFunction("db_blocks_lint", {duck_block_list_type}, warning_list_type, DbBlocksLintFun);
 	loader.RegisterFunction(lint_func);
 
 	// Define structure result type
@@ -405,12 +390,8 @@ void ValidationFunctions::Register(ExtensionLoader &loader) {
 	auto structure_result_type = LogicalType::STRUCT(std::move(structure_result_children));
 
 	// db_blocks_structure(blocks LIST(duck_block)) -> STRUCT
-	auto structure_func = ScalarFunction(
-	    "db_blocks_structure",
-	    {duck_block_list_type},
-	    structure_result_type,
-	    DbBlocksStructureFun
-	);
+	auto structure_func =
+	    ScalarFunction("db_blocks_structure", {duck_block_list_type}, structure_result_type, DbBlocksStructureFun);
 	loader.RegisterFunction(structure_func);
 }
 

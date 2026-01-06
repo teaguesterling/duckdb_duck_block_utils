@@ -22,7 +22,7 @@ static Value CreateHeadingBlock(const string &title, int32_t heading_level, int3
 	struct_values.push_back(make_pair("kind", Value(BlockTypes::KIND_BLOCK)));
 	struct_values.push_back(make_pair("element_type", Value(BlockTypes::TYPE_HEADING)));
 	struct_values.push_back(make_pair("content", Value(title)));
-	struct_values.push_back(make_pair("level", Value(1)));  // Structural level 1 (top-level)
+	struct_values.push_back(make_pair("level", Value(1))); // Structural level 1 (top-level)
 	struct_values.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_TEXT)));
 	// Store heading level in attributes
 	vector<Value> keys = {Value("heading_level")};
@@ -218,8 +218,10 @@ void AssemblyFunctions::DbRebaseLevelsFun(DataChunk &args, ExpressionState &stat
 				if (heading_level > 0) {
 					int32_t new_level = heading_level + offset;
 					// Clamp to valid heading levels (1-6)
-					if (new_level < 1) new_level = 1;
-					if (new_level > 6) new_level = 6;
+					if (new_level < 1)
+						new_level = 1;
+					if (new_level > 6)
+						new_level = 6;
 					rebased.push_back(CreateElementWithHeadingLevel(block, new_level));
 				} else {
 					rebased.push_back(block);
@@ -274,21 +276,11 @@ void AssemblyFunctions::Register(ExtensionLoader &loader) {
 	auto duck_block_list_type = BlockTypes::DuckBlockListType();
 
 	// db_assemble(blocks LIST(duck_block)) -> LIST(duck_block)
-	auto assemble_func = ScalarFunction(
-	    "db_assemble",
-	    {duck_block_list_type},
-	    duck_block_list_type,
-	    DbAssembleFun
-	);
+	auto assemble_func = ScalarFunction("db_assemble", {duck_block_list_type}, duck_block_list_type, DbAssembleFun);
 	loader.RegisterFunction(assemble_func);
 
 	// Also register as db_document (alias for clarity in document construction)
-	auto document_func = ScalarFunction(
-	    "db_document",
-	    {duck_block_list_type},
-	    duck_block_list_type,
-	    DbAssembleFun
-	);
+	auto document_func = ScalarFunction("db_document", {duck_block_list_type}, duck_block_list_type, DbAssembleFun);
 	loader.RegisterFunction(document_func);
 
 	// V2 API: db_assemble(LIST(LIST(duck_block))) -> LIST(duck_block)
@@ -333,206 +325,190 @@ void AssemblyFunctions::Register(ExtensionLoader &loader) {
 		}
 	};
 
-	loader.RegisterFunction(ScalarFunction("db_assemble",
-	    {duck_block_nested_list_type}, duck_block_list_type, assemble_nested_fun));
-	loader.RegisterFunction(ScalarFunction("db_document",
-	    {duck_block_nested_list_type}, duck_block_list_type, assemble_nested_fun));
+	loader.RegisterFunction(
+	    ScalarFunction("db_assemble", {duck_block_nested_list_type}, duck_block_list_type, assemble_nested_fun));
+	loader.RegisterFunction(
+	    ScalarFunction("db_document", {duck_block_nested_list_type}, duck_block_list_type, assemble_nested_fun));
 
 	// db_section(title VARCHAR, level INTEGER, children LIST(duck_block)) -> LIST(duck_block)
-	auto section_func = ScalarFunction(
-	    "db_section",
-	    {LogicalType::VARCHAR, LogicalType::INTEGER, duck_block_list_type},
-	    duck_block_list_type,
-	    DbSectionFun
-	);
+	auto section_func = ScalarFunction("db_section", {LogicalType::VARCHAR, LogicalType::INTEGER, duck_block_list_type},
+	                                   duck_block_list_type, DbSectionFun);
 	loader.RegisterFunction(section_func);
 
 	// Two-arg version: db_section(title VARCHAR, level INTEGER) -> LIST(duck_block)
 	// Creates a section with just a heading (no children)
-	auto section_func_2 = ScalarFunction(
-	    "db_section",
-	    {LogicalType::VARCHAR, LogicalType::INTEGER},
-	    duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &title_vec = args.data[0];
-		    auto &level_vec = args.data[1];
-		    auto count = args.size();
+	auto section_func_2 =
+	    ScalarFunction("db_section", {LogicalType::VARCHAR, LogicalType::INTEGER}, duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &title_vec = args.data[0];
+		                   auto &level_vec = args.data[1];
+		                   auto count = args.size();
 
-		    for (idx_t i = 0; i < count; i++) {
-			    auto title = title_vec.GetValue(i);
-			    auto level = level_vec.GetValue(i);
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto title = title_vec.GetValue(i);
+			                   auto level = level_vec.GetValue(i);
 
-			    string title_str = title.IsNull() ? "" : title.GetValue<string>();
-			    int32_t level_val = level.IsNull() ? 2 : level.GetValue<int32_t>();
+			                   string title_str = title.IsNull() ? "" : title.GetValue<string>();
+			                   int32_t level_val = level.IsNull() ? 2 : level.GetValue<int32_t>();
 
-			    vector<Value> section_blocks;
-			    section_blocks.push_back(CreateHeadingBlock(title_str, level_val, 0));
+			                   vector<Value> section_blocks;
+			                   section_blocks.push_back(CreateHeadingBlock(title_str, level_val, 0));
 
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(section_blocks)));
-		    }
-	    }
-	);
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(section_blocks)));
+		                   }
+	                   });
 	loader.RegisterFunction(section_func_2);
 
 	// V2 API: db_section(level INTEGER, title VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("db_section",
-	    {LogicalType::INTEGER, LogicalType::VARCHAR},
-	    duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &level_vec = args.data[0];
-		    auto &title_vec = args.data[1];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto level = level_vec.GetValue(i);
-			    auto title = title_vec.GetValue(i);
-			    string title_str = title.IsNull() ? "" : title.GetValue<string>();
-			    int32_t level_val = level.IsNull() ? 2 : level.GetValue<int32_t>();
-			    vector<Value> section_blocks;
-			    section_blocks.push_back(CreateHeadingBlock(title_str, level_val, 0));
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(section_blocks)));
-		    }
-	    }));
+	loader.RegisterFunction(
+	    ScalarFunction("db_section", {LogicalType::INTEGER, LogicalType::VARCHAR}, duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &level_vec = args.data[0];
+		                   auto &title_vec = args.data[1];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto level = level_vec.GetValue(i);
+			                   auto title = title_vec.GetValue(i);
+			                   string title_str = title.IsNull() ? "" : title.GetValue<string>();
+			                   int32_t level_val = level.IsNull() ? 2 : level.GetValue<int32_t>();
+			                   vector<Value> section_blocks;
+			                   section_blocks.push_back(CreateHeadingBlock(title_str, level_val, 0));
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(section_blocks)));
+		                   }
+	                   }));
 
 	// V2 API: db_section(level INTEGER, inline_children LIST(LIST(duck_block))) -> LIST(duck_block)
 	// For headings with inline children (no body blocks)
-	loader.RegisterFunction(ScalarFunction("db_section",
-	    {LogicalType::INTEGER, duck_block_nested_list_type},
-	    duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &level_vec = args.data[0];
-		    auto &nested_vec = args.data[1];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto level = level_vec.GetValue(i);
-			    auto nested = nested_vec.GetValue(i);
-			    int32_t level_val = level.IsNull() ? 1 : level.GetValue<int32_t>();
+	loader.RegisterFunction(
+	    ScalarFunction("db_section", {LogicalType::INTEGER, duck_block_nested_list_type}, duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &level_vec = args.data[0];
+		                   auto &nested_vec = args.data[1];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto level = level_vec.GetValue(i);
+			                   auto nested = nested_vec.GetValue(i);
+			                   int32_t level_val = level.IsNull() ? 1 : level.GetValue<int32_t>();
 
-			    // Create heading with NULL content (has children)
-			    child_list_t<Value> heading_fields;
-			    heading_fields.push_back(make_pair("kind", Value(BlockTypes::KIND_BLOCK)));
-			    heading_fields.push_back(make_pair("element_type", Value(BlockTypes::TYPE_HEADING)));
-			    heading_fields.push_back(make_pair("content", Value()));  // NULL content
-			    heading_fields.push_back(make_pair("level", Value(1)));  // structural level
-			    heading_fields.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_TEXT)));
-			    vector<Value> keys = {Value("heading_level")};
-			    vector<Value> values = {Value(std::to_string(level_val))};
-			    heading_fields.push_back(make_pair("attributes", CreateAttributesMap(keys, values)));
-			    heading_fields.push_back(make_pair("element_order", Value(0)));
-			    auto heading = Value::STRUCT(std::move(heading_fields));
+			                   // Create heading with NULL content (has children)
+			                   child_list_t<Value> heading_fields;
+			                   heading_fields.push_back(make_pair("kind", Value(BlockTypes::KIND_BLOCK)));
+			                   heading_fields.push_back(make_pair("element_type", Value(BlockTypes::TYPE_HEADING)));
+			                   heading_fields.push_back(make_pair("content", Value())); // NULL content
+			                   heading_fields.push_back(make_pair("level", Value(1)));  // structural level
+			                   heading_fields.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_TEXT)));
+			                   vector<Value> keys = {Value("heading_level")};
+			                   vector<Value> values = {Value(std::to_string(level_val))};
+			                   heading_fields.push_back(make_pair("attributes", CreateAttributesMap(keys, values)));
+			                   heading_fields.push_back(make_pair("element_order", Value(0)));
+			                   auto heading = Value::STRUCT(std::move(heading_fields));
 
-			    vector<Value> section_blocks;
-			    section_blocks.push_back(heading);
+			                   vector<Value> section_blocks;
+			                   section_blocks.push_back(heading);
 
-			    // Flatten nested list and add as inline children at level 2
-			    int32_t child_order = 0;
-			    if (!nested.IsNull()) {
-				    auto &outer_list = ListValue::GetChildren(nested);
-				    for (auto &inner_list : outer_list) {
-					    if (!inner_list.IsNull()) {
-						    auto &inner_blocks = ListValue::GetChildren(inner_list);
-						    for (auto &block : inner_blocks) {
-							    if (!block.IsNull()) {
-								    auto child_fields = StructValue::GetChildren(block);
-								    child_fields[BlockTypes::LEVEL_IDX] = Value(2);
-								    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
-								    section_blocks.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
-							    }
-						    }
-					    }
-				    }
-			    }
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(section_blocks)));
-		    }
-	    }));
+			                   // Flatten nested list and add as inline children at level 2
+			                   int32_t child_order = 0;
+			                   if (!nested.IsNull()) {
+				                   auto &outer_list = ListValue::GetChildren(nested);
+				                   for (auto &inner_list : outer_list) {
+					                   if (!inner_list.IsNull()) {
+						                   auto &inner_blocks = ListValue::GetChildren(inner_list);
+						                   for (auto &block : inner_blocks) {
+							                   if (!block.IsNull()) {
+								                   auto child_fields = StructValue::GetChildren(block);
+								                   child_fields[BlockTypes::LEVEL_IDX] = Value(2);
+								                   child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
+								                   section_blocks.push_back(Value::STRUCT(BlockTypes::DuckBlockType(),
+								                                                          std::move(child_fields)));
+							                   }
+						                   }
+					                   }
+				                   }
+			                   }
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(section_blocks)));
+		                   }
+	                   }));
 
 	// V2 API: db_section(level INTEGER, title VARCHAR, children LIST(duck_block)) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("db_section",
-	    {LogicalType::INTEGER, LogicalType::VARCHAR, duck_block_list_type},
-	    duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &level_vec = args.data[0];
-		    auto &title_vec = args.data[1];
-		    auto &children_vec = args.data[2];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto level = level_vec.GetValue(i);
-			    auto title = title_vec.GetValue(i);
-			    auto children = children_vec.GetValue(i);
-			    string title_str = title.IsNull() ? "" : title.GetValue<string>();
-			    int32_t level_val = level.IsNull() ? 2 : level.GetValue<int32_t>();
-			    vector<Value> section_blocks;
-			    section_blocks.push_back(CreateHeadingBlock(title_str, level_val, 0));
-			    int32_t order = 1;
-			    if (!children.IsNull()) {
-				    auto &child_blocks = ListValue::GetChildren(children);
-				    for (auto &child : child_blocks) {
-					    if (!child.IsNull()) {
-						    auto child_fields = StructValue::GetChildren(child);
-						    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(order++);
-						    section_blocks.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
-					    }
-				    }
-			    }
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(section_blocks)));
-		    }
-	    }));
+	loader.RegisterFunction(
+	    ScalarFunction("db_section", {LogicalType::INTEGER, LogicalType::VARCHAR, duck_block_list_type},
+	                   duck_block_list_type, [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &level_vec = args.data[0];
+		                   auto &title_vec = args.data[1];
+		                   auto &children_vec = args.data[2];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto level = level_vec.GetValue(i);
+			                   auto title = title_vec.GetValue(i);
+			                   auto children = children_vec.GetValue(i);
+			                   string title_str = title.IsNull() ? "" : title.GetValue<string>();
+			                   int32_t level_val = level.IsNull() ? 2 : level.GetValue<int32_t>();
+			                   vector<Value> section_blocks;
+			                   section_blocks.push_back(CreateHeadingBlock(title_str, level_val, 0));
+			                   int32_t order = 1;
+			                   if (!children.IsNull()) {
+				                   auto &child_blocks = ListValue::GetChildren(children);
+				                   for (auto &child : child_blocks) {
+					                   if (!child.IsNull()) {
+						                   auto child_fields = StructValue::GetChildren(child);
+						                   child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(order++);
+						                   section_blocks.push_back(
+						                       Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
+					                   }
+				                   }
+			                   }
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(section_blocks)));
+		                   }
+	                   }));
 
 	// V2 API: db_section(level INTEGER, title VARCHAR, children LIST(LIST(duck_block))) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("db_section",
-	    {LogicalType::INTEGER, LogicalType::VARCHAR, duck_block_nested_list_type},
-	    duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &level_vec = args.data[0];
-		    auto &title_vec = args.data[1];
-		    auto &nested_vec = args.data[2];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto level = level_vec.GetValue(i);
-			    auto title = title_vec.GetValue(i);
-			    auto nested = nested_vec.GetValue(i);
-			    string title_str = title.IsNull() ? "" : title.GetValue<string>();
-			    int32_t level_val = level.IsNull() ? 2 : level.GetValue<int32_t>();
+	loader.RegisterFunction(
+	    ScalarFunction("db_section", {LogicalType::INTEGER, LogicalType::VARCHAR, duck_block_nested_list_type},
+	                   duck_block_list_type, [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &level_vec = args.data[0];
+		                   auto &title_vec = args.data[1];
+		                   auto &nested_vec = args.data[2];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto level = level_vec.GetValue(i);
+			                   auto title = title_vec.GetValue(i);
+			                   auto nested = nested_vec.GetValue(i);
+			                   string title_str = title.IsNull() ? "" : title.GetValue<string>();
+			                   int32_t level_val = level.IsNull() ? 2 : level.GetValue<int32_t>();
 
-			    vector<Value> section_blocks;
-			    section_blocks.push_back(CreateHeadingBlock(title_str, level_val, 0));
+			                   vector<Value> section_blocks;
+			                   section_blocks.push_back(CreateHeadingBlock(title_str, level_val, 0));
 
-			    // Flatten nested list and add children
-			    int32_t order = 1;
-			    if (!nested.IsNull()) {
-				    auto &outer_list = ListValue::GetChildren(nested);
-				    for (auto &inner_list : outer_list) {
-					    if (!inner_list.IsNull()) {
-						    auto &inner_blocks = ListValue::GetChildren(inner_list);
-						    for (auto &block : inner_blocks) {
-							    if (!block.IsNull()) {
-								    auto child_fields = StructValue::GetChildren(block);
-								    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(order++);
-								    section_blocks.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
-							    }
-						    }
-					    }
-				    }
-			    }
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(section_blocks)));
-		    }
-	    }));
+			                   // Flatten nested list and add children
+			                   int32_t order = 1;
+			                   if (!nested.IsNull()) {
+				                   auto &outer_list = ListValue::GetChildren(nested);
+				                   for (auto &inner_list : outer_list) {
+					                   if (!inner_list.IsNull()) {
+						                   auto &inner_blocks = ListValue::GetChildren(inner_list);
+						                   for (auto &block : inner_blocks) {
+							                   if (!block.IsNull()) {
+								                   auto child_fields = StructValue::GetChildren(block);
+								                   child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(order++);
+								                   section_blocks.push_back(Value::STRUCT(BlockTypes::DuckBlockType(),
+								                                                          std::move(child_fields)));
+							                   }
+						                   }
+					                   }
+				                   }
+			                   }
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(section_blocks)));
+		                   }
+	                   }));
 
 	// db_rebase_levels(blocks LIST(duck_block), offset INTEGER) -> LIST(duck_block)
-	auto rebase_func = ScalarFunction(
-	    "db_rebase_levels",
-	    {duck_block_list_type, LogicalType::INTEGER},
-	    duck_block_list_type,
-	    DbRebaseLevelsFun
-	);
+	auto rebase_func = ScalarFunction("db_rebase_levels", {duck_block_list_type, LogicalType::INTEGER},
+	                                  duck_block_list_type, DbRebaseLevelsFun);
 	loader.RegisterFunction(rebase_func);
 
 	// db_concat(blocks1 LIST(duck_block), blocks2 LIST(duck_block)) -> LIST(duck_block)
-	auto concat_func = ScalarFunction(
-	    "db_concat",
-	    {duck_block_list_type, duck_block_list_type},
-	    duck_block_list_type,
-	    DbConcatFun
-	);
+	auto concat_func =
+	    ScalarFunction("db_concat", {duck_block_list_type, duck_block_list_type}, duck_block_list_type, DbConcatFun);
 	loader.RegisterFunction(concat_func);
 }
 

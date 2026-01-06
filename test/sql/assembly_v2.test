@@ -1,6 +1,6 @@
 # name: test/sql/assembly_v2.test
 # description: test duck_block_utils extension - v2 assembly functions (LIST(LIST) input)
-# group: [duck_block_utils]
+# group: [sql]
 
 require duck_block_utils
 

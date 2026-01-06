@@ -192,10 +192,9 @@ void ManipulationFunctions::DbBlocksReorderFun(DataChunk &args, ExpressionState 
 			}
 		}
 
-		std::sort(ordered_blocks.begin(), ordered_blocks.end(),
-		          [](const std::pair<int32_t, Value> &a, const std::pair<int32_t, Value> &b) {
-			          return a.first < b.first;
-		          });
+		std::sort(
+		    ordered_blocks.begin(), ordered_blocks.end(),
+		    [](const std::pair<int32_t, Value> &a, const std::pair<int32_t, Value> &b) { return a.first < b.first; });
 
 		// Reassign element_order as 0, 1, 2, ...
 		vector<Value> reordered;
@@ -251,48 +250,31 @@ void ManipulationFunctions::Register(ExtensionLoader &loader) {
 	auto duck_block_list_type = BlockTypes::DuckBlockListType();
 
 	// db_blocks_filter(blocks LIST(duck_block), types VARCHAR[]) -> LIST(duck_block)
-	auto filter_func = ScalarFunction(
-	    "db_blocks_filter",
-	    {duck_block_list_type, LogicalType::LIST(LogicalType::VARCHAR)},
-	    duck_block_list_type,
-	    DbBlocksFilterFun
-	);
+	auto filter_func =
+	    ScalarFunction("db_blocks_filter", {duck_block_list_type, LogicalType::LIST(LogicalType::VARCHAR)},
+	                   duck_block_list_type, DbBlocksFilterFun);
 	loader.RegisterFunction(filter_func);
 
 	// db_blocks_exclude(blocks LIST(duck_block), types VARCHAR[]) -> LIST(duck_block)
-	auto exclude_func = ScalarFunction(
-	    "db_blocks_exclude",
-	    {duck_block_list_type, LogicalType::LIST(LogicalType::VARCHAR)},
-	    duck_block_list_type,
-	    DbBlocksExcludeFun
-	);
+	auto exclude_func =
+	    ScalarFunction("db_blocks_exclude", {duck_block_list_type, LogicalType::LIST(LogicalType::VARCHAR)},
+	                   duck_block_list_type, DbBlocksExcludeFun);
 	loader.RegisterFunction(exclude_func);
 
 	// db_blocks_merge(blocks1 LIST(duck_block), blocks2 LIST(duck_block)) -> LIST(duck_block)
-	auto merge_func = ScalarFunction(
-	    "db_blocks_merge",
-	    {duck_block_list_type, duck_block_list_type},
-	    duck_block_list_type,
-	    DbBlocksMergeFun
-	);
+	auto merge_func = ScalarFunction("db_blocks_merge", {duck_block_list_type, duck_block_list_type},
+	                                 duck_block_list_type, DbBlocksMergeFun);
 	loader.RegisterFunction(merge_func);
 
 	// db_blocks_reorder(blocks LIST(duck_block)) -> LIST(duck_block)
-	auto reorder_func = ScalarFunction(
-	    "db_blocks_reorder",
-	    {duck_block_list_type},
-	    duck_block_list_type,
-	    DbBlocksReorderFun
-	);
+	auto reorder_func =
+	    ScalarFunction("db_blocks_reorder", {duck_block_list_type}, duck_block_list_type, DbBlocksReorderFun);
 	loader.RegisterFunction(reorder_func);
 
 	// db_blocks_slice(blocks LIST(duck_block), start INTEGER, end INTEGER) -> LIST(duck_block)
-	auto slice_func = ScalarFunction(
-	    "db_blocks_slice",
-	    {duck_block_list_type, LogicalType::INTEGER, LogicalType::INTEGER},
-	    duck_block_list_type,
-	    DbBlocksSliceFun
-	);
+	auto slice_func =
+	    ScalarFunction("db_blocks_slice", {duck_block_list_type, LogicalType::INTEGER, LogicalType::INTEGER},
+	                   duck_block_list_type, DbBlocksSliceFun);
 	loader.RegisterFunction(slice_func);
 }
 

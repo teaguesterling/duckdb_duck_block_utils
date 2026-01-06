@@ -11,13 +11,11 @@ public:
 	static void Register(ExtensionLoader &loader);
 
 	// Helper to create a duck_block inline Value with the given fields
-	static Value CreateInline(const string &inline_type, const string &content,
-	                          const map<string, string> &attributes,
+	static Value CreateInline(const string &inline_type, const string &content, const map<string, string> &attributes,
 	                          int32_t level = 1, int32_t inline_order = 0);
 
 	// Helper to create a duck_block inline Value with NULL content (for parent of children)
-	static Value CreateInlineWithNullContent(const string &inline_type,
-	                                         const map<string, string> &attributes,
+	static Value CreateInlineWithNullContent(const string &inline_type, const map<string, string> &attributes,
 	                                         int32_t level = 1, int32_t inline_order = 0);
 
 private:

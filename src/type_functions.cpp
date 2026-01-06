@@ -5,15 +5,11 @@
 namespace duckdb {
 
 // Valid block types
-static const std::unordered_set<string> VALID_BLOCK_TYPES = {
-    "heading", "paragraph", "code", "blockquote", "list",
-    "table", "hr", "metadata", "image", "raw"
-};
+static const std::unordered_set<string> VALID_BLOCK_TYPES = {"heading", "paragraph", "code",     "blockquote", "list",
+                                                             "table",   "hr",        "metadata", "image",      "raw"};
 
 // Valid encodings
-static const std::unordered_set<string> VALID_ENCODINGS = {
-    "text", "json", "yaml", "html", "xml", "latex", "markdown"
-};
+static const std::unordered_set<string> VALID_ENCODINGS = {"text", "json", "yaml", "html", "xml", "latex", "markdown"};
 
 // Helper to create empty attributes map
 static Value CreateEmptyMap() {
@@ -30,7 +26,8 @@ static string GetAttribute(const Value &element, const string &key) {
 
 	auto &map_entries = MapValue::GetChildren(attrs);
 	for (auto &entry : map_entries) {
-		if (entry.IsNull()) continue;
+		if (entry.IsNull())
+			continue;
 		auto &kv = StructValue::GetChildren(entry);
 		if (kv.size() >= 2 && !kv[0].IsNull() && kv[0].GetValue<string>() == key) {
 			if (!kv[1].IsNull()) {
@@ -339,110 +336,58 @@ void TypeFunctions::Register(ExtensionLoader &loader) {
 	auto duck_block_type = BlockTypes::DuckBlockType();
 
 	// duck_block(block_type, content, level, encoding, attributes, block_order) -> duck_block
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block",
-	    {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::INTEGER,
-	     LogicalType::VARCHAR, LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR),
-	     LogicalType::INTEGER},
-	    duck_block_type,
-	    DuckBlockFun
-	));
+	loader.RegisterFunction(
+	    ScalarFunction("duck_block",
+	                   {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::INTEGER, LogicalType::VARCHAR,
+	                    LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR), LogicalType::INTEGER},
+	                   duck_block_type, DuckBlockFun));
 
 	// duck_block(block_type, content) -> duck_block
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block",
-	    {LogicalType::VARCHAR, LogicalType::VARCHAR},
-	    duck_block_type,
-	    DuckBlockSimpleFun
-	));
+	loader.RegisterFunction(ScalarFunction("duck_block", {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type,
+	                                       DuckBlockSimpleFun));
 
 	// to_duck_block(struct) -> duck_block
-	loader.RegisterFunction(ScalarFunction(
-	    "to_duck_block",
-	    {LogicalType::ANY},
-	    duck_block_type,
-	    ToDuckBlockFun
-	));
+	loader.RegisterFunction(ScalarFunction("to_duck_block", {LogicalType::ANY}, duck_block_type, ToDuckBlockFun));
 
 	// duck_block_valid(element) -> BOOLEAN
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_valid",
-	    {duck_block_type},
-	    LogicalType::BOOLEAN,
-	    DuckBlockValidFun
-	));
+	loader.RegisterFunction(
+	    ScalarFunction("duck_block_valid", {duck_block_type}, LogicalType::BOOLEAN, DuckBlockValidFun));
 
 	// duck_block_type(element) -> VARCHAR
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_type",
-	    {duck_block_type},
-	    LogicalType::VARCHAR,
-	    DuckBlockTypeFun
-	));
+	loader.RegisterFunction(
+	    ScalarFunction("duck_block_type", {duck_block_type}, LogicalType::VARCHAR, DuckBlockTypeFun));
 
 	// duck_block_content(element) -> VARCHAR
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_content",
-	    {duck_block_type},
-	    LogicalType::VARCHAR,
-	    DuckBlockContentFun
-	));
+	loader.RegisterFunction(
+	    ScalarFunction("duck_block_content", {duck_block_type}, LogicalType::VARCHAR, DuckBlockContentFun));
 
 	// duck_block_level(element) -> INTEGER
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_level",
-	    {duck_block_type},
-	    LogicalType::INTEGER,
-	    DuckBlockLevelFun
-	));
+	loader.RegisterFunction(
+	    ScalarFunction("duck_block_level", {duck_block_type}, LogicalType::INTEGER, DuckBlockLevelFun));
 
 	// duck_block_encoding(element) -> VARCHAR
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_encoding",
-	    {duck_block_type},
-	    LogicalType::VARCHAR,
-	    DuckBlockEncodingFun
-	));
+	loader.RegisterFunction(
+	    ScalarFunction("duck_block_encoding", {duck_block_type}, LogicalType::VARCHAR, DuckBlockEncodingFun));
 
 	// duck_block_order(element) -> INTEGER
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_order",
-	    {duck_block_type},
-	    LogicalType::INTEGER,
-	    DuckBlockOrderFun
-	));
+	loader.RegisterFunction(
+	    ScalarFunction("duck_block_order", {duck_block_type}, LogicalType::INTEGER, DuckBlockOrderFun));
 
 	// duck_block_attr(element, key) -> VARCHAR
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_attr",
-	    {duck_block_type, LogicalType::VARCHAR},
-	    LogicalType::VARCHAR,
-	    DuckBlockAttrFun
-	));
+	loader.RegisterFunction(ScalarFunction("duck_block_attr", {duck_block_type, LogicalType::VARCHAR},
+	                                       LogicalType::VARCHAR, DuckBlockAttrFun));
 
 	// duck_block_set_order(element, new_order) -> duck_block
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_set_order",
-	    {duck_block_type, LogicalType::INTEGER},
-	    duck_block_type,
-	    DuckBlockSetOrderFun
-	));
+	loader.RegisterFunction(ScalarFunction("duck_block_set_order", {duck_block_type, LogicalType::INTEGER},
+	                                       duck_block_type, DuckBlockSetOrderFun));
 
 	// duck_block_set_content(element, new_content) -> duck_block
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_set_content",
-	    {duck_block_type, LogicalType::VARCHAR},
-	    duck_block_type,
-	    DuckBlockSetContentFun
-	));
+	loader.RegisterFunction(ScalarFunction("duck_block_set_content", {duck_block_type, LogicalType::VARCHAR},
+	                                       duck_block_type, DuckBlockSetContentFun));
 
 	// duck_block_set_level(element, new_level) -> duck_block
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_set_level",
-	    {duck_block_type, LogicalType::INTEGER},
-	    duck_block_type,
-	    DuckBlockSetLevelFun
-	));
+	loader.RegisterFunction(ScalarFunction("duck_block_set_level", {duck_block_type, LogicalType::INTEGER},
+	                                       duck_block_type, DuckBlockSetLevelFun));
 }
 
 } // namespace duckdb

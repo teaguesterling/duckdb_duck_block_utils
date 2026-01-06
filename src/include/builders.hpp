@@ -11,9 +11,8 @@ public:
 	static void Register(ExtensionLoader &loader);
 
 	// Helper to create a duck_block Value with the given fields (public for flattening functions)
-	static Value CreateBlock(const string &block_type, const string &content,
-	                         const Value &level, const string &encoding,
-	                         const map<string, string> &attributes, int32_t block_order = 0);
+	static Value CreateBlock(const string &block_type, const string &content, const Value &level,
+	                         const string &encoding, const map<string, string> &attributes, int32_t block_order = 0);
 
 	// ========================================================================
 	// V2 API: Core utility for handling duck_block_content
@@ -27,9 +26,8 @@ public:
 	                                      int32_t base_level = 1);
 
 	// Create a parent block with NULL content (for use with children)
-	static Value CreateBlockWithNullContent(const string &block_type, const string &kind,
-	                                        const Value &level, const string &encoding,
-	                                        const map<string, string> &attributes);
+	static Value CreateBlockWithNullContent(const string &block_type, const string &kind, const Value &level,
+	                                        const string &encoding, const map<string, string> &attributes);
 
 private:
 	// ========================================================================
