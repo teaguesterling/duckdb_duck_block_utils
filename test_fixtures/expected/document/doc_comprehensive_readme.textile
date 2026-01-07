@@ -1,0 +1,93 @@
+h1. DuckDB Extension Template
+
+*Status:* Production Ready &#124; *Version:* 2.0.0 &#124; *License:* MIT
+
+A *comprehensive* template for building "DuckDB":https://duckdb.org extensions with _modern C&#43;&#43; practices_ and full CI/CD support.
+
+bq. *Important:* This template requires DuckDB v1.0&#43; and a C&#43;&#43;17 compatible compiler. See "Requirements":#requirements for details.
+
+
+
+h2. Features
+
+* *Modern Build System*
+** CMake&#45;based configuration
+** Supports @vcpkg@ and @conan@
+** Cross&#45;platform compatibility
+* *Testing Infrastructure*
+** Unit tests with GoogleTest
+** Integration tests with sqllogictest
+** Coverage reports via @lcov@
+* *CI/CD Pipeline*
+** GitHub Actions workflows
+** Automatic releases
+** Multi&#45;platform builds (Linux, macOS, Windows)
+
+h2. Installation
+
+Install directly from the DuckDB CLI:
+
+bc(sql). INSTALL extension_name FROM community;
+LOAD extension_name;
+
+
+Or build from source:
+
+bc(bash). git clone https://github.com/user/extension.git
+cd extension
+make release
+make test
+
+
+h2. Quick Start
+
+# *Clone* the repository
+# *Configure* your extension name in @CMakeLists.txt@
+# *Implement* your functions in @src/@
+# *Test* with @make test@
+# *Release* via GitHub Actions
+
+h2. API Reference
+
+h3. Scalar Functions
+
+The @my_function@ scalar function accepts a @VARCHAR@ and returns a @BIGINT@:
+
+<pre class="sql">
+-- Basic usage
+SELECT my_function('input') AS result;
+
+-- With table data
+SELECT id, my_function(name) AS processed
+FROM my_table
+WHERE active = true;
+</pre>
+
+h3. Table Functions
+
+Use @my_table_function@ to generate rows:
+
+bc(sql). SELECT * FROM my_table_function(10, 'config.json');
+
+
+h2. Configuration
+
+Configure via DuckDB settings:
+
+bc(sql). SET extension_option = 'value';
+SET extension_debug = true;
+
+
+h2. Contributing
+
+We welcome contributions! Please read our "Contributing Guide":CONTRIBUTING.md before submitting PRs.
+
+bq. *Note for contributors:* All PRs must include tests and pass CI checks. Run @make format@ before committing.
+
+
+
+<hr />
+
+"Report Issues":https://github.com/user/extension/issues &#124; "Discord":https://discord.gg/duckdb &#124; "DuckDB Docs":https://duckdb.org/docs
+
+Made with @<3@ by the DuckDB Community

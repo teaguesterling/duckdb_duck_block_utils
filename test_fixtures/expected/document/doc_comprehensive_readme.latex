@@ -1,0 +1,143 @@
+\section{DuckDB Extension Template}
+
+\textbf{Status:} Production Ready \textbar{} \textbf{Version:} 2.0.0 \textbar{} \textbf{License:} MIT
+
+A \textbf{comprehensive} template for building \href{https://duckdb.org}{DuckDB} extensions with \emph{modern C++ practices} and full CI/CD support.
+
+\begin{quote}
+\textbf{Important:} This template requires DuckDB v1.0+ and a C++17 compatible compiler. See \protect\hyperlink{requirements}{Requirements} for details.
+\end{quote}
+
+\subsection{Features}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Modern Build System}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    CMake-based configuration
+  \item
+    Supports \texttt{vcpkg} and \texttt{conan}
+  \item
+    Cross-platform compatibility
+  \end{itemize}
+\item
+  \textbf{Testing Infrastructure}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Unit tests with GoogleTest
+  \item
+    Integration tests with sqllogictest
+  \item
+    Coverage reports via \texttt{lcov}
+  \end{itemize}
+\item
+  \textbf{CI/CD Pipeline}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    GitHub Actions workflows
+  \item
+    Automatic releases
+  \item
+    Multi-platform builds (Linux, macOS, Windows)
+  \end{itemize}
+\end{itemize}
+
+\subsection{Installation}
+
+Install directly from the DuckDB CLI:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{INSTALL extension\_name }\KeywordTok{FROM}\NormalTok{ community;}
+\NormalTok{LOAD extension\_name;}
+\end{Highlighting}
+\end{Shaded}
+
+Or build from source:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{git}\NormalTok{ clone https://github.com/user/extension.git}
+\BuiltInTok{cd}\NormalTok{ extension}
+\FunctionTok{make}\NormalTok{ release}
+\FunctionTok{make}\NormalTok{ test}
+\end{Highlighting}
+\end{Shaded}
+
+\subsection{Quick Start}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \textbf{Clone} the repository
+\item
+  \textbf{Configure} your extension name in \texttt{CMakeLists.txt}
+\item
+  \textbf{Implement} your functions in \texttt{src/}
+\item
+  \textbf{Test} with \texttt{make\ test}
+\item
+  \textbf{Release} via GitHub Actions
+\end{enumerate}
+
+\subsection{API Reference}
+
+\subsubsection{Scalar Functions}
+
+The \texttt{my\_function} scalar function accepts a \texttt{VARCHAR} and returns a \texttt{BIGINT}:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{{-}{-} Basic usage}
+\KeywordTok{SELECT}\NormalTok{ my\_function(}\StringTok{\textquotesingle{}input\textquotesingle{}}\NormalTok{) }\KeywordTok{AS}\NormalTok{ result;}
+
+\CommentTok{{-}{-} With table data}
+\KeywordTok{SELECT} \KeywordTok{id}\NormalTok{, my\_function(name) }\KeywordTok{AS}\NormalTok{ processed}
+\KeywordTok{FROM}\NormalTok{ my\_table}
+\KeywordTok{WHERE}\NormalTok{ active }\OperatorTok{=} \KeywordTok{true}\NormalTok{;}
+\end{Highlighting}
+\end{Shaded}
+
+\subsubsection{Table Functions}
+
+Use \texttt{my\_table\_function} to generate rows:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{SELECT} \OperatorTok{*} \KeywordTok{FROM}\NormalTok{ my\_table\_function(}\DecValTok{10}\NormalTok{, }\StringTok{\textquotesingle{}config.json\textquotesingle{}}\NormalTok{);}
+\end{Highlighting}
+\end{Shaded}
+
+\subsection{Configuration}
+
+Configure via DuckDB settings:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{SET}\NormalTok{ extension\_option }\OperatorTok{=} \StringTok{\textquotesingle{}value\textquotesingle{}}\NormalTok{;}
+\KeywordTok{SET}\NormalTok{ extension\_debug }\OperatorTok{=} \KeywordTok{true}\NormalTok{;}
+\end{Highlighting}
+\end{Shaded}
+
+\subsection{Contributing}
+
+We welcome contributions! Please read our \href{CONTRIBUTING.md}{Contributing Guide} before submitting PRs.
+
+\begin{quote}
+\textbf{Note for contributors:} All PRs must include tests and pass CI checks. Run \texttt{make\ format} before committing.
+\end{quote}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\href{https://github.com/user/extension/issues}{Report Issues} \textbar{} \href{https://discord.gg/duckdb}{Discord} \textbar{} \href{https://duckdb.org/docs}{DuckDB Docs}
+
+Made with \texttt{\textless{}3} by the DuckDB Community

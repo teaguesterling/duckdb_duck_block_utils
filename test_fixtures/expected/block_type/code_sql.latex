@@ -1,0 +1,5 @@
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{SELECT} \OperatorTok{*} \KeywordTok{FROM}\NormalTok{ users }\KeywordTok{WHERE}\NormalTok{ active }\OperatorTok{=} \KeywordTok{true}\NormalTok{;}
+\end{Highlighting}
+\end{Shaded}

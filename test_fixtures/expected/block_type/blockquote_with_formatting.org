@@ -1,0 +1,3 @@
+#+BEGIN_QUOTE
+  A quote with *emphasis*.
+#+END_QUOTE

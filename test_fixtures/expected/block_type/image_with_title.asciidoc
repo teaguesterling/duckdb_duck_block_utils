@@ -1,0 +1,1 @@
+image:https://example.com/img.png[Alt text,title="Image title"]

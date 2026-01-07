@@ -1,0 +1,9 @@
+\subsection{Getting Started}
+
+First, install the \textbf{extension}.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{INSTALL duck\_block\_utils;}
+\end{Highlighting}
+\end{Shaded}

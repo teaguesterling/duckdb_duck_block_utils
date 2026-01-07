@@ -1,0 +1,22 @@
+* Project Name
+
+A *powerful* tool for data processing.
+
+** Installation
+
+#+BEGIN_SRC sh
+  pip install project-name
+#+END_SRC
+
+** Usage
+
+Import and use the =process= function:
+
+#+BEGIN_SRC python
+  from project import process
+  result = process(data)
+#+END_SRC
+
+** License
+
+MIT License. See [[file:LICENSE][LICENSE file]] for details.

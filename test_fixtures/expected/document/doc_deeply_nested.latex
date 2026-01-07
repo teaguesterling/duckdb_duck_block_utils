@@ -1,0 +1,77 @@
+\section{Nested Structure Test}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Level 1 Item A}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Level 2 with \emph{formatting}
+
+    \begin{itemize}
+    \tightlist
+    \item
+      Level 3 with \texttt{code}
+
+      \begin{itemize}
+      \tightlist
+      \item
+        Level 4 plain
+      \item
+        \href{https://example.com}{Level 4 link}
+      \end{itemize}
+    \end{itemize}
+  \item
+    Back to Level 2
+  \end{itemize}
+\item
+  \textbf{Level 1 Item B}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Another L2 with \textbf{bold} and \emph{italic}
+  \end{itemize}
+\end{itemize}
+
+\subsection{Complex Blockquote}
+
+\begin{quote}
+\textbf{Quote Title}: This is a quote with \texttt{inline\ code} and a \href{https://example.com}{link} inside.
+\end{quote}
+
+\subsection{Consecutive Elements}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\BuiltInTok{print}\NormalTok{(}\StringTok{"first"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\BuiltInTok{print}\NormalTok{(}\StringTok{"second"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\BuiltInTok{print}\NormalTok{(}\StringTok{"third"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{quote}
+First quote.
+\end{quote}
+
+\begin{quote}
+Second quote.
+\end{quote}
+
+\textbf{Bold paragraph.}
+
+\emph{Italic paragraph.}
+
+\texttt{Code\ paragraph.}

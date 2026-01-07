@@ -1,0 +1,8 @@
+== Getting Started
+
+First, install the *extension*.
+
+[source,sql]
+----
+INSTALL duck_block_utils;
+----

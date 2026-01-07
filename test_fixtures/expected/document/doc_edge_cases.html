@@ -1,0 +1,19 @@
+<h1>Edge Cases &amp; Special Characters</h1>
+<p>Testing quotes: "double" and <code>'single'</code> and apostrophes: it's working!</p>
+<h2>Code Escaping</h2>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="kw">def</span> example():</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a>    <span class="co">&quot;&quot;&quot;Docstring with &quot;quotes&quot; and &#39;apostrophes&#39;&quot;&quot;&quot;</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true"></a>    <span class="cf">return</span> <span class="ss">f&quot;Value: </span><span class="sc">{x}</span><span class="ss"> | Special: &lt;&gt;&amp;&quot;</span></span></code></pre></div>
+<div class="sourceCode" id="cb2"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="co">-- SQL with operators</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a><span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> t <span class="kw">WHERE</span> x <span class="op">&gt;</span> <span class="dv">10</span> <span class="kw">AND</span> y <span class="op">&lt;</span> <span class="dv">20</span>;</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true"></a><span class="kw">SELECT</span> <span class="st">&#39;string with </span><span class="ch">&#39;&#39;</span><span class="st">quotes</span><span class="ch">&#39;&#39;</span><span class="st">&#39;</span>;</span></code></pre></div>
+<p>Inline special chars: <code>&lt;html&gt;</code>, <code>a &amp;&amp; b</code>, <code>x | y</code>, <code>$PATH</code></p>
+<h2>URLs with Parameters</h2>
+<p>Link with params: <a href="https://example.com/search?q=test&amp;page=1">Search Results</a></p>
+<h2>Mathematical Expressions</h2>
+<p>Comparisons: x &lt; y, a &gt; b, n &lt;= m, p &gt;= q</p>
+<p>Operators: a + b - c * d / e % f</p>
+<h2>Unicode Support</h2>
+<p>International: cafe, naive, resume</p>
+<p>Symbols: arrows, checks, stars</p>
+<p>Emoji-adjacent: (tm), (c), (r)</p>

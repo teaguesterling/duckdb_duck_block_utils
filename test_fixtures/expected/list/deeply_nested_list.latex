@@ -1,0 +1,23 @@
+\begin{itemize}
+\tightlist
+\item
+  Level 1
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Level 2
+
+    \begin{itemize}
+    \tightlist
+    \item
+      Level 3
+
+      \begin{itemize}
+      \tightlist
+      \item
+        Level 4
+      \end{itemize}
+    \end{itemize}
+  \end{itemize}
+\end{itemize}

@@ -1,0 +1,20 @@
+h1. Project Name
+
+A *powerful* tool for data processing.
+
+h2. Installation
+
+bc(bash). pip install project-name
+
+
+h2. Usage
+
+Import and use the @process@ function:
+
+bc(python). from project import process
+result = process(data)
+
+
+h2. License
+
+MIT License. See "LICENSE file":LICENSE for details.

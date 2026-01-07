@@ -1,0 +1,1 @@
+{"pandoc-api-version":[1,20],"meta":{},"blocks":[{"t":"Header","c":[2,["",[],[]],[{"t":"Str","c":"Features"}]]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"Easy to use"}]}],[{"t":"Plain","c":[{"t":"Str","c":"Powerful"}]}],[{"t":"Plain","c":[{"t":"Str","c":"Extensible"}]}]]}]}

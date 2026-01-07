@@ -1,0 +1,10 @@
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  First item
+\item
+  Second item
+\item
+  Third item
+\end{enumerate}

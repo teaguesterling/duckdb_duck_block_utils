@@ -1,0 +1,5 @@
+** Screenshot
+
+Here is what it looks like:
+
+[[https://example.com/screenshot.png]]

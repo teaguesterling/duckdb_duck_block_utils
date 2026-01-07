@@ -1,0 +1,9 @@
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Important} item
+\item
+  Item with \texttt{code}
+\item
+  \href{https://example.com}{Link item}
+\end{itemize}

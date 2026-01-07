@@ -1,0 +1,76 @@
+h1. {anchor:}DuckDB Extension Template
+*Status:* Production Ready \|*Version:* 2.0.0 \|*License:* MIT
+
+A{*}comprehensive{*} template for building[DuckDB|https://duckdb.org] extensions with{_}modern C\+\+ practices{_} and full CI/CD support.
+
+bq. *Important:* This template requires DuckDB v1.0\+ and a C\+\+17 compatible compiler. See[Requirements|#requirements] for details.
+h2. {anchor:}Features
+* *Modern Build System*
+** CMake-based configuration
+** Supports{{vcpkg}} and{{conan}}
+** Cross-platform compatibility
+* *Testing Infrastructure*
+** Unit tests with GoogleTest
+** Integration tests with sqllogictest
+** Coverage reports via{{lcov}}
+* *CI/CD Pipeline*
+** GitHub Actions workflows
+** Automatic releases
+** Multi-platform builds \(Linux, macOS, Windows)
+
+h2. {anchor:}Installation
+Install directly from the DuckDB CLI:
+
+{code:sql}
+INSTALL extension_name FROM community;
+LOAD extension_name;
+{code}
+Or build from source:
+
+{code:bash}
+git clone https://github.com/user/extension.git
+cd extension
+make release
+make test
+{code}
+h2. {anchor:}Quick Start
+# *Clone* the repository
+# *Configure* your extension name in{{CMakeLists.txt}}
+# *Implement* your functions in{{src/}}
+# *Test* with{{make test}}
+# *Release* via GitHub Actions
+
+h2. {anchor:}API Reference
+h3. {anchor:}Scalar Functions
+The{{my_function}} scalar function accepts a{{VARCHAR}} and returns a{{BIGINT}}:
+
+{code:sql}
+-- Basic usage
+SELECT my_function('input') AS result;
+
+-- With table data
+SELECT id, my_function(name) AS processed
+FROM my_table
+WHERE active = true;
+{code}
+h3. {anchor:}Table Functions
+Use{{my_table_function}} to generate rows:
+
+{code:sql}
+SELECT * FROM my_table_function(10, 'config.json');
+{code}
+h2. {anchor:}Configuration
+Configure via DuckDB settings:
+
+{code:sql}
+SET extension_option = 'value';
+SET extension_debug = true;
+{code}
+h2. {anchor:}Contributing
+We welcome contributions\! Please read our[Contributing Guide|CONTRIBUTING.md] before submitting PRs.
+
+bq. *Note for contributors:* All PRs must include tests and pass CI checks. Run{{make format}} before committing.
+----
+[Report Issues|https://github.com/user/extension/issues] \|[Discord|https://discord.gg/duckdb] \|[DuckDB Docs|https://duckdb.org/docs]
+
+Made with{{<3}} by the DuckDB Community

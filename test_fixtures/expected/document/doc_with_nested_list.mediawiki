@@ -1,0 +1,8 @@
+== API Reference ==
+
+The following functions are available:
+
+* <code>db_heading</code> - Create headings
+** Takes level and content
+** Returns LIST(duck_block)
+* <code>db_paragraph</code> - Create paragraphs

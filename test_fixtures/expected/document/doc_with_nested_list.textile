@@ -1,0 +1,8 @@
+h2. API Reference
+
+The following functions are available:
+
+* @db_heading@ &#45; Create headings
+** Takes level and content
+** Returns LIST(duck&#95;block)
+* @db_paragraph@ &#45; Create paragraphs

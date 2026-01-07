@@ -1,0 +1,21 @@
+== Complete Example
+
+____
+*Note:* This demonstrates all features.
+____
+
+Visit https://docs.example.com[our documentation] for more.
+
+[arabic]
+. Feature one
+. *Feature two* with emphasis
+. Feature with `code`
+
+'''''
+
+[source,sql]
+----
+SELECT 42;
+----
+
+_The end._

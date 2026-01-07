@@ -1,0 +1,79 @@
+= DuckDB Extension Template =
+
+'''Status:''' Production Ready | '''Version:''' 2.0.0 | '''License:''' MIT
+
+A '''comprehensive''' template for building [https://duckdb.org DuckDB] extensions with ''modern C++ practices'' and full CI/CD support.
+
+<blockquote>'''Important:''' This template requires DuckDB v1.0+ and a C++17 compatible compiler. See [[#requirements|Requirements]] for details.
+</blockquote>
+== Features ==
+
+* '''Modern Build System'''
+** CMake-based configuration
+** Supports <code>vcpkg</code> and <code>conan</code>
+** Cross-platform compatibility
+* '''Testing Infrastructure'''
+** Unit tests with GoogleTest
+** Integration tests with sqllogictest
+** Coverage reports via <code>lcov</code>
+* '''CI/CD Pipeline'''
+** GitHub Actions workflows
+** Automatic releases
+** Multi-platform builds (Linux, macOS, Windows)
+
+== Installation ==
+
+Install directly from the DuckDB CLI:
+
+<source lang="sql">INSTALL extension_name FROM community;
+LOAD extension_name;</source>
+Or build from source:
+
+<source lang="bash">git clone https://github.com/user/extension.git
+cd extension
+make release
+make test</source>
+== Quick Start ==
+
+# '''Clone''' the repository
+# '''Configure''' your extension name in <code>CMakeLists.txt</code>
+# '''Implement''' your functions in <code>src/</code>
+# '''Test''' with <code>make test</code>
+# '''Release''' via GitHub Actions
+
+== API Reference ==
+
+=== Scalar Functions ===
+
+The <code>my_function</code> scalar function accepts a <code>VARCHAR</code> and returns a <code>BIGINT</code>:
+
+<source lang="sql">-- Basic usage
+SELECT my_function('input') AS result;
+
+-- With table data
+SELECT id, my_function(name) AS processed
+FROM my_table
+WHERE active = true;</source>
+=== Table Functions ===
+
+Use <code>my_table_function</code> to generate rows:
+
+<source lang="sql">SELECT * FROM my_table_function(10, 'config.json');</source>
+== Configuration ==
+
+Configure via DuckDB settings:
+
+<source lang="sql">SET extension_option = 'value';
+SET extension_debug = true;</source>
+== Contributing ==
+
+We welcome contributions! Please read our [[CONTRIBUTING.md|Contributing Guide]] before submitting PRs.
+
+<blockquote>'''Note for contributors:''' All PRs must include tests and pass CI checks. Run <code>make format</code> before committing.
+</blockquote>
+
+-----
+
+[https://github.com/user/extension/issues Report Issues] | [https://discord.gg/duckdb Discord] | [https://duckdb.org/docs DuckDB Docs]
+
+Made with <code>&lt;3</code> by the DuckDB Community

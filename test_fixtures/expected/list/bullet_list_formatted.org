@@ -1,0 +1,3 @@
+- *Important* item
+- Item with =code=
+- [[https://example.com][Link item]]

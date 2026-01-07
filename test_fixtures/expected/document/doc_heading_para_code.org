@@ -1,0 +1,7 @@
+** Getting Started
+
+First, install the *extension*.
+
+#+BEGIN_SRC sql
+  INSTALL duck_block_utils;
+#+END_SRC

@@ -1,0 +1,50 @@
+* Nested Structure Test
+
+- *Level 1 Item A*
+
+  - Level 2 with /formatting/
+
+    - Level 3 with =code=
+
+      - Level 4 plain
+      - [[https://example.com][Level 4 link]]
+
+  - Back to Level 2
+
+- *Level 1 Item B*
+
+  - Another L2 with *bold* and /italic/
+
+** Complex Blockquote
+
+#+BEGIN_QUOTE
+  *Quote Title*: This is a quote with =inline code= and a [[https://example.com][link]] inside.
+#+END_QUOTE
+
+** Consecutive Elements
+
+#+BEGIN_SRC python
+  print("first")
+#+END_SRC
+
+#+BEGIN_SRC python
+  print("second")
+#+END_SRC
+
+#+BEGIN_SRC python
+  print("third")
+#+END_SRC
+
+#+BEGIN_QUOTE
+  First quote.
+#+END_QUOTE
+
+#+BEGIN_QUOTE
+  Second quote.
+#+END_QUOTE
+
+*Bold paragraph.*
+
+/Italic paragraph./
+
+=Code paragraph.=

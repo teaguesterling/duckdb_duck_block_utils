@@ -1,0 +1,15 @@
+= Complete Example =
+
+<blockquote>'''Note:''' This demonstrates all features.
+</blockquote>
+Visit [https://docs.example.com our documentation] for more.
+
+# Feature one
+# '''Feature two''' with emphasis
+# Feature with <code>code</code>
+
+
+-----
+
+<source lang="sql">SELECT 42;</source>
+''The end.''

@@ -1,0 +1,1 @@
+{"pandoc-api-version":[1,20],"meta":{},"blocks":[{"t":"Header","c":[2,["",[],[]],[{"t":"Str","c":"Getting Started"}]]},{"t":"Para","c":[{"t":"Str","c":"First, install the "},{"t":"Strong","c":[{"t":"Str","c":"extension"}]},{"t":"Str","c":"."}]},{"t":"CodeBlock","c":[["",["sql"],[]],"INSTALL duck_block_utils;"]}]}

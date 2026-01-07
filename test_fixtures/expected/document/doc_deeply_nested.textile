@@ -1,0 +1,41 @@
+h1. Nested Structure Test
+
+* *Level 1 Item A*
+** Level 2 with _formatting_
+*** Level 3 with @code@
+**** Level 4 plain
+**** "Level 4 link":https://example.com
+** Back to Level 2
+* *Level 1 Item B*
+** Another L2 with *bold* and _italic_
+
+h2. Complex Blockquote
+
+bq. *Quote Title*: This is a quote with @inline code@ and a "link":https://example.com inside.
+
+
+
+h2. Consecutive Elements
+
+bc(python). print("first")
+
+
+bc(python). print("second")
+
+
+bc(python). print("third")
+
+
+bq. First quote.
+
+
+
+bq. Second quote.
+
+
+
+*Bold paragraph.*
+
+_Italic paragraph._
+
+@Code paragraph.@

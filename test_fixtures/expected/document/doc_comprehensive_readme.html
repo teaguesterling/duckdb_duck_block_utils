@@ -1,0 +1,69 @@
+<h1>DuckDB Extension Template</h1>
+<p><strong>Status:</strong> Production Ready | <strong>Version:</strong> 2.0.0 | <strong>License:</strong> MIT</p>
+<p>A <strong>comprehensive</strong> template for building <a href="https://duckdb.org">DuckDB</a> extensions with <em>modern C++ practices</em> and full CI/CD support.</p>
+<blockquote>
+<p><strong>Important:</strong> This template requires DuckDB v1.0+ and a C++17 compatible compiler. See <a href="#requirements">Requirements</a> for details.</p>
+</blockquote>
+<h2>Features</h2>
+<ul>
+<li><strong>Modern Build System</strong>
+<ul>
+<li>CMake-based configuration</li>
+<li>Supports <code>vcpkg</code> and <code>conan</code></li>
+<li>Cross-platform compatibility</li>
+</ul></li>
+<li><strong>Testing Infrastructure</strong>
+<ul>
+<li>Unit tests with GoogleTest</li>
+<li>Integration tests with sqllogictest</li>
+<li>Coverage reports via <code>lcov</code></li>
+</ul></li>
+<li><strong>CI/CD Pipeline</strong>
+<ul>
+<li>GitHub Actions workflows</li>
+<li>Automatic releases</li>
+<li>Multi-platform builds (Linux, macOS, Windows)</li>
+</ul></li>
+</ul>
+<h2>Installation</h2>
+<p>Install directly from the DuckDB CLI:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a>INSTALL extension_name <span class="kw">FROM</span> community;</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a>LOAD extension_name;</span></code></pre></div>
+<p>Or build from source:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="fu">git</span> clone https://github.com/user/extension.git</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a><span class="bu">cd</span> extension</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true"></a><span class="fu">make</span> release</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true"></a><span class="fu">make</span> test</span></code></pre></div>
+<h2>Quick Start</h2>
+<ol type="1">
+<li><strong>Clone</strong> the repository</li>
+<li><strong>Configure</strong> your extension name in <code>CMakeLists.txt</code></li>
+<li><strong>Implement</strong> your functions in <code>src/</code></li>
+<li><strong>Test</strong> with <code>make test</code></li>
+<li><strong>Release</strong> via GitHub Actions</li>
+</ol>
+<h2>API Reference</h2>
+<h3>Scalar Functions</h3>
+<p>The <code>my_function</code> scalar function accepts a <code>VARCHAR</code> and returns a <code>BIGINT</code>:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a><span class="co">-- Basic usage</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a><span class="kw">SELECT</span> my_function(<span class="st">&#39;input&#39;</span>) <span class="kw">AS</span> result;</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true"></a><span class="co">-- With table data</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true"></a><span class="kw">SELECT</span> <span class="kw">id</span>, my_function(name) <span class="kw">AS</span> processed</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true"></a><span class="kw">FROM</span> my_table</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true"></a><span class="kw">WHERE</span> active <span class="op">=</span> <span class="kw">true</span>;</span></code></pre></div>
+<h3>Table Functions</h3>
+<p>Use <code>my_table_function</code> to generate rows:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a><span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> my_table_function(<span class="dv">10</span>, <span class="st">&#39;config.json&#39;</span>);</span></code></pre></div>
+<h2>Configuration</h2>
+<p>Configure via DuckDB settings:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a><span class="kw">SET</span> extension_option <span class="op">=</span> <span class="st">&#39;value&#39;</span>;</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true"></a><span class="kw">SET</span> extension_debug <span class="op">=</span> <span class="kw">true</span>;</span></code></pre></div>
+<h2>Contributing</h2>
+<p>We welcome contributions! Please read our <a href="CONTRIBUTING.md">Contributing Guide</a> before submitting PRs.</p>
+<blockquote>
+<p><strong>Note for contributors:</strong> All PRs must include tests and pass CI checks. Run <code>make format</code> before committing.</p>
+</blockquote>
+<hr />
+<p><a href="https://github.com/user/extension/issues">Report Issues</a> | <a href="https://discord.gg/duckdb">Discord</a> | <a href="https://duckdb.org/docs">DuckDB Docs</a></p>
+<p>Made with <code>&lt;3</code> by the DuckDB Community</p>

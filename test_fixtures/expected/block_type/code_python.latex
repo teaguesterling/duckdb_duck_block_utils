@@ -1,0 +1,6 @@
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{def}\NormalTok{ hello():}
+    \BuiltInTok{print}\NormalTok{(}\StringTok{"Hello, World!"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}

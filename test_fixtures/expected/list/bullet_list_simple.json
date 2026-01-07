@@ -1,0 +1,1 @@
+{"pandoc-api-version":[1,20],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"First item"}]}],[{"t":"Plain","c":[{"t":"Str","c":"Second item"}]}],[{"t":"Plain","c":[{"t":"Str","c":"Third item"}]}]]}]}

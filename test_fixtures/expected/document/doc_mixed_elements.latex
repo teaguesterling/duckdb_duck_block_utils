@@ -1,0 +1,28 @@
+\section{Complete Example}
+
+\begin{quote}
+\textbf{Note:} This demonstrates all features.
+\end{quote}
+
+Visit \href{https://docs.example.com}{our documentation} for more.
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  Feature one
+\item
+  \textbf{Feature two} with emphasis
+\item
+  Feature with \texttt{code}
+\end{enumerate}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{SELECT} \DecValTok{42}\NormalTok{;}
+\end{Highlighting}
+\end{Shaded}
+
+\emph{The end.}

@@ -1,0 +1,18 @@
+Project Name
+
+A powerful tool for data processing.
+
+Installation
+
+    pip install project-name
+
+Usage
+
+Import and use the process function:
+
+    from project import process
+    result = process(data)
+
+License
+
+MIT License. See LICENSE file for details.

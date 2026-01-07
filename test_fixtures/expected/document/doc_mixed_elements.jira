@@ -1,0 +1,13 @@
+h1. {anchor:}Complete Example
+bq. *Note:* This demonstrates all features.
+Visit[our documentation|https://docs.example.com] for more.
+
+# Feature one
+# *Feature two* with emphasis
+# Feature with{{code}}
+
+----
+{code:sql}
+SELECT 42;
+{code}
+_The end._

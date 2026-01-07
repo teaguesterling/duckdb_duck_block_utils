@@ -1,0 +1,19 @@
+\subsection{API Reference}
+
+The following functions are available:
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{db\_heading} - Create headings
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Takes level and content
+  \item
+    Returns LIST(duck\_block)
+  \end{itemize}
+\item
+  \texttt{db\_paragraph} - Create paragraphs
+\end{itemize}

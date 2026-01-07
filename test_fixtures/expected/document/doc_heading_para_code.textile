@@ -1,0 +1,6 @@
+h2. Getting Started
+
+First, install the *extension*.
+
+bc(sql). INSTALL duck_block_utils;
+

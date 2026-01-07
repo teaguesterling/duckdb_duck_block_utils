@@ -1,0 +1,5 @@
+h2. Features
+
+* Easy to use
+* Powerful
+* Extensible

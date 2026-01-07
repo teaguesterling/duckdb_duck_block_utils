@@ -1,0 +1,5 @@
+[arabic]
+. Step 1
+* Detail A
+* Detail B
+. Step 2

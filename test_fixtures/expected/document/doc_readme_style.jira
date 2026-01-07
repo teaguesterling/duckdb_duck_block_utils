@@ -1,0 +1,16 @@
+h1. {anchor:}Project Name
+A{*}powerful{*} tool for data processing.
+
+h2. {anchor:}Installation
+{code:bash}
+pip install project-name
+{code}
+h2. {anchor:}Usage
+Import and use the{{process}} function:
+
+{code:python}
+from project import process
+result = process(data)
+{code}
+h2. {anchor:}License
+MIT License. See[LICENSE file|LICENSE] for details.

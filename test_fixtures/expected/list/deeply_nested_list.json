@@ -1,0 +1,1 @@
+{"pandoc-api-version":[1,20],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"Level 1"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"Level 2"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"Level 3"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"Level 4"}]}]]}]]}]]}]]}]}

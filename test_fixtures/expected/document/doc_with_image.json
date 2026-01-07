@@ -1,0 +1,1 @@
+{"pandoc-api-version":[1,20],"meta":{},"blocks":[{"t":"Header","c":[2,["",[],[]],[{"t":"Str","c":"Screenshot"}]]},{"t":"Para","c":[{"t":"Str","c":"Here is what it looks like:"}]},{"t":"Para","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"Application screenshot"}],["https://example.com/screenshot.png","Main interface"]]}]}]}

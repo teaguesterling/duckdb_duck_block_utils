@@ -1,0 +1,1 @@
+{"pandoc-api-version":[1,20],"meta":{},"blocks":[{"t":"OrderedList","c":[[1,{"t":"Decimal"},{"t":"Period"}],[[{"t":"Plain","c":[{"t":"Str","c":"Step 1"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"Detail A"}]}],[{"t":"Plain","c":[{"t":"Str","c":"Detail B"}]}]]}],[{"t":"Plain","c":[{"t":"Str","c":"Step 2"}]}]]]}]}

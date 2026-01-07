@@ -1,0 +1,24 @@
+== Project Name
+
+A *powerful* tool for data processing.
+
+=== Installation
+
+[source,bash]
+----
+pip install project-name
+----
+
+=== Usage
+
+Import and use the `process` function:
+
+[source,python]
+----
+from project import process
+result = process(data)
+----
+
+=== License
+
+MIT License. See link:LICENSE[LICENSE file] for details.

@@ -1,0 +1,3 @@
+#+BEGIN_EXAMPLE
+  plain text code
+#+END_EXAMPLE

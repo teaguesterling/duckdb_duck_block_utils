@@ -1,0 +1,21 @@
+\begin{itemize}
+\tightlist
+\item
+  Parent item 1
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Child item 1a
+  \item
+    Child item 1b
+  \end{itemize}
+\item
+  Parent item 2
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Child item 2a
+  \end{itemize}
+\end{itemize}

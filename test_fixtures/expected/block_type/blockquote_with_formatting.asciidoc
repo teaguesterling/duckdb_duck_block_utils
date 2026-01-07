@@ -1,0 +1,3 @@
+____
+A quote with *emphasis*.
+____

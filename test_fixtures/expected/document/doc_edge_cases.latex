@@ -1,0 +1,41 @@
+\section{Edge Cases \& Special Characters}
+
+Testing quotes: "double" and \texttt{\textquotesingle{}single\textquotesingle{}} and apostrophes: it's working!
+
+\subsection{Code Escaping}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{def}\NormalTok{ example():}
+    \CommentTok{"""Docstring with "quotes" and \textquotesingle{}apostrophes\textquotesingle{}"""}
+    \ControlFlowTok{return} \SpecialStringTok{f"Value: }\SpecialCharTok{\{x\}}\SpecialStringTok{ | Special: \textless{}\textgreater{}\&"}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{{-}{-} SQL with operators}
+\KeywordTok{SELECT} \OperatorTok{*} \KeywordTok{FROM}\NormalTok{ t }\KeywordTok{WHERE}\NormalTok{ x }\OperatorTok{\textgreater{}} \DecValTok{10} \KeywordTok{AND}\NormalTok{ y }\OperatorTok{\textless{}} \DecValTok{20}\NormalTok{;}
+\KeywordTok{SELECT} \StringTok{\textquotesingle{}string with }\CharTok{\textquotesingle{}\textquotesingle{}}\StringTok{quotes}\CharTok{\textquotesingle{}\textquotesingle{}}\StringTok{\textquotesingle{}}\NormalTok{;}
+\end{Highlighting}
+\end{Shaded}
+
+Inline special chars: \texttt{\textless{}html\textgreater{}}, \texttt{a\ \&\&\ b}, \texttt{x\ \textbar{}\ y}, \texttt{\$PATH}
+
+\subsection{URLs with Parameters}
+
+Link with params: \href{https://example.com/search?q=test\&page=1}{Search Results}
+
+\subsection{Mathematical Expressions}
+
+Comparisons: x \textless{} y, a \textgreater{} b, n \textless= m, p \textgreater= q
+
+Operators: a + b - c * d / e \% f
+
+\subsection{Unicode Support}
+
+International: cafe, naive, resume
+
+Symbols: arrows, checks, stars
+
+Emoji-adjacent: (tm), (c), (r)

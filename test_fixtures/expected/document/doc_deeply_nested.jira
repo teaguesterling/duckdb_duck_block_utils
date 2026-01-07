@@ -1,0 +1,29 @@
+h1. {anchor:}Nested Structure Test
+* *Level 1 Item A*
+** Level 2 with{_}formatting{_}
+*** Level 3 with{{code}}
+**** Level 4 plain
+**** [Level 4 link|https://example.com]
+** Back to Level 2
+* *Level 1 Item B*
+** Another L2 with{*}bold{*} and{_}italic{_}
+
+h2. {anchor:}Complex Blockquote
+bq. *Quote Title*: This is a quote with{{inline code}} and a[link|https://example.com] inside.
+h2. {anchor:}Consecutive Elements
+{code:python}
+print("first")
+{code}
+{code:python}
+print("second")
+{code}
+{code:python}
+print("third")
+{code}
+bq. First quote.
+bq. Second quote.
+*Bold paragraph.*
+
+_Italic paragraph._
+
+{{Code paragraph.}}

@@ -1,0 +1,35 @@
+h1. Edge Cases &amp; Special Characters
+
+Testing quotes: &quot;double&quot; and @'single'@ and apostrophes: it's working!
+
+h2. Code Escaping
+
+bc(python). def example():
+    """Docstring with "quotes" and 'apostrophes'"""
+    return f"Value: {x} | Special: <>&"
+
+
+bc(sql). -- SQL with operators
+SELECT * FROM t WHERE x > 10 AND y < 20;
+SELECT 'string with ''quotes''';
+
+
+Inline special chars: @<html>@, @a && b@, @x | y@, @$PATH@
+
+h2. URLs with Parameters
+
+Link with params: "Search Results":https://example.com/search?q=test&page=1
+
+h2. Mathematical Expressions
+
+Comparisons: x &lt; y, a &gt; b, n &lt;= m, p &gt;= q
+
+Operators: a &#43; b &#45; c &#42; d / e % f
+
+h2. Unicode Support
+
+International: cafe, naive, resume
+
+Symbols: arrows, checks, stars
+
+Emoji&#45;adjacent: (tm), (c), (r)

@@ -1,0 +1,16 @@
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  Step 1
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Detail A
+  \item
+    Detail B
+  \end{itemize}
+\item
+  Step 2
+\end{enumerate}

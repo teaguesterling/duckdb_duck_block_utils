@@ -1,0 +1,26 @@
+\section{Project Name}
+
+A \textbf{powerful} tool for data processing.
+
+\subsection{Installation}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\ExtensionTok{pip}\NormalTok{ install project{-}name}
+\end{Highlighting}
+\end{Shaded}
+
+\subsection{Usage}
+
+Import and use the \texttt{process} function:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\ImportTok{from}\NormalTok{ project }\ImportTok{import}\NormalTok{ process}
+\NormalTok{result }\OperatorTok{=}\NormalTok{ process(data)}
+\end{Highlighting}
+\end{Shaded}
+
+\subsection{License}
+
+MIT License. See \href{LICENSE}{LICENSE file} for details.
