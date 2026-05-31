@@ -1,6 +1,7 @@
 #include "pandoc_block_convert.hpp"
 #include "pandoc_inline_convert.hpp"
 #include "block_types.hpp"
+#include "duckdb_compat.hpp"
 #include "duckdb/common/types/value.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/function/table_function.hpp"
@@ -1377,7 +1378,7 @@ static void PandocAstFunction(ClientContext &context, TableFunctionInput &data_p
 	string blocks_json = BuildBlocksJson(bind_data.blocks);
 
 	// Output single row
-	output.SetCardinality(1);
+	CompatSetOutputCardinality(output, 1);
 	output.data[0].SetValue(0, api_version);
 	output.data[1].SetValue(0, Value(bind_data.meta_json));
 	output.data[2].SetValue(0, Value(blocks_json));
