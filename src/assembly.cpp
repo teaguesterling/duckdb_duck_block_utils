@@ -1,5 +1,6 @@
 #include "assembly.hpp"
 #include "block_types.hpp"
+#include "pandoc_convert_util.hpp"
 #include "duckdb/common/types/value.hpp"
 
 namespace duckdb {
@@ -54,7 +55,10 @@ static int32_t GetHeadingLevel(const Value &element) {
 			auto &kv = StructValue::GetChildren(entry);
 			if (!kv[0].IsNull() && kv[0].GetValue<string>() == "heading_level") {
 				if (!kv[1].IsNull()) {
-					return std::stoi(kv[1].GetValue<string>());
+					// Safe parse: malformed values fall back to the level field
+					int32_t fallback =
+					    children[BlockTypes::LEVEL_IDX].IsNull() ? -1 : children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+					return ParseInt32OrDefault(kv[1].GetValue<string>(), fallback);
 				}
 			}
 		}

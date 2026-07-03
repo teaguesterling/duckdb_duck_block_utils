@@ -1,5 +1,6 @@
 #include "validation.hpp"
 #include "block_types.hpp"
+#include "pandoc_convert_util.hpp"
 #include "duckdb/common/types/value.hpp"
 
 #include <set>
@@ -194,7 +195,8 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				auto heading_level_str = GetElementAttribute(block, "heading_level");
 				int32_t heading_level = 1;
 				if (!heading_level_str.empty()) {
-					heading_level = std::stoi(heading_level_str);
+					heading_level =
+					    ParseInt32OrDefault(heading_level_str, GetElementIntField(block, BlockTypes::LEVEL_IDX, 1));
 				} else {
 					heading_level = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
 				}
@@ -298,7 +300,8 @@ void ValidationFunctions::DbBlocksStructureFun(DataChunk &args, ExpressionState 
 					auto heading_level_str = GetElementAttribute(block, "heading_level");
 					int32_t heading_level = 1;
 					if (!heading_level_str.empty()) {
-						heading_level = std::stoi(heading_level_str);
+						heading_level =
+					    ParseInt32OrDefault(heading_level_str, GetElementIntField(block, BlockTypes::LEVEL_IDX, 1));
 					} else {
 						heading_level = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
 					}

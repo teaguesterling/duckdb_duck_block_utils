@@ -1,4 +1,5 @@
 #include "pandoc_inline_convert.hpp"
+#include "pandoc_convert_util.hpp"
 #include "block_types.hpp"
 #include "inline_builders.hpp"
 #include "duckdb/common/types/value.hpp"
@@ -81,8 +82,13 @@ static string ExtractJsonString(const string &json, const string &key) {
 	return "";
 }
 
-// Recursively flatten Pandoc inlines
-static void FlattenPandocInlines(const string &json, int32_t level, int32_t &order, vector<Value> &result) {
+// Recursively flatten Pandoc inlines.
+// `depth` is the nesting depth (1 at the top level); input nested deeper than
+// PANDOC_MAX_NESTING_DEPTH is rejected with a clean error so a deeply nested
+// document cannot exhaust the call stack.
+static void FlattenPandocInlines(const string &json, int32_t level, int32_t &order, vector<Value> &result,
+                                 idx_t depth) {
+	CheckPandocDepth(depth);
 	// Find array elements - simplified parser for Pandoc inline format
 	// Each inline is {"t": "Type", "c": content} or just {"t": "Type"}
 
@@ -150,7 +156,7 @@ static void FlattenPandocInlines(const string &json, int32_t level, int32_t &ord
 				size_t arr_end = obj_content.rfind("]");
 				if (arr_start != string::npos && arr_end != string::npos) {
 					string children = obj_content.substr(arr_start, arr_end - arr_start + 1);
-					FlattenPandocInlines(children, level + 1, order, result);
+					FlattenPandocInlines(children, level + 1, order, result, depth + 1);
 				}
 			}
 			pos = obj_end;
@@ -165,7 +171,7 @@ static void FlattenPandocInlines(const string &json, int32_t level, int32_t &ord
 				size_t arr_end = obj_content.rfind("]");
 				if (arr_start != string::npos && arr_end != string::npos) {
 					string children = obj_content.substr(arr_start, arr_end - arr_start + 1);
-					FlattenPandocInlines(children, level + 1, order, result);
+					FlattenPandocInlines(children, level + 1, order, result, depth + 1);
 				}
 			}
 			pos = obj_end;
@@ -180,7 +186,7 @@ static void FlattenPandocInlines(const string &json, int32_t level, int32_t &ord
 				size_t arr_end = obj_content.rfind("]");
 				if (arr_start != string::npos && arr_end != string::npos) {
 					string children = obj_content.substr(arr_start, arr_end - arr_start + 1);
-					FlattenPandocInlines(children, level + 1, order, result);
+					FlattenPandocInlines(children, level + 1, order, result, depth + 1);
 				}
 			}
 			pos = obj_end;
@@ -195,7 +201,7 @@ static void FlattenPandocInlines(const string &json, int32_t level, int32_t &ord
 				size_t arr_end = obj_content.rfind("]");
 				if (arr_start != string::npos && arr_end != string::npos) {
 					string children = obj_content.substr(arr_start, arr_end - arr_start + 1);
-					FlattenPandocInlines(children, level + 1, order, result);
+					FlattenPandocInlines(children, level + 1, order, result, depth + 1);
 				}
 			}
 			pos = obj_end;
@@ -210,7 +216,7 @@ static void FlattenPandocInlines(const string &json, int32_t level, int32_t &ord
 				size_t arr_end = obj_content.rfind("]");
 				if (arr_start != string::npos && arr_end != string::npos) {
 					string children = obj_content.substr(arr_start, arr_end - arr_start + 1);
-					FlattenPandocInlines(children, level + 1, order, result);
+					FlattenPandocInlines(children, level + 1, order, result, depth + 1);
 				}
 			}
 			pos = obj_end;
@@ -225,7 +231,7 @@ static void FlattenPandocInlines(const string &json, int32_t level, int32_t &ord
 				size_t arr_end = obj_content.rfind("]");
 				if (arr_start != string::npos && arr_end != string::npos) {
 					string children = obj_content.substr(arr_start, arr_end - arr_start + 1);
-					FlattenPandocInlines(children, level + 1, order, result);
+					FlattenPandocInlines(children, level + 1, order, result, depth + 1);
 				}
 			}
 			pos = obj_end;
@@ -315,7 +321,7 @@ static void FlattenPandocInlines(const string &json, int32_t level, int32_t &ord
 							arr_end++;
 						}
 						string children = obj_content.substr(arr_start, arr_end - arr_start);
-						FlattenPandocInlines(children, level + 1, order, result);
+						FlattenPandocInlines(children, level + 1, order, result, depth + 1);
 					}
 				}
 			}
@@ -382,7 +388,7 @@ static void FlattenPandocInlines(const string &json, int32_t level, int32_t &ord
 						size_t arr_end = obj_content.rfind("]");
 						if (arr_end != string::npos) {
 							string children = obj_content.substr(arr_start, arr_end - arr_start + 1);
-							FlattenPandocInlines(children, level + 1, order, result);
+							FlattenPandocInlines(children, level + 1, order, result, depth + 1);
 						}
 					}
 				}
@@ -410,7 +416,7 @@ static void FlattenPandocInlines(const string &json, int32_t level, int32_t &ord
 							size_t arr_end = obj_content.rfind("]");
 							if (arr_end != string::npos) {
 								string children = obj_content.substr(arr_start, arr_end - arr_start + 1);
-								FlattenPandocInlines(children, level + 1, order, result);
+								FlattenPandocInlines(children, level + 1, order, result, depth + 1);
 							}
 						}
 					}
@@ -448,15 +454,18 @@ void PandocInlineConvert::PandocInlinesToDbInlinesFun(DataChunk &args, Expressio
 		vector<Value> inlines;
 		int32_t order = 0;
 
-		FlattenPandocInlines(json, 1, order, inlines);
+		FlattenPandocInlines(json, 1, order, inlines, 1);
 
 		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), inlines));
 	}
 }
 
-// Convert doc_inlines back to Pandoc JSON
+// Convert doc_inlines back to Pandoc JSON.
+// `depth` bounds the recursion into nested container inlines so a deeply
+// nested inline list cannot exhaust the call stack.
 static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_idx, int32_t target_level,
-                                     idx_t &end_idx) {
+                                     idx_t &end_idx, idx_t depth) {
+	CheckPandocDepth(depth);
 	std::ostringstream json;
 	json << "[";
 
@@ -488,22 +497,8 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			json << ",";
 		first = false;
 
-		// Escape content for JSON
-		string escaped_content;
-		for (char c : content) {
-			if (c == '"')
-				escaped_content += "\\\"";
-			else if (c == '\\')
-				escaped_content += "\\\\";
-			else if (c == '\n')
-				escaped_content += "\\n";
-			else if (c == '\r')
-				escaped_content += "\\r";
-			else if (c == '\t')
-				escaped_content += "\\t";
-			else
-				escaped_content += c;
-		}
+		// Escape content for JSON (handles all control characters)
+		string escaped_content = PandocJsonEscape(content);
 
 		// Map our types back to Pandoc
 		if (inline_type == BlockTypes::INLINE_TEXT) {
@@ -517,7 +512,7 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 		} else if (inline_type == BlockTypes::INLINE_BOLD) {
 			// Find nested content at level+1
 			idx_t nested_end = i + 1;
-			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
+			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end, depth + 1);
 			// If no nested children but has content, create Str from content
 			if (nested == "[]" && !content.empty()) {
 				json << "{\"t\":\"Strong\",\"c\":[{\"t\":\"Str\",\"c\":\"" << escaped_content << "\"}]}";
@@ -527,7 +522,7 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			i = nested_end - 1; // Adjust for loop increment
 		} else if (inline_type == BlockTypes::INLINE_ITALIC) {
 			idx_t nested_end = i + 1;
-			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
+			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end, depth + 1);
 			if (nested == "[]" && !content.empty()) {
 				json << "{\"t\":\"Emph\",\"c\":[{\"t\":\"Str\",\"c\":\"" << escaped_content << "\"}]}";
 			} else {
@@ -536,7 +531,7 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			i = nested_end - 1;
 		} else if (inline_type == BlockTypes::INLINE_STRIKETHROUGH) {
 			idx_t nested_end = i + 1;
-			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
+			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end, depth + 1);
 			if (nested == "[]" && !content.empty()) {
 				json << "{\"t\":\"Strikeout\",\"c\":[{\"t\":\"Str\",\"c\":\"" << escaped_content << "\"}]}";
 			} else {
@@ -545,7 +540,7 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			i = nested_end - 1;
 		} else if (inline_type == BlockTypes::INLINE_SUPERSCRIPT) {
 			idx_t nested_end = i + 1;
-			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
+			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end, depth + 1);
 			if (nested == "[]" && !content.empty()) {
 				json << "{\"t\":\"Superscript\",\"c\":[{\"t\":\"Str\",\"c\":\"" << escaped_content << "\"}]}";
 			} else {
@@ -554,7 +549,7 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			i = nested_end - 1;
 		} else if (inline_type == BlockTypes::INLINE_SUBSCRIPT) {
 			idx_t nested_end = i + 1;
-			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
+			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end, depth + 1);
 			if (nested == "[]" && !content.empty()) {
 				json << "{\"t\":\"Subscript\",\"c\":[{\"t\":\"Str\",\"c\":\"" << escaped_content << "\"}]}";
 			} else {
@@ -563,7 +558,7 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			i = nested_end - 1;
 		} else if (inline_type == BlockTypes::INLINE_SMALLCAPS) {
 			idx_t nested_end = i + 1;
-			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
+			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end, depth + 1);
 			if (nested == "[]" && !content.empty()) {
 				json << "{\"t\":\"SmallCaps\",\"c\":[{\"t\":\"Str\",\"c\":\"" << escaped_content << "\"}]}";
 			} else {
@@ -597,7 +592,7 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 			}
 
 			idx_t nested_end = i + 1;
-			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
+			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end, depth + 1);
 			// If no nested children but has content, create Str from content
 			if (nested == "[]" && !content.empty()) {
 				json << "{\"t\":\"Link\",\"c\":[[\"\",[],[]],[{\"t\":\"Str\",\"c\":\"" << escaped_content << "\"}],[\""
@@ -660,12 +655,12 @@ static string DocInlinesToPandocJson(const vector<Value> &inlines, idx_t start_i
 				}
 			}
 			idx_t nested_end = i + 1;
-			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
+			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end, depth + 1);
 			json << "{\"t\":\"Quoted\",\"c\":[{\"t\":\"" << quote_type << "\"}," << nested << "]}";
 			i = nested_end - 1;
 		} else if (inline_type == BlockTypes::INLINE_SPAN) {
 			idx_t nested_end = i + 1;
-			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end);
+			string nested = DocInlinesToPandocJson(inlines, i + 1, level + 1, nested_end, depth + 1);
 			json << "{\"t\":\"Span\",\"c\":[[\"\",[],[]]," << nested << "]}";
 			i = nested_end - 1;
 		} else {
@@ -695,7 +690,7 @@ void PandocInlineConvert::DbInlinesToPandocFun(DataChunk &args, ExpressionState 
 
 		auto &inlines = ListValue::GetChildren(list_val);
 		idx_t end_idx = 0;
-		string json = DocInlinesToPandocJson(inlines, 0, 1, end_idx);
+		string json = DocInlinesToPandocJson(inlines, 0, 1, end_idx, 1);
 		result.SetValue(i, Value(json));
 	}
 }
@@ -712,11 +707,14 @@ string PandocInlineConvert::ConvertInlinesToPandocJson(const vector<Value> &inli
 	    first_children[BlockTypes::LEVEL_IDX].IsNull() ? 1 : first_children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
 
 	idx_t end_idx = 0;
-	return DocInlinesToPandocJson(inlines, 0, target_level, end_idx);
+	return DocInlinesToPandocJson(inlines, 0, target_level, end_idx, 1);
 }
 
-// Render inlines to text/markdown
-static string RenderInlinesToText(const string &json, const string &mode) {
+// Render inlines to text/markdown.
+// `depth` bounds the recursion into nested formatting so a deeply nested
+// document cannot exhaust the call stack.
+static string RenderInlinesToText(const string &json, const string &mode, idx_t depth) {
+	CheckPandocDepth(depth);
 	std::ostringstream out;
 
 	// Simple rendering - parse the JSON and output text
@@ -767,7 +765,7 @@ static string RenderInlinesToText(const string &json, const string &mode) {
 				size_t arr_start = obj_content.find("[", c_start);
 				size_t arr_end = obj_content.rfind("]");
 				if (arr_start != string::npos && arr_end != string::npos) {
-					out << RenderInlinesToText(obj_content.substr(arr_start, arr_end - arr_start + 1), mode);
+					out << RenderInlinesToText(obj_content.substr(arr_start, arr_end - arr_start + 1), mode, depth + 1);
 				}
 			}
 			if (mode == "markdown")
@@ -780,7 +778,7 @@ static string RenderInlinesToText(const string &json, const string &mode) {
 				size_t arr_start = obj_content.find("[", c_start);
 				size_t arr_end = obj_content.rfind("]");
 				if (arr_start != string::npos && arr_end != string::npos) {
-					out << RenderInlinesToText(obj_content.substr(arr_start, arr_end - arr_start + 1), mode);
+					out << RenderInlinesToText(obj_content.substr(arr_start, arr_end - arr_start + 1), mode, depth + 1);
 				}
 			}
 			if (mode == "markdown")
@@ -826,7 +824,8 @@ static string RenderInlinesToText(const string &json, const string &mode) {
 									bracket_count--;
 								arr_end++;
 							}
-							out << RenderInlinesToText(obj_content.substr(arr_start, arr_end - arr_start), mode);
+							out << RenderInlinesToText(obj_content.substr(arr_start, arr_end - arr_start), mode,
+								                           depth + 1);
 						}
 					}
 				}
@@ -874,7 +873,7 @@ void PandocInlineConvert::PandocInlinesToTextFun(DataChunk &args, ExpressionStat
 		}
 
 		string json = json_val.GetValue<string>();
-		string text = RenderInlinesToText(json, mode);
+		string text = RenderInlinesToText(json, mode, 1);
 		result.SetValue(i, Value(text));
 	}
 }
