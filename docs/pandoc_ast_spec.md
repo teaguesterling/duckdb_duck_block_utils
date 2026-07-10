@@ -244,6 +244,19 @@ Metadata values have their own type system:
 
 ## Conversion Functions
 
+### Conversion limits & fidelity
+
+- **Maximum nesting depth:** all converters (parse and emit) enforce a
+  nesting-depth cap of **128**. Documents nested deeper (e.g. 129 nested
+  `Div`s or `Strong` spans) are rejected with a clean `Invalid Input Error`
+  rather than converted. Real documents do not approach this limit; it exists
+  so pathological input cannot exhaust the call stack.
+- **Best-effort conversions:** `Table` blocks round-trip as raw JSON
+  passthrough (no validation of the inner structure). Inline-level attributes
+  (on `Span`, `Code`, `Link`, ...) are not fully preserved. Block-level
+  attributes (id, classes, key/value pairs on `Header`/`CodeBlock`/`Div`) and
+  `BlockQuote` contents are preserved on round-trip.
+
 ### pandoc_ast_to_blocks
 
 Convert Pandoc JSON AST to duck_blocks.
