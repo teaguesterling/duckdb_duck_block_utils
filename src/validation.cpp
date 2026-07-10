@@ -301,7 +301,7 @@ void ValidationFunctions::DbBlocksStructureFun(DataChunk &args, ExpressionState 
 					int32_t heading_level = 1;
 					if (!heading_level_str.empty()) {
 						heading_level =
-					    ParseInt32OrDefault(heading_level_str, GetElementIntField(block, BlockTypes::LEVEL_IDX, 1));
+						    ParseInt32OrDefault(heading_level_str, GetElementIntField(block, BlockTypes::LEVEL_IDX, 1));
 					} else {
 						heading_level = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
 					}

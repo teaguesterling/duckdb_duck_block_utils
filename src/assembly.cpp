@@ -56,8 +56,9 @@ static int32_t GetHeadingLevel(const Value &element) {
 			if (!kv[0].IsNull() && kv[0].GetValue<string>() == "heading_level") {
 				if (!kv[1].IsNull()) {
 					// Safe parse: malformed values fall back to the level field
-					int32_t fallback =
-					    children[BlockTypes::LEVEL_IDX].IsNull() ? -1 : children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+					int32_t fallback = children[BlockTypes::LEVEL_IDX].IsNull()
+					                       ? -1
+					                       : children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
 					return ParseInt32OrDefault(kv[1].GetValue<string>(), fallback);
 				}
 			}

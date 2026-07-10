@@ -1,10 +1,11 @@
 # name: test/sql/pandoc_recursion_cap.test
 # description: Bounded recursion, safe integer parsing, and conversion-fidelity
+# group: [sql]
+
 #              regression tests for the Pandoc-AST converters.
 #              The over-limit inputs are intentionally only slightly past the
 #              cap (~140 levels) so the test itself can never exhaust the
 #              stack; the assertion is "clean error at the boundary".
-# group: [sql]
 
 require duck_block_utils
 

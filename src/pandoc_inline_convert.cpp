@@ -825,7 +825,7 @@ static string RenderInlinesToText(const string &json, const string &mode, idx_t 
 								arr_end++;
 							}
 							out << RenderInlinesToText(obj_content.substr(arr_start, arr_end - arr_start), mode,
-								                           depth + 1);
+							                           depth + 1);
 						}
 					}
 				}
