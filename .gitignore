@@ -8,3 +8,9 @@ duckdb_unittest_tempdir/
 testext
 test/python/__pycache__/
 .Rhistory
+
+# blq
+.bird/*
+!.bird/hooks/
+!.bird/config.toml
+!.bird/commands.toml
