@@ -48,9 +48,29 @@ SELECT rendered FROM db_render_query('SELECT * FROM range(5)');" | less -R
 
 ## Macro reference
 
+### C++ renderer (width-aware)
+
+`db_blocks_render_ansi(blocks[, width])` is a native scalar function that adds
+what the pure-SQL macros cannot: word wrapping at a display width. It measures
+columns with utf8proc (SGR escapes are zero width, CJK/emoji are two), re-opens
+active styles after each line break and continuation prefix (list indents,
+quote bars), hard-breaks unbreakable words, and wraps table cells to fit the
+width budget. Omit `width` (or pass `<= 0`) to auto-detect the terminal size
+via `/dev/tty`, falling back to `$COLUMNS`, then 80 — so it does the right
+thing even when stdout is piped to `less -R`.
+
+`db_terminal_width()` exposes the detected width directly.
+
+`db_render_blocks(blocks)` (from the pragma) delegates to this renderer, so
+macro users get wrapping for free.
+
+## Macro reference
+
 | Macro | Description |
 |-------|-------------|
-| `db_render_blocks(blocks)` | Render `LIST(duck_block)` to a full ANSI document (inline-kind elements are skipped) |
+| `db_blocks_render_ansi(blocks[, width])` | C++ renderer: `LIST(duck_block)` → wrapped ANSI document |
+| `db_terminal_width()` | Detected terminal width (`/dev/tty`, `$COLUMNS`, default 80) |
+| `db_render_blocks(blocks)` | Render `LIST(duck_block)` to a full ANSI document (inline-kind elements are skipped; delegates to `db_blocks_render_ansi`) |
 | `db_render_block(element_type, content, attributes)` | Render a single block element |
 | `db_render_query(sql)` | Table macro: run `sql` via `query()` and render the result as an ANSI table (column `rendered`) |
 | `db_json_to_table_block(json)` | JSON array of objects → `table` duck_block (headers from the first object's keys) |
@@ -61,17 +81,17 @@ SELECT rendered FROM db_render_query('SELECT * FROM range(5)');" | less -R
 | `db_render_code(content, lang)` | Code block with dim gutter and language tag |
 | `db_ansi_pad(s, w)` | Space-pad to width (naive `length`-based) |
 
-## Known limitations (v1, pure-macro implementation)
+## Known limitations
 
-- **No word wrapping** — long lines are left to the terminal to wrap, which can
-  break gutter/list alignment. Proper wrapping needs escape-aware display-width
-  math (utf8proc) in a future C++ `db_blocks_render_ansi` function.
-- **Inline styling is regex-based** — nested markup (e.g. `` **bold `code`** ``)
-  and inline duck_block children (containers with `content=''`) are not walked;
-  paragraphs are styled from their raw markdown text as produced by
-  `read_markdown_blocks`.
+- **Inline styling parses raw markdown text** (`**`, `*`, `` ` ``, `[](...)`)
+  from the `content` field; inline duck_block children (containers with
+  `content=''`) are not walked.
 - **Table/list content must be JSON-encoded** (the shape the markdown reader
-  emits); nested lists render flat.
+  emits).
+- **Code blocks are not wrapped** (wrapping would corrupt meaning); long code
+  lines overflow the width.
 - **No syntax highlighting** inside code blocks.
-- Column alignment uses `length()` (codepoints), so double-width CJK/emoji cells
-  will misalign.
+- **No theming yet** — the palette is fixed (glamour-style JSON themes are a
+  natural follow-up).
+- The `db_render_*` JSON macros (table/list/inline helpers) still measure with
+  `length()` (codepoints); the C++ renderer is the width-correct path.

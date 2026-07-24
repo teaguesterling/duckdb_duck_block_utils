@@ -1,0 +1,160 @@
+# name: test/sql/render_ansi.test
+# description: test db_blocks_render_ansi C++ renderer (width-aware ANSI output)
+# group: [sql]
+
+require duck_block_utils
+
+# Strip SGR escapes helper used throughout: regexp_replace(l, chr(27)||'\[[0-9;]*m', '', 'g')
+
+# test-local generic block constructor
+statement ok
+CREATE MACRO tb(t, c, a) AS
+  {kind: 'block', element_type: t, content: c, level: 1, encoding: 'text',
+   attributes: a, element_order: 1}::duck_block;
+
+# ============================================================================
+# db_terminal_width
+# ============================================================================
+
+query I
+SELECT db_terminal_width() >= 20;
+----
+true
+
+# ============================================================================
+# Basic rendering
+# ============================================================================
+
+query I
+SELECT r LIKE '%Hello%' AND r LIKE '%world%' AND position(chr(27) IN r) > 0
+FROM (SELECT db_blocks_render_ansi(db_heading(1, 'Hello') || db_paragraph('world')) AS r);
+----
+true
+
+# NULL in, NULL out
+query I
+SELECT db_blocks_render_ansi(NULL) IS NULL;
+----
+true
+
+# Explicit width <= 0 means auto-detect (still renders)
+query I
+SELECT db_blocks_render_ansi(db_paragraph('hi'), 0) LIKE '%hi%';
+----
+true
+
+# ============================================================================
+# Word wrap honors display width
+# ============================================================================
+
+# every rendered line fits in the requested width (after stripping escapes)
+query I
+SELECT max(length(regexp_replace(l, chr(27) || '\[[0-9;]*m', '', 'g'))) <= 40
+   AND count(*) > 1
+FROM (
+  SELECT unnest(string_split(db_blocks_render_ansi(db_paragraph(repeat('word ', 30)), 40), chr(10))) AS l
+);
+----
+true
+
+# very long unbreakable words are hard-broken rather than overflowing
+query I
+SELECT max(length(regexp_replace(l, chr(27) || '\[[0-9;]*m', '', 'g'))) <= 20
+FROM (
+  SELECT unnest(string_split(db_blocks_render_ansi(db_paragraph(repeat('x', 95)), 20), chr(10))) AS l
+);
+----
+true
+
+# CJK characters count as two columns: 100 display-columns of text at width 20
+# must span at least 5 lines (codepoint-counting would produce ~3)
+query I
+SELECT count(*) >= 5
+FROM (
+  SELECT unnest(string_split(db_blocks_render_ansi(db_paragraph(repeat('你好 ', 20)), 20), chr(10))) AS l
+)
+WHERE length(l) > 0;
+----
+true
+
+# ============================================================================
+# SGR state survives line breaks
+# ============================================================================
+
+# a bold span that wraps re-opens bold at the start of the continuation line
+query I
+SELECT lines[2] LIKE chr(27) || '[1m%'
+FROM (
+  SELECT string_split(db_blocks_render_ansi(db_paragraph('**' || repeat('bold ', 20) || '**'), 30), chr(10)) AS lines
+);
+----
+true
+
+# ============================================================================
+# Lists: hanging indent
+# ============================================================================
+
+query I
+SELECT r LIKE '%1.%' AND r LIKE '%2.%'
+FROM (SELECT db_blocks_render_ansi([tb('list', '["first", "second"]', MAP {'ordered': 'true'})], 60) AS r);
+----
+true
+
+# wrapped continuation lines of a bullet item are indented past the bullet
+query I
+SELECT regexp_replace(lines[2], chr(27) || '\[[0-9;]*m', '', 'g') LIKE '    %'
+FROM (
+  SELECT string_split(db_blocks_render_ansi([tb('list', '["' || repeat('item ', 20) || '"]', MAP {'ordered': 'false'})], 30), chr(10)) AS lines
+);
+----
+true
+
+# ============================================================================
+# Blockquote: prefix on every wrapped line
+# ============================================================================
+
+query I
+SELECT length(r) - length(replace(r, '▌', '')) >= 2
+FROM (SELECT db_blocks_render_ansi([tb('blockquote', repeat('quote ', 20), MAP {}::MAP(VARCHAR, VARCHAR))], 30) AS r);
+----
+true
+
+# ============================================================================
+# Tables: fit to width
+# ============================================================================
+
+# a table whose natural width exceeds the budget wraps cells instead of overflowing
+query I
+SELECT max(length(regexp_replace(l, chr(27) || '\[[0-9;]*m', '', 'g'))) <= 40
+   AND bool_or(l LIKE '%┼%')
+FROM (
+  SELECT unnest(string_split(db_blocks_render_ansi(
+    [tb('table', '{"headers": ["Name", "Description"], "rows": [["alpha", "' || repeat('lorem ipsum ', 8) || '"], ["beta", "short"]]}', MAP {}::MAP(VARCHAR, VARCHAR))],
+    40), chr(10))) AS l
+)
+WHERE length(l) > 0;
+----
+true
+
+# narrow table keeps natural column widths and stays aligned
+query I
+SELECT r LIKE '%Name%' AND r LIKE '%─┼─%' AND r LIKE '%Ada%'
+FROM (SELECT db_blocks_render_ansi(
+  [tb('table', '{"headers": ["Name", "Age"], "rows": [["Ada", "36"], ["Grace", "85"]]}', MAP {}::MAP(VARCHAR, VARCHAR))],
+  60) AS r);
+----
+true
+
+# ============================================================================
+# Inline elements are skipped, metadata suppressed
+# ============================================================================
+
+query I
+SELECT db_blocks_render_ansi([db_text('loose inline')[1]], 60) = '';
+----
+true
+
+query I
+SELECT db_blocks_render_ansi([tb('metadata', 'title: x', MAP {}::MAP(VARCHAR, VARCHAR))], 60) = '';
+----
+true
