@@ -1,5 +1,6 @@
 #include "extraction.hpp"
 #include "block_types.hpp"
+#include "pandoc_convert_util.hpp"
 #include "duckdb/common/types/value.hpp"
 
 #include <map>
@@ -140,7 +141,8 @@ void ExtractionFunctions::DbBlocksHeadingsFun(DataChunk &args, ExpressionState &
 			auto heading_level_str = GetElementAttribute(block, "heading_level");
 			int32_t level;
 			if (!heading_level_str.empty()) {
-				level = std::stoi(heading_level_str);
+				// Safe parse: malformed/out-of-range values fall back instead of throwing
+				level = ParseInt32OrDefault(heading_level_str, GetElementIntField(block, BlockTypes::LEVEL_IDX, 1));
 			} else {
 				// Fall back to level field (for backward compatibility)
 				level = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
@@ -260,7 +262,8 @@ void ExtractionFunctions::DbBlocksTocFun(DataChunk &args, ExpressionState &state
 			auto heading_level_str = GetElementAttribute(block, "heading_level");
 			int32_t level;
 			if (!heading_level_str.empty()) {
-				level = std::stoi(heading_level_str);
+				// Safe parse: malformed/out-of-range values fall back instead of throwing
+				level = ParseInt32OrDefault(heading_level_str, GetElementIntField(block, BlockTypes::LEVEL_IDX, 1));
 			} else {
 				level = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
 			}

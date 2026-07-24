@@ -1,4 +1,5 @@
 #include "pandoc_block_convert.hpp"
+#include "pandoc_convert_util.hpp"
 #include "pandoc_inline_convert.hpp"
 #include "block_types.hpp"
 #include "duckdb_compat.hpp"
@@ -25,14 +26,18 @@ static Value CreateAttrsMap(const map<string, string> &attrs) {
 	return Value::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR, keys, values);
 }
 
-// Helper to create a single duck_block Value (for block)
+// Helper to create a single duck_block Value (for block).
+// `level` is NULL for top-level blocks; blocks nested inside a Div carry
+// their nesting level so the emit side can reconstruct the tree (issue #11:
+// div children were dropped on emit because every parsed block had a NULL
+// level).
 static Value CreateDocBlock(const string &block_type, const string &content, const map<string, string> &attrs,
-                            int32_t order, const string &encoding = "text") {
+                            int32_t order, const string &encoding = "text", const Value &level = Value()) {
 	child_list_t<Value> struct_values;
 	struct_values.push_back(make_pair("kind", Value(BlockTypes::KIND_BLOCK)));
 	struct_values.push_back(make_pair("element_type", Value(block_type)));
 	struct_values.push_back(make_pair("content", Value(content)));
-	struct_values.push_back(make_pair("level", Value())); // NULL for blocks
+	struct_values.push_back(make_pair("level", level));
 	struct_values.push_back(make_pair("encoding", Value(encoding)));
 	struct_values.push_back(make_pair("attributes", CreateAttrsMap(attrs)));
 	struct_values.push_back(make_pair("element_order", Value(order)));
@@ -100,21 +105,157 @@ static int32_t ExtractJsonInt(const string &json, size_t start_pos) {
 	while (start_pos < json.length() && (isdigit(json[start_pos]) || json[start_pos] == '-')) {
 		num_str += json[start_pos++];
 	}
-	return num_str.empty() ? 0 : std::stoi(num_str);
+	// ParseInt32OrDefault instead of std::stoi: an out-of-range number in the
+	// document must not throw std::out_of_range
+	return ParseInt32OrDefault(num_str, 0);
 }
 
-// Find matching bracket/brace
+// Find matching bracket/brace (quote-aware, see PandocFindMatchingBracket)
 static size_t FindMatchingBracket(const string &json, size_t start, char open, char close) {
-	int count = 1;
-	size_t pos = start + 1;
-	while (pos < json.length() && count > 0) {
-		if (json[pos] == open)
-			count++;
-		else if (json[pos] == close)
-			count--;
+	return PandocFindMatchingBracket(json, start, open, close);
+}
+
+// Read a JSON string literal whose opening quote is at quote_pos; returns the
+// decoded value and sets end_quote to the index of the closing quote.
+static string ReadJsonStringAt(const string &json, size_t quote_pos, size_t &end_quote) {
+	string result;
+	size_t pos = quote_pos + 1;
+	while (pos < json.length() && json[pos] != '"') {
+		if (json[pos] == '\\' && pos + 1 < json.length()) {
+			pos++;
+			switch (json[pos]) {
+			case 'n':
+				result += '\n';
+				break;
+			case 'r':
+				result += '\r';
+				break;
+			case 't':
+				result += '\t';
+				break;
+			case '"':
+				result += '"';
+				break;
+			case '\\':
+				result += '\\';
+				break;
+			default:
+				result += json[pos];
+			}
+		} else {
+			result += json[pos];
+		}
 		pos++;
 	}
-	return pos;
+	end_quote = pos;
+	return result;
+}
+
+// A parsed Pandoc attr triple: ["id", ["class", ...], [["key","value"], ...]]
+struct PandocAttr {
+	string id;
+	vector<string> classes;
+	vector<std::pair<string, string>> key_values;
+};
+
+// Parse a Pandoc attr triple starting at attr_start (the opening '[').
+// Returns the index one past the closing ']'.
+static size_t ParsePandocAttr(const string &json, size_t attr_start, PandocAttr &attr) {
+	size_t attr_end = FindMatchingBracket(json, attr_start, '[', ']');
+
+	// First element: the id string
+	size_t id_quote = json.find('"', attr_start + 1);
+	size_t pos = attr_start + 1;
+	if (id_quote != string::npos && id_quote < attr_end) {
+		size_t classes_bracket = json.find('[', attr_start + 1);
+		if (classes_bracket == string::npos || id_quote < classes_bracket) {
+			size_t id_end;
+			attr.id = ReadJsonStringAt(json, id_quote, id_end);
+			pos = id_end + 1;
+		}
+	}
+
+	// Second element: the classes array
+	size_t cls_start = json.find('[', pos);
+	if (cls_start == string::npos || cls_start >= attr_end) {
+		return attr_end;
+	}
+	size_t cls_end = FindMatchingBracket(json, cls_start, '[', ']');
+	size_t p = cls_start + 1;
+	while (p + 1 < cls_end) {
+		size_t q = json.find('"', p);
+		if (q == string::npos || q + 1 >= cls_end) {
+			break;
+		}
+		size_t qe;
+		attr.classes.push_back(ReadJsonStringAt(json, q, qe));
+		p = qe + 1;
+	}
+
+	// Third element: the key-value array [["k","v"], ...]
+	size_t kv_start = json.find('[', cls_end);
+	if (kv_start == string::npos || kv_start >= attr_end) {
+		return attr_end;
+	}
+	size_t kv_end = FindMatchingBracket(json, kv_start, '[', ']');
+	p = kv_start + 1;
+	while (p + 1 < kv_end) {
+		size_t pair_start = json.find('[', p);
+		if (pair_start == string::npos || pair_start + 1 >= kv_end) {
+			break;
+		}
+		size_t pair_end = FindMatchingBracket(json, pair_start, '[', ']');
+		size_t kq = json.find('"', pair_start + 1);
+		if (kq == string::npos || kq >= pair_end) {
+			p = pair_end;
+			continue;
+		}
+		size_t kqe;
+		string key = ReadJsonStringAt(json, kq, kqe);
+		string val;
+		size_t vq = json.find('"', kqe + 1);
+		if (vq != string::npos && vq < pair_end) {
+			size_t vqe;
+			val = ReadJsonStringAt(json, vq, vqe);
+		}
+		attr.key_values.emplace_back(std::move(key), std::move(val));
+		p = pair_end;
+	}
+	return attr_end;
+}
+
+// Attribute keys that carry converter semantics; user-supplied key/value
+// attrs with these names are not merged into the attributes map (they would
+// corrupt the reserved meaning) and reserved keys are not re-emitted as
+// generic key/value attrs.
+static bool IsReservedAttrKey(const string &key) {
+	return key == "id" || key == "class" || key == "heading_level" || key == "language" || key == "list_type" ||
+	       key == "format" || key == "src" || key == "alt" || key == "title" || key == "href" || key == "quote_type" ||
+	       key == "display";
+}
+
+// Merge a parsed Pandoc attr triple into a duck_block attributes map
+// (issue #11: previously only the id / first class survived).
+static void StorePandocAttr(const PandocAttr &attr, map<string, string> &attrs) {
+	if (!attr.id.empty()) {
+		attrs["id"] = attr.id;
+	}
+	if (!attr.classes.empty()) {
+		string joined;
+		for (auto &cls : attr.classes) {
+			if (!joined.empty()) {
+				joined += " ";
+			}
+			joined += cls;
+		}
+		attrs["class"] = joined;
+	}
+	for (auto &kv : attr.key_values) {
+		if (IsReservedAttrKey(kv.first) || attrs.find(kv.first) != attrs.end()) {
+			continue;
+		}
+		attrs[kv.first] = kv.second;
+	}
 }
 
 // Extract content from inlines array (simple text extraction)
@@ -211,8 +352,20 @@ static string ExtractInlinesText(const string &json) {
 	return result;
 }
 
-// Process a single Pandoc block and add to result
-static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<Value> &result) {
+// Process a single Pandoc block and add to result.
+// `depth` is the nesting depth of this block (1 for top-level blocks); the
+// converter refuses input nested deeper than PANDOC_MAX_NESTING_DEPTH so a
+// deeply nested document cannot exhaust the call stack.
+// `parent_div_level` is 0 for top-level blocks; for blocks nested inside a
+// Div it is the div's effective level, so children get level parent + 1 and
+// the emit side can reconstruct the nesting (issue #11).
+static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<Value> &result, idx_t depth,
+                               int32_t parent_div_level) {
+	CheckPandocDepth(depth);
+	// Top-level blocks keep a NULL level (existing behavior); div children
+	// carry their nesting level explicitly
+	const int32_t effective_level = (parent_div_level == 0) ? 1 : parent_div_level + 1;
+	const Value block_level = (parent_div_level == 0) ? Value() : Value(effective_level);
 	// Find the type
 	size_t type_start = block_json.find("\"t\":");
 	if (type_start == string::npos)
@@ -249,19 +402,11 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 				// Skip past level and attr array
 				size_t attr_arr = block_json.find("[", arr_start + 1);
 				if (attr_arr != string::npos) {
-					// Try to extract id from attr array
-					size_t id_quote = block_json.find("\"", attr_arr + 1);
-					if (id_quote != string::npos) {
-						size_t id_end = block_json.find("\"", id_quote + 1);
-						if (id_end != string::npos) {
-							string id = block_json.substr(id_quote + 1, id_end - id_quote - 1);
-							if (!id.empty()) {
-								attrs["id"] = id;
-							}
-						}
-					}
+					// Preserve id, classes and key/value attrs (issue #11)
+					PandocAttr pattr;
+					size_t attr_end = ParsePandocAttr(block_json, attr_arr, pattr);
+					StorePandocAttr(pattr, attrs);
 
-					size_t attr_end = FindMatchingBracket(block_json, attr_arr, '[', ']');
 					size_t inlines_start = block_json.find("[", attr_end);
 					if (inlines_start != string::npos) {
 						size_t inlines_end = FindMatchingBracket(block_json, inlines_start, '[', ']');
@@ -303,20 +448,14 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 				// Find the attributes array
 				size_t attr_arr = block_json.find("[", arr_start + 1);
 				if (attr_arr != string::npos) {
-					// Look for language in classes (second element of attr array)
-					size_t classes_start = block_json.find("[", attr_arr + 1);
-					if (classes_start != string::npos) {
-						size_t class_quote = block_json.find("\"", classes_start);
-						size_t classes_end = block_json.find("]", classes_start);
-						if (class_quote != string::npos && class_quote < classes_end) {
-							size_t class_end = block_json.find("\"", class_quote + 1);
-							if (class_end != string::npos) {
-								attrs["language"] = block_json.substr(class_quote + 1, class_end - class_quote - 1);
-							}
-						}
+					// Preserve id, all classes and key/value attrs (issue #11);
+					// the first class doubles as the language (compatibility)
+					PandocAttr pattr;
+					size_t attr_end = ParsePandocAttr(block_json, attr_arr, pattr);
+					if (!pattr.classes.empty()) {
+						attrs["language"] = pattr.classes[0];
 					}
-
-					size_t attr_end = FindMatchingBracket(block_json, attr_arr, '[', ']');
+					StorePandocAttr(pattr, attrs);
 					// Find the code string after attr array
 					size_t code_quote = block_json.find("\"", attr_end);
 					if (code_quote != string::npos) {
@@ -362,14 +501,16 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 		}
 	} else if (pandoc_type == "BlockQuote") {
 		block_type = BlockTypes::TYPE_BLOCKQUOTE;
-		// BlockQuote contains nested blocks - extract text from them
+		// BlockQuote contains nested blocks. Preserve them verbatim as JSON
+		// (issue #11: flattening them to a text string destroyed multi-block
+		// quotes); the emit side passes json-encoded content back through.
+		encoding = "json";
 		size_t c_pos = block_json.find("\"c\":");
 		if (c_pos != string::npos) {
 			size_t arr_start = block_json.find("[", c_pos);
 			if (arr_start != string::npos) {
 				size_t arr_end = FindMatchingBracket(block_json, arr_start, '[', ']');
-				string inner = block_json.substr(arr_start, arr_end - arr_start);
-				content = ExtractInlinesText(inner); // Simplified
+				content = block_json.substr(arr_start, arr_end - arr_start);
 			}
 		}
 	} else if (pandoc_type == "BulletList" || pandoc_type == "OrderedList") {
@@ -460,39 +601,18 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 				// Find attr array [id, [classes], [...]]
 				size_t attr_arr = block_json.find("[", arr_start + 1);
 				if (attr_arr != string::npos) {
-					// Extract id (first element)
-					size_t id_quote = block_json.find("\"", attr_arr + 1);
-					if (id_quote != string::npos) {
-						size_t id_end = block_json.find("\"", id_quote + 1);
-						if (id_end != string::npos) {
-							string id = block_json.substr(id_quote + 1, id_end - id_quote - 1);
-							if (!id.empty()) {
-								attrs["id"] = id;
-							}
-						}
-					}
-					// Extract classes (second element - array)
-					size_t classes_start = block_json.find("[", attr_arr + 1);
-					if (classes_start != string::npos) {
-						size_t classes_end = FindMatchingBracket(block_json, classes_start, '[', ']');
-						// Look for class strings inside
-						size_t class_quote = block_json.find("\"", classes_start + 1);
-						if (class_quote != string::npos && class_quote < classes_end) {
-							size_t class_end = block_json.find("\"", class_quote + 1);
-							if (class_end != string::npos && class_end < classes_end) {
-								attrs["class"] = block_json.substr(class_quote + 1, class_end - class_quote - 1);
-							}
-						}
-					}
+					// Preserve id, all classes and key/value attrs (issue #11)
+					PandocAttr pattr;
+					size_t attr_end = ParsePandocAttr(block_json, attr_arr, pattr);
+					StorePandocAttr(pattr, attrs);
 
-					size_t attr_end = FindMatchingBracket(block_json, attr_arr, '[', ']');
 					size_t blocks_start = block_json.find("[", attr_end);
 					if (blocks_start != string::npos) {
 						size_t blocks_end = FindMatchingBracket(block_json, blocks_start, '[', ']');
 						string nested_blocks = block_json.substr(blocks_start, blocks_end - blocks_start);
 
 						// First add the div block itself
-						result.push_back(CreateDocBlock(block_type, "", attrs, order++, encoding));
+						result.push_back(CreateDocBlock(block_type, "", attrs, order++, encoding, block_level));
 
 						// Inline parsing of nested blocks (can't call ParsePandocBlocks - defined later)
 						size_t nested_pos = 0;
@@ -502,7 +622,7 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 								break;
 							size_t obj_end = FindMatchingBracket(nested_blocks, obj_start, '{', '}');
 							string child_block = nested_blocks.substr(obj_start, obj_end - obj_start);
-							ProcessPandocBlock(child_block, order, result);
+							ProcessPandocBlock(child_block, order, result, depth + 1, effective_level);
 							nested_pos = obj_end;
 						}
 						return; // Already added blocks
@@ -516,7 +636,7 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 	}
 
 	if (!block_type.empty()) {
-		result.push_back(CreateDocBlock(block_type, content, attrs, order++, encoding));
+		result.push_back(CreateDocBlock(block_type, content, attrs, order++, encoding, block_level));
 	}
 }
 
@@ -535,7 +655,7 @@ static void ParsePandocBlocks(const string &json, int32_t &order, vector<Value> 
 		size_t obj_end = FindMatchingBracket(json, obj_start, '{', '}');
 
 		string block_json = json.substr(obj_start, obj_end - obj_start);
-		ProcessPandocBlock(block_json, order, result);
+		ProcessPandocBlock(block_json, order, result, 1, 0);
 
 		pos = obj_end;
 	}
@@ -582,31 +702,9 @@ void PandocBlockConvert::PandocAstToBlocksFun(DataChunk &args, ExpressionState &
 	}
 }
 
-// Helper to escape string for JSON
+// Helper to escape string for JSON (escapes all control characters)
 static string JsonEscape(const string &s) {
-	string result;
-	for (char c : s) {
-		switch (c) {
-		case '"':
-			result += "\\\"";
-			break;
-		case '\\':
-			result += "\\\\";
-			break;
-		case '\n':
-			result += "\\n";
-			break;
-		case '\r':
-			result += "\\r";
-			break;
-		case '\t':
-			result += "\\t";
-			break;
-		default:
-			result += c;
-		}
-	}
-	return result;
+	return PandocJsonEscape(s);
 }
 
 // Helper to get string field from duck_block
@@ -649,14 +747,80 @@ static int32_t GetElementLevel(const Value &element) {
 	return children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
 }
 
+// Emit a Pandoc attr triple ["id",["class",...],[["k","v"],...]] from a
+// duck_block's attributes map (issue #11: previously classes beyond the
+// first and all key/value attrs were dropped). `fallback_class` is used when
+// no "class" attribute is present (e.g. a code block's language).
+static void AppendPandocAttrJson(std::ostringstream &oss, const Value &element, const string &fallback_class) {
+	auto id = GetElementAttribute(element, "id");
+	auto classes = GetElementAttribute(element, "class");
+	if (classes.empty()) {
+		classes = fallback_class;
+	}
+
+	oss << "[\"" << JsonEscape(id) << "\",[";
+	// Classes are stored space-joined; emit each as its own class string
+	bool first = true;
+	size_t start = 0;
+	while (start < classes.length()) {
+		size_t space = classes.find(' ', start);
+		size_t len = (space == string::npos) ? string::npos : space - start;
+		string cls = classes.substr(start, len);
+		if (!cls.empty()) {
+			if (!first) {
+				oss << ",";
+			}
+			first = false;
+			oss << "\"" << JsonEscape(cls) << "\"";
+		}
+		if (space == string::npos) {
+			break;
+		}
+		start = space + 1;
+	}
+	oss << "],[";
+
+	// Emit non-reserved attributes as key/value pairs
+	auto &children = StructValue::GetChildren(element);
+	auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
+	first = true;
+	if (!attrs.IsNull()) {
+		auto &map_entries = MapValue::GetChildren(attrs);
+		for (auto &entry : map_entries) {
+			if (entry.IsNull()) {
+				continue;
+			}
+			auto &kv = StructValue::GetChildren(entry);
+			if (kv.size() < 2 || kv[0].IsNull() || kv[1].IsNull()) {
+				continue;
+			}
+			string key = kv[0].GetValue<string>();
+			if (IsReservedAttrKey(key)) {
+				continue;
+			}
+			if (!first) {
+				oss << ",";
+			}
+			first = false;
+			oss << "[\"" << JsonEscape(key) << "\",\"" << JsonEscape(kv[1].GetValue<string>()) << "\"]";
+		}
+	}
+	oss << "]]";
+}
+
 // Forward declaration for recursive list processing
-static string ConvertListToPandocJson(const vector<Value> &blocks_list, idx_t &start_idx, int32_t list_level);
+static string ConvertListToPandocJson(const vector<Value> &blocks_list, idx_t &start_idx, int32_t list_level,
+                                      idx_t depth);
 
 // Forward declaration for recursive div processing
-static string ConvertDivToPandocJson(const vector<Value> &blocks_list, idx_t &start_idx, int32_t div_level);
+static string ConvertDivToPandocJson(const vector<Value> &blocks_list, idx_t &start_idx, int32_t div_level,
+                                     idx_t depth);
 
-// Convert a list block and its children to Pandoc JSON, handling nested lists recursively
-static string ConvertListToPandocJson(const vector<Value> &blocks_list, idx_t &start_idx, int32_t list_level) {
+// Convert a list block and its children to Pandoc JSON, handling nested lists recursively.
+// `depth` bounds the (mutual) recursion between the list and div converters.
+static string ConvertListToPandocJson(const vector<Value> &blocks_list, idx_t &start_idx, int32_t list_level,
+                                      idx_t depth) {
+	CheckPandocDepth(depth);
 	auto &list_block = blocks_list[start_idx];
 	auto list_type = GetElementAttribute(list_block, "list_type");
 	auto ordered_attr = GetElementAttribute(list_block, "ordered");
@@ -701,7 +865,7 @@ static string ConvertListToPandocJson(const vector<Value> &blocks_list, idx_t &s
 				// Nested list at same level as items - attach to previous item
 				if (in_item) {
 					// Recursively convert the nested list
-					current_item.nested_list_json = ConvertListToPandocJson(blocks_list, j, child_level);
+					current_item.nested_list_json = ConvertListToPandocJson(blocks_list, j, child_level, depth + 1);
 					// j is advanced by the recursive call
 				} else {
 					// No previous item - treat as orphan nested list, skip
@@ -780,19 +944,16 @@ static string ConvertListToPandocJson(const vector<Value> &blocks_list, idx_t &s
 
 // Convert a div block and its children to Pandoc JSON
 // Div format: {"t":"Div","c":[["id",["classes"],[]],...blocks...]}
-static string ConvertDivToPandocJson(const vector<Value> &blocks_list, idx_t &start_idx, int32_t div_level) {
+// `depth` bounds the (mutual) recursion between the div and list converters.
+static string ConvertDivToPandocJson(const vector<Value> &blocks_list, idx_t &start_idx, int32_t div_level,
+                                     idx_t depth) {
+	CheckPandocDepth(depth);
 	auto &div_block = blocks_list[start_idx];
-	auto id = GetElementAttribute(div_block, "id");
-	auto classes = GetElementAttribute(div_block, "class");
 
 	std::ostringstream oss;
-	oss << "{\"t\":\"Div\",\"c\":[[\"" << JsonEscape(id) << "\",[";
-
-	// Output classes (split by space if multiple)
-	if (!classes.empty()) {
-		oss << "\"" << JsonEscape(classes) << "\"";
-	}
-	oss << "],[]],[";
+	oss << "{\"t\":\"Div\",\"c\":[";
+	AppendPandocAttrJson(oss, div_block, "");
+	oss << ",[";
 
 	// Collect and convert child blocks
 	bool first_child = true;
@@ -857,24 +1018,28 @@ static string ConvertDivToPandocJson(const vector<Value> &blocks_list, idx_t &st
 				j++;
 			} else if (child_type == BlockTypes::TYPE_HEADING) {
 				auto level_str = GetElementAttribute(child, "heading_level");
-				int level = level_str.empty() ? 1 : std::stoi(level_str);
-				auto hid = GetElementAttribute(child, "id");
+				int level = ParseInt32OrDefault(level_str, 1);
+				oss << "{\"t\":\"Header\",\"c\":[" << level << ",";
+				AppendPandocAttrJson(oss, child, "");
 				if (!inline_children.empty()) {
 					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
-					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(hid) << "\",[],[]],"
-					    << inlines_json << "]}";
+					oss << "," << inlines_json << "]}";
 				} else {
-					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(hid)
-					    << "\",[],[]],[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
+					oss << ",[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
 				}
 				j++;
 			} else if (child_type == BlockTypes::TYPE_CODE) {
 				auto language = GetElementAttribute(child, "language");
-				oss << "{\"t\":\"CodeBlock\",\"c\":[[\"\",[\"" << JsonEscape(language) << "\"],[]],\""
-				    << JsonEscape(content) << "\"]}";
+				oss << "{\"t\":\"CodeBlock\",\"c\":[";
+				AppendPandocAttrJson(oss, child, language);
+				oss << ",\"" << JsonEscape(content) << "\"]}";
 				j++;
 			} else if (child_type == BlockTypes::TYPE_BLOCKQUOTE) {
-				if (!inline_children.empty()) {
+				auto child_encoding = GetElementStringField(child, BlockTypes::ENCODING_IDX);
+				if (child_encoding == BlockTypes::ENCODING_JSON && !content.empty()) {
+					// Nested blocks preserved verbatim at parse time (issue #11)
+					oss << "{\"t\":\"BlockQuote\",\"c\":" << content << "}";
+				} else if (!inline_children.empty()) {
 					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
 					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":" << inlines_json << "}]}";
 				} else if (!content.empty()) {
@@ -888,9 +1053,9 @@ static string ConvertDivToPandocJson(const vector<Value> &blocks_list, idx_t &st
 				oss << "{\"t\":\"HorizontalRule\"}";
 				j++;
 			} else if (child_type == BlockTypes::TYPE_LIST) {
-				oss << ConvertListToPandocJson(blocks_list, j, child_level);
+				oss << ConvertListToPandocJson(blocks_list, j, child_level, depth + 1);
 			} else if (child_type == BlockTypes::TYPE_DIV) {
-				oss << ConvertDivToPandocJson(blocks_list, j, child_level);
+				oss << ConvertDivToPandocJson(blocks_list, j, child_level, depth + 1);
 			} else {
 				// Unknown block - skip
 				j++;
@@ -904,6 +1069,10 @@ static string ConvertDivToPandocJson(const vector<Value> &blocks_list, idx_t &st
 	start_idx = j;
 	return oss.str();
 }
+
+// Forward declaration (defined below); shared by all duck_blocks -> Pandoc
+// emit entry points so the recursion cap covers every path.
+static string BuildBlocksJson(const vector<Value> &blocks_list);
 
 void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &blocks_vec = args.data[0];
@@ -919,138 +1088,7 @@ void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, Expression
 		}
 
 		auto &blocks_list = ListValue::GetChildren(blocks_val);
-		std::ostringstream oss;
-		oss << "[";
-
-		bool first = true;
-		for (idx_t block_idx = 0; block_idx < blocks_list.size();) {
-			auto &block = blocks_list[block_idx];
-			if (block.IsNull()) {
-				block_idx++;
-				continue;
-			}
-
-			auto kind = GetElementStringField(block, BlockTypes::KIND_IDX);
-			if (kind != BlockTypes::KIND_BLOCK) {
-				block_idx++;
-				continue; // Skip inlines at this level
-			}
-
-			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
-			auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
-
-			// Skip list_item blocks - they're processed as part of their parent list
-			if (element_type == BlockTypes::TYPE_LIST_ITEM) {
-				block_idx++;
-				continue;
-			}
-
-			// Skip metadata blocks - they don't belong in Pandoc's blocks array
-			if (element_type == BlockTypes::TYPE_METADATA) {
-				block_idx++;
-				continue;
-			}
-
-			// Collect inline children (elements with kind='inline' following this block)
-			vector<Value> inline_children;
-			for (idx_t j = block_idx + 1; j < blocks_list.size(); j++) {
-				auto &child = blocks_list[j];
-				if (child.IsNull())
-					continue;
-				auto child_kind = GetElementStringField(child, BlockTypes::KIND_IDX);
-				if (child_kind == BlockTypes::KIND_BLOCK)
-					break; // Stop at next block
-				if (child_kind == BlockTypes::KIND_INLINE) {
-					inline_children.push_back(child);
-				}
-			}
-
-			if (!first)
-				oss << ",";
-			first = false;
-
-			if (element_type == BlockTypes::TYPE_HEADING) {
-				auto level_str = GetElementAttribute(block, "heading_level");
-				int level = level_str.empty() ? 1 : std::stoi(level_str);
-				auto id = GetElementAttribute(block, "id");
-				// If has inline children, convert them; otherwise use content
-				if (!inline_children.empty()) {
-					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
-					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id) << "\",[],[]],"
-					    << inlines_json << "]}";
-				} else {
-					oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id)
-					    << "\",[],[]],[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
-				}
-				block_idx++;
-			} else if (element_type == BlockTypes::TYPE_PARAGRAPH) {
-				// If has inline children, convert them; otherwise use content
-				if (!inline_children.empty()) {
-					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
-					oss << "{\"t\":\"Para\",\"c\":" << inlines_json << "}";
-				} else {
-					oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}";
-				}
-				block_idx++;
-			} else if (element_type == BlockTypes::TYPE_CODE) {
-				auto language = GetElementAttribute(block, "language");
-				oss << "{\"t\":\"CodeBlock\",\"c\":[[\"\",[\"" << JsonEscape(language) << "\"],[]],\""
-				    << JsonEscape(content) << "\"]}";
-				block_idx++;
-			} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE) {
-				// BlockQuote contains blocks; use inline children to build Para content
-				if (!inline_children.empty()) {
-					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
-					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":" << inlines_json << "}]}";
-				} else if (!content.empty()) {
-					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\""
-					    << JsonEscape(content) << "\"}]}]}";
-				} else {
-					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[]}]}";
-				}
-				block_idx++;
-			} else if (element_type == BlockTypes::TYPE_HR) {
-				oss << "{\"t\":\"HorizontalRule\"}";
-				block_idx++;
-			} else if (element_type == BlockTypes::TYPE_RAW) {
-				auto format = GetElementAttribute(block, "format");
-				if (format.empty())
-					format = "html";
-				oss << "{\"t\":\"RawBlock\",\"c\":[\"" << JsonEscape(format) << "\",\"" << JsonEscape(content)
-				    << "\"]}";
-				block_idx++;
-			} else if (element_type == BlockTypes::TYPE_LIST) {
-				// Use recursive list converter that handles nested lists properly
-				int32_t list_level = GetElementLevel(block);
-				oss << ConvertListToPandocJson(blocks_list, block_idx, list_level);
-				// block_idx is advanced by ConvertListToPandocJson
-			} else if (element_type == BlockTypes::TYPE_DIV) {
-				// Use recursive div converter
-				int32_t div_level = GetElementLevel(block);
-				oss << ConvertDivToPandocJson(blocks_list, block_idx, div_level);
-				// block_idx is advanced by ConvertDivToPandocJson
-			} else if (element_type == BlockTypes::TYPE_TABLE) {
-				// Table content is stored as JSON - output directly
-				oss << "{\"t\":\"Table\",\"c\":" << content << "}";
-				block_idx++;
-			} else if (element_type == BlockTypes::TYPE_IMAGE) {
-				// Image is an inline element - wrap in Para
-				// Image format: {"t":"Image","c":[["",[]],[alt_inlines],["url","title"]]}
-				auto src = GetElementAttribute(block, "src");
-				auto alt = GetElementAttribute(block, "alt");
-				auto title = GetElementAttribute(block, "title");
-				oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Image\",\"c\":[[\"\",[],[]],[{\"t\":\"Str\",\"c\":\""
-				    << JsonEscape(alt) << "\"}],[\"" << JsonEscape(src) << "\",\"" << JsonEscape(title) << "\"]]}]}";
-				block_idx++;
-			} else {
-				// Unknown - output as paragraph
-				oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}";
-				block_idx++;
-			}
-		}
-
-		oss << "]";
-		result.SetValue(i, Value(oss.str()));
+		result.SetValue(i, Value(BuildBlocksJson(blocks_list)));
 	}
 }
 
@@ -1138,15 +1176,14 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 
 		if (element_type == BlockTypes::TYPE_HEADING) {
 			auto level_str = GetElementAttribute(block, "heading_level");
-			int level = level_str.empty() ? 1 : std::stoi(level_str);
-			auto id = GetElementAttribute(block, "id");
+			int level = ParseInt32OrDefault(level_str, 1);
+			oss << "{\"t\":\"Header\",\"c\":[" << level << ",";
+			AppendPandocAttrJson(oss, block, "");
 			if (!inline_children.empty()) {
 				string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
-				oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id) << "\",[],[]]," << inlines_json
-				    << "]}";
+				oss << "," << inlines_json << "]}";
 			} else {
-				oss << "{\"t\":\"Header\",\"c\":[" << level << ",[\"" << JsonEscape(id)
-				    << "\",[],[]],[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
+				oss << ",[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
 			}
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_PARAGRAPH) {
@@ -1159,8 +1196,15 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_CODE) {
 			auto language = GetElementAttribute(block, "language");
-			oss << "{\"t\":\"CodeBlock\",\"c\":[[\"\",[\"" << JsonEscape(language) << "\"],[]],\""
-			    << JsonEscape(content) << "\"]}";
+			oss << "{\"t\":\"CodeBlock\",\"c\":[";
+			AppendPandocAttrJson(oss, block, language);
+			oss << ",\"" << JsonEscape(content) << "\"]}";
+			block_idx++;
+		} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE &&
+		           GetElementStringField(block, BlockTypes::ENCODING_IDX) == BlockTypes::ENCODING_JSON &&
+		           !content.empty()) {
+			// Nested blocks preserved verbatim at parse time (issue #11)
+			oss << "{\"t\":\"BlockQuote\",\"c\":" << content << "}";
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE) {
 			// BlockQuote contains blocks; use inline children to build Para content
@@ -1186,12 +1230,12 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 		} else if (element_type == BlockTypes::TYPE_LIST) {
 			// Use recursive list converter that handles nested lists properly
 			int32_t list_level = GetElementLevel(block);
-			oss << ConvertListToPandocJson(blocks_list, block_idx, list_level);
+			oss << ConvertListToPandocJson(blocks_list, block_idx, list_level, 1);
 			// block_idx is advanced by ConvertListToPandocJson
 		} else if (element_type == BlockTypes::TYPE_DIV) {
 			// Use recursive div converter
 			int32_t div_level = GetElementLevel(block);
-			oss << ConvertDivToPandocJson(blocks_list, block_idx, div_level);
+			oss << ConvertDivToPandocJson(blocks_list, block_idx, div_level, 1);
 			// block_idx is advanced by ConvertDivToPandocJson
 		} else if (element_type == BlockTypes::TYPE_TABLE) {
 			// Table content is stored as JSON - output directly

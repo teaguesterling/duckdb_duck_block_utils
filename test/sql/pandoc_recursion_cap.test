@@ -1,0 +1,159 @@
+# name: test/sql/pandoc_recursion_cap.test
+# description: Bounded recursion, safe integer parsing, and conversion-fidelity
+# group: [sql]
+
+#              regression tests for the Pandoc-AST converters.
+#              The over-limit inputs are intentionally only slightly past the
+#              cap (~140 levels) so the test itself can never exhaust the
+#              stack; the assertion is "clean error at the boundary".
+
+require duck_block_utils
+
+# ============================================================================
+# Depth cap: parsing Pandoc JSON -> duck_blocks (nested Divs)
+# ============================================================================
+
+# Shallow nesting converts (10 nested Divs + innermost Para = 11 blocks)
+query I
+SELECT len(pandoc_ast_to_blocks(repeat('{"t":"Div","c":[["",[],[]],[', 10) || '{"t":"Para","c":[{"t":"Str","c":"deep"}]}' || repeat(']]}', 10)));
+----
+11
+
+# Nesting at the cap still converts (127 Divs + Para at depth 128)
+query I
+SELECT len(pandoc_ast_to_blocks(repeat('{"t":"Div","c":[["",[],[]],[', 127) || '{"t":"Para","c":[{"t":"Str","c":"deep"}]}' || repeat(']]}', 127)));
+----
+128
+
+# Nesting past the cap is rejected with a clean error, not a crash
+statement error
+SELECT pandoc_ast_to_blocks(repeat('{"t":"Div","c":[["",[],[]],[', 140) || '{"t":"Para","c":[{"t":"Str","c":"deep"}]}' || repeat(']]}', 140));
+----
+maximum nesting depth
+
+# ============================================================================
+# Depth cap: parsing Pandoc inline JSON (nested Strong)
+# ============================================================================
+
+query I
+SELECT len(pandoc_inlines_to_db_inlines(repeat('{"t":"Strong","c":[', 10) || '{"t":"Str","c":"x"}' || repeat(']}', 10)));
+----
+11
+
+statement error
+SELECT pandoc_inlines_to_db_inlines(repeat('{"t":"Strong","c":[', 140) || '{"t":"Str","c":"x"}' || repeat(']}', 140));
+----
+maximum nesting depth
+
+# ============================================================================
+# Depth cap: rendering Pandoc inline JSON to text (nested Strong)
+# ============================================================================
+
+query I
+SELECT pandoc_inlines_to_text(repeat('{"t":"Strong","c":[', 10) || '{"t":"Str","c":"x"}' || repeat(']}', 10), 'text');
+----
+x
+
+statement error
+SELECT pandoc_inlines_to_text(repeat('{"t":"Strong","c":[', 140) || '{"t":"Str","c":"x"}' || repeat(']}', 140), 'text');
+----
+maximum nesting depth
+
+# ============================================================================
+# Depth cap: emitting Pandoc JSON from duck_blocks (nested divs / inlines)
+# ============================================================================
+
+statement ok
+CREATE MACRO deep_divs(n) AS (
+    list_transform(range(1, n + 1), i -> {
+        'kind': 'block', 'element_type': 'div', 'content': '',
+        'level': i, 'encoding': 'text',
+        'attributes': map([]::VARCHAR[], []::VARCHAR[]),
+        'element_order': i
+    }::duck_block)
+);
+
+statement ok
+CREATE MACRO deep_bolds(n) AS (
+    list_transform(range(1, n + 1), i -> {
+        'kind': 'inline', 'element_type': 'bold', 'content': '',
+        'level': i, 'encoding': 'text',
+        'attributes': map([]::VARCHAR[], []::VARCHAR[]),
+        'element_order': i
+    }::duck_block)
+);
+
+query I
+SELECT duck_blocks_to_pandoc_blocks(deep_divs(100)) LIKE '%Div%';
+----
+true
+
+statement error
+SELECT duck_blocks_to_pandoc_blocks(deep_divs(140));
+----
+maximum nesting depth
+
+query I
+SELECT db_inlines_to_pandoc(deep_bolds(100)) LIKE '%Strong%';
+----
+true
+
+statement error
+SELECT db_inlines_to_pandoc(deep_bolds(140));
+----
+maximum nesting depth
+
+# ============================================================================
+# Safe integer parsing: malformed / out-of-range values must not abort
+# ============================================================================
+
+# Non-numeric heading_level falls back to the default instead of throwing
+query I
+SELECT duck_blocks_to_pandoc_blocks([{
+    'kind': 'block', 'element_type': 'heading', 'content': 'T',
+    'level': NULL, 'encoding': 'text',
+    'attributes': map(['heading_level'], ['abc']),
+    'element_order': 0
+}::duck_block]);
+----
+[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"T"}]]}]
+
+# Out-of-range heading level in the Pandoc document does not throw
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"Header","c":[99999999999999999999,["",[],[]],[{"t":"Str","c":"T"}]]}]')[1].attributes['heading_level'];
+----
+0
+
+# ============================================================================
+# Conversion fidelity (issue #11)
+# ============================================================================
+
+# BlockQuote round-trips without flattening its nested blocks
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"BlockQuote","c":[{"t":"Para","c":[{"t":"Str","c":"first"}]},{"t":"Para","c":[{"t":"Str","c":"second"}]}]}]'));
+----
+[{"t":"BlockQuote","c":[{"t":"Para","c":[{"t":"Str","c":"first"}]},{"t":"Para","c":[{"t":"Str","c":"second"}]}]}]
+
+# Header keeps all classes and key/value attributes, not just the id
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Header","c":[2,["sec",["cls1","cls2"],[["key","val"]]],[{"t":"Str","c":"Title"}]]}]'));
+----
+[{"t":"Header","c":[2,["sec",["cls1","cls2"],[["key","val"]]],[{"t":"Str","c":"Title"}]]}]
+
+# Div keeps id, all classes and key/value attributes, and its children
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Div","c":[["d1",["note","warn"],[["k","v"]]],[{"t":"Para","c":[{"t":"Str","c":"body"}]}]]}]'));
+----
+[{"t":"Div","c":[["d1",["note","warn"],[["k","v"]]],[{"t":"Para","c":[{"t":"Str","c":"body"}]}]]}]
+
+# CodeBlock keeps its language class on round-trip
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"CodeBlock","c":[["",["python"],[]],"print(1)"]}]'));
+----
+[{"t":"CodeBlock","c":[["",["python"],[]],"print(1)"]}]
+
+# Bracket matching is no longer confused by brackets inside string content
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"a]b}c"}]},{"t":"Para","c":[{"t":"Str","c":"after"}]}]')[2].content;
+----
+after
