@@ -335,6 +335,33 @@ SELECT page([
 
 Available aliases include: `h1`-`h6`, `p`, `pre`, `ul`, `ol`, `li`, `div`, `b`, `i`, `a`, `code`, and more. See [Block Builders](docs/block_builders.md) for the complete list.
 
+## Terminal Rendering
+
+Render documents — or any query result — as styled ANSI output for the terminal:
+
+```sql
+PRAGMA duck_block_render;
+
+-- Documents: width-aware word wrap, styled headings/lists/tables
+SELECT db_blocks_render_ansi(
+    db_heading(1, 'Report') || db_paragraph('All systems **nominal**.')
+);
+
+-- Any query as a pretty ANSI table
+SELECT rendered FROM db_render_query('SELECT * FROM my_table LIMIT 10');
+```
+
+Width is auto-detected from the terminal (even when piped to `less -R`); pass
+it explicitly with `db_blocks_render_ansi(blocks, width)`. See
+[Terminal Rendering](docs/rendering.md) for details, or try
+`examples/duckglow.sql` for glow-style markdown file viewing:
+
+```bash
+duckdb -noheader -list \
+  -c ".read examples/duckglow.sql" \
+  -c "SELECT doc FROM glow('README.md');" | less -R
+```
+
 ## Type Casting
 
 Cast VARCHAR to duck_block to create text inline elements:
@@ -393,6 +420,7 @@ This extension is part of the DuckDB document processing ecosystem:
 - [Inline Builders](docs/inline_builders.md) - Rich text inline elements
 - [Duck Blocks Spec](docs/duck_blocks_spec.md) - Unified duck_block type specification
 - [Pandoc AST Spec](docs/pandoc_ast_spec.md) - Pandoc JSON conversion rules
+- [Terminal Rendering](docs/rendering.md) - ANSI output, word wrapping, pretty query tables
 
 ## License
 

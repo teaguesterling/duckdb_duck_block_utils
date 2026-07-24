@@ -95,3 +95,7 @@ macro users get wrapping for free.
   natural follow-up).
 - The `db_render_*` JSON macros (table/list/inline helpers) still measure with
   `length()` (codepoints); the C++ renderer is the width-correct path.
+- **Macro arguments cannot contain subqueries** (`db_json_to_table_block`,
+  `db_render_table_json`, `db_render_list_json` use lambda expressions
+  internally, and DuckDB rejects subqueries inside lambdas). Compute the JSON
+  in a CTE and pass the column instead.
