@@ -12,6 +12,7 @@
 #include "validation.hpp"
 #include "pandoc_block_convert.hpp"
 #include "pragma_aliases.hpp"
+#include "render_macros.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/function/scalar_function.hpp"
@@ -47,6 +48,9 @@ static void LoadInternal(ExtensionLoader &loader) {
 
 	// Phase 7: Pragma for short aliases
 	PragmaAliases::Register(loader);
+
+	// Phase 8: Pragma for ANSI terminal rendering macros
+	RenderMacros::Register(loader);
 }
 
 void DuckBlockUtilsExtension::Load(ExtensionLoader &loader) {

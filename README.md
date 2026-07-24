@@ -16,6 +16,7 @@ This extension complements format-specific document extensions (markdown, HTML, 
 - **Validation**: Check schema compliance and lint for common issues
 - **Pandoc AST conversion**: Bidirectional JSON AST ↔ duck_blocks (no Pandoc required)
 - **Conversion helpers**: Normalize blocks and track provenance
+- **ANSI terminal rendering**: `PRAGMA duck_block_render` — render documents and query results as styled terminal output, glow-style ([docs](docs/rendering.md))
 
 ## Installation
 

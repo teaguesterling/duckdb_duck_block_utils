@@ -22,6 +22,7 @@ set(EXTENSION_SOURCES
     src/validation.cpp
     src/pandoc_block_convert.cpp
     src/pragma_aliases.cpp
+    src/render_macros.cpp
 )
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})

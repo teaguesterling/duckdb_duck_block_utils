@@ -7,4 +7,5 @@ duckdb_extension_load(duck_block_utils
 )
 
 # Any extra extensions that should be built
-# e.g.: duckdb_extension_load(json)
+# json is required by the duck_block_render macros (and their tests)
+duckdb_extension_load(json)

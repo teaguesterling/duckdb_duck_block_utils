@@ -102,6 +102,7 @@ SELECT [
 - [Block Builder Functions](block_builders.md) - Creating document blocks
 - [Inline Builder Functions](inline_builders.md) - Creating inline elements for rich text
 - [Type Functions](type_functions.md) - Type constructors and validators
+- [ANSI Terminal Rendering](rendering.md) - Pretty-print documents and query results in the terminal
 - [Examples](examples.md) - Common patterns and use cases
 - [Integration Guide](integration.md) - Integrating with other extensions
 
