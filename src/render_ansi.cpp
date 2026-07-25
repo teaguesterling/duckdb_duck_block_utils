@@ -235,10 +235,10 @@ static string PadTo(const string &s, size_t target) {
 // styles after the (independently styled) continuation prefix.
 // ---------------------------------------------------------------------------
 struct WrapPrefix {
-	string first;        // prefix of the first line (already styled + reset)
-	string cont;         // prefix of continuation lines (already styled + reset)
-	size_t first_width;  // display columns consumed by `first`
-	size_t cont_width;   // display columns consumed by `cont`
+	string first;       // prefix of the first line (already styled + reset)
+	string cont;        // prefix of continuation lines (already styled + reset)
+	size_t first_width; // display columns consumed by `first`
+	size_t cont_width;  // display columns consumed by `cont`
 };
 
 // Split styled text into words. Escapes attach to the word they precede/inhabit.
