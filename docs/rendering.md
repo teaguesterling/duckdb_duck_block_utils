@@ -46,6 +46,28 @@ duckdb -noheader -list -c "LOAD duck_block_utils; PRAGMA duck_block_render;
 SELECT rendered FROM db_render_query('SELECT * FROM range(5)');" | less -R
 ```
 
+## Composing pages with embedded query results
+
+`db_page(title, blocks)` builds a titled page (an `h1` plus a list of block-lists,
+assembled with sequential `element_order`), and `db_query_table(q)` turns a SQL
+query's results into an embeddable table block — so a whole dashboard-style
+document is one expression:
+
+```sql
+SELECT db_render_blocks(db_page('Sales Report', [
+    db_paragraph('**Rows** by id:'),
+    db_query_table('SELECT * FROM t ORDER BY id'),
+    db_paragraph('Aggregate:'),
+    db_query_table('SELECT count(*) AS n, round(avg(score), 2) AS avg_score FROM t')
+]));
+```
+
+`db_query_table` runs the query inside a scalar subquery so
+`db_json_to_table_block` receives a plain column rather than a subquery argument
+(which would land inside a lambda — see the limitation below). `db_table(json)`
+does the same for a JSON array you already have, returning a one-element
+`LIST(duck_block)` that composes with the other builders.
+
 ## Macro reference
 
 ### C++ renderer (width-aware)
@@ -74,6 +96,9 @@ macro users get wrapping for free.
 | `db_render_block(element_type, content, attributes)` | Render a single block element |
 | `db_render_query(sql)` | Table macro: run `sql` via `query()` and render the result as an ANSI table (column `rendered`) |
 | `db_json_to_table_block(json)` | JSON array of objects → `table` duck_block (headers from the first object's keys) |
+| `db_table(json)` | JSON array of objects → `table` block as a one-element `LIST(duck_block)` (composes with the builders / `db_assemble` / `db_page`) |
+| `db_query_table(sql)` | Run `sql` and return its results as an embeddable `table` block list (safe to nest in `db_page`) |
+| `db_page(title, blocks)` | Compose an `h1` title + a list of block-lists into one assembled `LIST(duck_block)` |
 | `db_ansi(code, s)` | Wrap `s` in an SGR escape (e.g. `db_ansi('1;31', 'bold red')`) |
 | `db_ansi_inline(s)` | Inline markdown (`**bold**`, `*italic*`, `` `code` ``, `[text](url)`) → ANSI |
 | `db_render_table_json(j)` | `{"headers": [...], "rows": [[...]]}` JSON → aligned box table |
@@ -98,4 +123,6 @@ macro users get wrapping for free.
 - **Macro arguments cannot contain subqueries** (`db_json_to_table_block`,
   `db_render_table_json`, `db_render_list_json` use lambda expressions
   internally, and DuckDB rejects subqueries inside lambdas). Compute the JSON
-  in a CTE and pass the column instead.
+  in a CTE and pass the column instead — or use `db_query_table(sql)`, which
+  wraps the subquery *around* the table builder so the query results embed
+  directly.
