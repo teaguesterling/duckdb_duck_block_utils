@@ -54,6 +54,7 @@ nav:
   - API Reference: api_reference.md
   - Type Functions: type_functions.md
   - Terminal Rendering: rendering.md
+  - Terminal Graphics (Notes): terminal_graphics.md
   - Examples: examples.md
   - Integration: integration.md
 
