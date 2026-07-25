@@ -15,6 +15,7 @@ A DuckDB extension for structured document element manipulation.
 - **Manipulation Functions**: Filter, merge, slice, and reorder element collections
 - **Extraction Functions**: Extract text, headings, code blocks, and statistics from documents
 - **Type Functions**: Standard constructors, validators, and accessors for integration with other extensions
+- **Terminal Rendering**: Render documents and query results as styled ANSI terminal output, with width-aware word wrapping
 
 ## The Unified duck_block Type
 
@@ -102,6 +103,7 @@ SELECT [
 - [Block Builder Functions](block_builders.md) - Creating document blocks
 - [Inline Builder Functions](inline_builders.md) - Creating inline elements for rich text
 - [Type Functions](type_functions.md) - Type constructors and validators
+- [ANSI Terminal Rendering](rendering.md) - Pretty-print documents and query results in the terminal
 - [Examples](examples.md) - Common patterns and use cases
 - [Integration Guide](integration.md) - Integrating with other extensions
 

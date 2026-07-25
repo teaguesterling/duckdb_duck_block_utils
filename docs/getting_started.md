@@ -317,6 +317,42 @@ SELECT 'hello'::duck_block;
 -- Equivalent to db_text('hello')
 ```
 
+## Rendering to the Terminal
+
+`PRAGMA duck_block_render` registers macros that pretty-print blocks as ANSI
+terminal output (headings, tables, lists, code, inline `**bold**`/`*italic*`/
+`` `code` ``/links):
+
+```sql
+PRAGMA duck_block_render;
+
+-- Render a document
+SELECT db_render_blocks(
+    db_heading(1, 'Report') || db_paragraph('All systems **nominal**.')
+);
+
+-- Render any query as an ANSI table
+SELECT rendered FROM db_render_query('SELECT * FROM my_table LIMIT 10');
+```
+
+### Pages with embedded query results
+
+`db_page(title, blocks)` composes a titled page, and `db_query_table(q)` drops a
+query's results in as a table — a dashboard in one expression:
+
+```sql
+SELECT db_render_blocks(db_page('Sales Report', [
+    db_paragraph('Top rows:'),
+    db_query_table('SELECT * FROM t ORDER BY id'),
+    db_paragraph('Aggregate:'),
+    db_query_table('SELECT count(*) AS n, round(avg(score), 2) AS avg FROM t')
+]));
+```
+
+From the shell, use list mode so the escapes render (`... | less -R`). See
+[Rendering](rendering.md) for the full macro reference and the width-aware C++
+renderer.
+
 ## Next Steps
 
 - See [API Reference](api_reference.md) for all available functions

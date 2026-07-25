@@ -378,3 +378,30 @@ SELECT * FROM document_headings WHERE doc_id = 123;
 ALTER TABLE documents ADD COLUMN heading_count INTEGER;
 UPDATE documents SET heading_count = len(db_blocks_headings(blocks));
 ```
+
+## Rendering to the Terminal
+
+Turn any generated document — or query result — into styled, wrapped terminal
+output (see [Terminal Rendering](rendering.md) for the full reference):
+
+```sql
+PRAGMA duck_block_render;
+
+-- A status report, rendered at 72 columns.
+-- (Feed the JSON in via a CTE: macro arguments cannot contain subqueries,
+-- since the macro body uses lambda expressions internally.)
+WITH data AS (
+    SELECT to_json(list(t))::VARCHAR AS j
+    FROM (SELECT job, status FROM job_runs ORDER BY job) t
+)
+SELECT db_blocks_render_ansi(
+    db_heading(1, 'Nightly Run')
+    || db_paragraph('Pipeline finished with **0 errors**.')
+    || [db_json_to_table_block(j)],
+    72
+) FROM data;
+
+-- One-liner: pretty-print a query from the shell
+-- duckdb -noheader -list -c "LOAD duck_block_utils; PRAGMA duck_block_render;
+--   SELECT rendered FROM db_render_query('SELECT * FROM range(5)');"
+```

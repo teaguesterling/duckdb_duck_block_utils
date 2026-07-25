@@ -1,0 +1,223 @@
+# name: test/sql/render_macros.test
+# description: test duck_block_utils PRAGMA duck_block_render (ANSI terminal rendering)
+# group: [sql]
+
+require duck_block_utils
+
+require json
+
+# ============================================================================
+# PRAGMA Registration
+# ============================================================================
+
+statement ok
+PRAGMA duck_block_render;
+
+# ============================================================================
+# db_ansi: SGR wrapping
+# ============================================================================
+
+query I
+SELECT db_ansi('1', 'x') = chr(27) || '[1m' || 'x' || chr(27) || '[0m';
+----
+true
+
+# ============================================================================
+# db_ansi_inline: inline markdown -> ANSI
+# ============================================================================
+
+# bold introduces SGR codes and strips the asterisks
+query I
+SELECT db_ansi_inline('**bold** text') LIKE '%' || chr(27) || '[1mbold' || chr(27) || '[22m%';
+----
+true
+
+# inline code is styled and backticks removed
+query I
+SELECT position('`' IN db_ansi_inline('use `SELECT 1` here')) = 0
+   AND db_ansi_inline('use `SELECT 1` here') LIKE '%SELECT 1%';
+----
+true
+
+# links keep text and href
+query I
+SELECT db_ansi_inline('[docs](https://example.com)') LIKE '%docs%'
+   AND db_ansi_inline('[docs](https://example.com)') LIKE '%https://example.com%';
+----
+true
+
+# plain text passes through untouched
+query I
+SELECT db_ansi_inline('no markup here');
+----
+no markup here
+
+# NULL-safe
+query I
+SELECT db_ansi_inline(NULL);
+----
+(empty)
+
+# ============================================================================
+# db_render_block: per-element rendering
+# ============================================================================
+
+# heading contains its text and an escape code
+query I
+SELECT db_render_block('heading', 'Title', MAP {'heading_level': '1'}) LIKE '%Title%'
+   AND position(chr(27) IN db_render_block('heading', 'Title', MAP {'heading_level': '1'})) > 0;
+----
+true
+
+# paragraph renders inline markdown
+query I
+SELECT db_render_block('paragraph', 'a **b** c', MAP {}::MAP(VARCHAR, VARCHAR)) LIKE '%' || chr(27) || '[1mb' || chr(27) || '[22m%';
+----
+true
+
+# code block carries a gutter on each line and the language tag
+query I
+SELECT r LIKE '%sql%' AND r LIKE '%SELECT 1;%' AND r LIKE '%┃%'
+FROM (SELECT db_render_block('code', 'SELECT 1;' || chr(10) || 'SELECT 2;', MAP {'language': 'sql'}) AS r);
+----
+true
+
+# unordered list gets bullets
+query I
+SELECT db_render_block('list', '["one", "two"]', MAP {'ordered': 'false'}) LIKE '%• %one%';
+----
+true
+
+# ordered list gets numbers
+query I
+SELECT db_render_block('list', '["one", "two"]', MAP {'ordered': 'true'}) LIKE '%1. %one%';
+----
+true
+
+# hr renders a rule
+query I
+SELECT db_render_block('hr', '', MAP {}::MAP(VARCHAR, VARCHAR)) LIKE '%─%';
+----
+true
+
+# blockquote prefixes every line
+query I
+SELECT length(r) - length(replace(r, '▌', '')) = 2
+FROM (SELECT db_render_block('blockquote', 'line one' || chr(10) || 'line two', MAP {}::MAP(VARCHAR, VARCHAR)) AS r);
+----
+true
+
+# table: headers aligned, separator drawn
+query I
+SELECT r LIKE '%Name%' AND r LIKE '%─┼─%' AND r LIKE '%Ada%'
+FROM (SELECT db_render_block('table', '{"headers": ["Name", "Age"], "rows": [["Ada", "36"], ["Grace", "85"]]}', MAP {}::MAP(VARCHAR, VARCHAR)) AS r);
+----
+true
+
+# metadata (frontmatter) is suppressed
+query I
+SELECT db_render_block('metadata', 'title: x', MAP {}::MAP(VARCHAR, VARCHAR));
+----
+(empty)
+
+# ============================================================================
+# db_render_blocks: whole-document rendering over LIST(duck_block)
+# ============================================================================
+
+query I
+SELECT r LIKE '%Hello%' AND r LIKE '%world%' AND position(chr(27) IN r) > 0
+FROM (SELECT db_render_blocks(db_heading(1, 'Hello') || db_paragraph('world')) AS r);
+----
+true
+
+# inline elements are skipped (only kind='block' rendered)
+query I
+SELECT db_render_blocks([db_text('loose inline')[1]]);
+----
+(empty)
+
+# ============================================================================
+# db_json_to_table_block: JSON array of objects -> table duck_block
+# ============================================================================
+
+query I
+SELECT b.element_type = 'table' AND b.kind = 'block' AND b.encoding = 'json'
+FROM (SELECT db_json_to_table_block('[{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]') AS b);
+----
+true
+
+# headers come from the first object's keys, rows from values
+query I
+SELECT json_extract_string(b.content, '$.headers[0]') = 'a'
+   AND json_extract_string(b.content, '$.rows[1][1]') = 'y'
+FROM (SELECT db_json_to_table_block('[{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]') AS b);
+----
+true
+
+# round-trips through the renderer
+query I
+SELECT r LIKE '%─┼─%' AND r LIKE '%x%' AND r LIKE '%y%'
+FROM (SELECT db_render_blocks([db_json_to_table_block('[{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]')]) AS r);
+----
+true
+
+# ============================================================================
+# db_render_query: pretty-render an arbitrary query as an ANSI table
+# ============================================================================
+
+statement ok
+CREATE TABLE render_demo(name VARCHAR, n INTEGER);
+
+statement ok
+INSERT INTO render_demo VALUES ('alpha', 1), ('beta', 2);
+
+query I
+SELECT r LIKE '%name%' AND r LIKE '%alpha%' AND r LIKE '%beta%' AND r LIKE '%─┼─%'
+FROM (SELECT rendered AS r FROM db_render_query('SELECT * FROM render_demo ORDER BY n'));
+----
+true
+
+# ============================================================================
+# db_table: JSON -> table block as a composable LIST(duck_block)
+# ============================================================================
+
+# returns a one-element list whose element is a table block
+query I
+SELECT len(b) = 1 AND b[1].element_type = 'table' AND b[1].kind = 'block'
+FROM (SELECT db_table('[{"a": 1, "b": "x"}]') AS b);
+----
+true
+
+# ============================================================================
+# db_query_table: SQL results -> embeddable table block LIST
+# ============================================================================
+
+# returns a one-element list holding a table block built from the query
+query I
+SELECT len(b) = 1 AND b[1].element_type = 'table'
+   AND json_extract_string(b[1].content, '$.headers[0]') = 'name'
+FROM (SELECT db_query_table('SELECT * FROM render_demo ORDER BY n') AS b);
+----
+true
+
+# ============================================================================
+# db_page: compose a titled page from block-lists
+# ============================================================================
+
+# h1 title is prepended; total block count = 1 (heading) + flattened children
+query I
+SELECT len(p) = 3 AND p[1].element_type = 'heading' AND p[1].content = 'Report'
+   AND p[1].element_order = 0
+FROM (SELECT db_page('Report', [db_paragraph('a'), db_paragraph('b')]) AS p);
+----
+true
+
+# a page with an embedded query table renders end-to-end
+query I
+SELECT r LIKE '%Report%' AND r LIKE '%alpha%' AND r LIKE '%─┼─%'
+FROM (SELECT db_render_blocks(db_page('Report', [
+    db_paragraph('rows:'),
+    db_query_table('SELECT * FROM render_demo ORDER BY n')
+])) AS r);
+----
+true

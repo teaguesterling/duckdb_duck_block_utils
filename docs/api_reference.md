@@ -740,6 +740,51 @@ SELECT pandoc_inlines_to_text('[{"t":"Str","c":"Hello"},{"t":"Space"},{"t":"Stro
 
 ---
 
+## Terminal Rendering Functions
+
+Render duck_blocks as styled ANSI terminal output. See [Terminal Rendering](rendering.md) for usage, examples, and limitations.
+
+### db_blocks_render_ansi
+
+```sql
+db_blocks_render_ansi(blocks LIST(duck_block)) → VARCHAR
+db_blocks_render_ansi(blocks LIST(duck_block), width INTEGER) → VARCHAR
+```
+
+Native renderer producing UTF-8 text with ANSI SGR escapes, word-wrapped to a
+display width. Escape sequences count as zero columns and CJK/emoji as two
+(utf8proc); active styles are re-opened across line breaks; tables wrap cells
+to fit the width budget. Omit `width` (or pass `<= 0`) to auto-detect the
+terminal size (`/dev/tty`, then `$COLUMNS`, then 80). Inline-kind elements are
+skipped; `metadata` blocks are suppressed.
+
+```sql
+SELECT db_blocks_render_ansi(
+    db_heading(1, 'Report') || db_paragraph('All systems **nominal**.'),
+    72
+);
+```
+
+### db_terminal_width
+
+```sql
+db_terminal_width() → INTEGER
+```
+
+The width `db_blocks_render_ansi` would auto-detect. Volatile.
+
+### PRAGMA duck_block_render
+
+Registers convenience macros (requires the `json` extension, autoloaded):
+
+| Macro | Description |
+|-------|-------------|
+| `db_render_blocks(blocks)` | Render to ANSI at auto-detected width (delegates to `db_blocks_render_ansi`) |
+| `db_render_query(sql)` | Table macro: run `sql` and render the result as an ANSI table (column `rendered`) |
+| `db_json_to_table_block(json)` | JSON array of objects → `table` duck_block |
+| `db_render_block(type, content, attrs)` | Render a single block element |
+| `db_ansi(code, s)` / `db_ansi_inline(s)` | SGR wrapper / inline markdown styler |
+
 ## See Also
 
 - [Design Document](design.md) - Architecture and implementation details

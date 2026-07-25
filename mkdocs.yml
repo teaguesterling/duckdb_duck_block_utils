@@ -53,6 +53,7 @@ nav:
   - Getting Started: getting_started.md
   - API Reference: api_reference.md
   - Type Functions: type_functions.md
+  - Terminal Rendering: rendering.md
   - Examples: examples.md
   - Integration: integration.md
 
