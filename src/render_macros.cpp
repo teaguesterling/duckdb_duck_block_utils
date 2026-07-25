@@ -130,10 +130,31 @@ CREATE OR REPLACE MACRO db_json_to_table_block(j) AS (
     ][1]
 );
 
+-- JSON array of objects -> table block as a one-element LIST(duck_block), so it
+-- composes with the list-returning builders (db_heading, db_paragraph, ...) and
+-- drops straight into db_assemble([...]).
+CREATE OR REPLACE MACRO db_table(j) AS ([ db_json_to_table_block(j) ]);
+
 -- Pretty-render an arbitrary SQL query as an ANSI table
 CREATE OR REPLACE MACRO db_render_query(q) AS TABLE
     SELECT db_render_blocks([db_json_to_table_block(to_json(list(r))::VARCHAR)]) AS rendered
     FROM query(q) r;
+
+-- A SQL query's results as an embeddable table block LIST(duck_block).
+-- The query runs inside a scalar subquery so db_json_to_table_block sees a plain
+-- column (a subquery passed as its argument would land inside a lambda, which
+-- DuckDB rejects). Wrapped in a list so it drops into db_assemble/db_page.
+CREATE OR REPLACE MACRO db_query_table(q) AS (
+    [ (SELECT db_json_to_table_block(to_json(list(r))::VARCHAR) FROM query(q) r) ]
+);
+
+-- Compose a page: an h1 title followed by a list of block-lists (the same shape
+-- db_assemble takes), assembled with sequential element_order. Embed query
+-- results with db_query_table:
+--   db_page('Report', [db_paragraph('rows:'), db_query_table('SELECT ...')])
+CREATE OR REPLACE MACRO db_page(title, blocks) AS (
+    db_assemble(list_prepend(db_heading(1, title), blocks))
+);
 )DBSQL";
 	return sql;
 }

@@ -176,3 +176,48 @@ SELECT r LIKE '%name%' AND r LIKE '%alpha%' AND r LIKE '%beta%' AND r LIKE '%─
 FROM (SELECT rendered AS r FROM db_render_query('SELECT * FROM render_demo ORDER BY n'));
 ----
 true
+
+# ============================================================================
+# db_table: JSON -> table block as a composable LIST(duck_block)
+# ============================================================================
+
+# returns a one-element list whose element is a table block
+query I
+SELECT len(b) = 1 AND b[1].element_type = 'table' AND b[1].kind = 'block'
+FROM (SELECT db_table('[{"a": 1, "b": "x"}]') AS b);
+----
+true
+
+# ============================================================================
+# db_query_table: SQL results -> embeddable table block LIST
+# ============================================================================
+
+# returns a one-element list holding a table block built from the query
+query I
+SELECT len(b) = 1 AND b[1].element_type = 'table'
+   AND json_extract_string(b[1].content, '$.headers[0]') = 'name'
+FROM (SELECT db_query_table('SELECT * FROM render_demo ORDER BY n') AS b);
+----
+true
+
+# ============================================================================
+# db_page: compose a titled page from block-lists
+# ============================================================================
+
+# h1 title is prepended; total block count = 1 (heading) + flattened children
+query I
+SELECT len(p) = 3 AND p[1].element_type = 'heading' AND p[1].content = 'Report'
+   AND p[1].element_order = 0
+FROM (SELECT db_page('Report', [db_paragraph('a'), db_paragraph('b')]) AS p);
+----
+true
+
+# a page with an embedded query table renders end-to-end
+query I
+SELECT r LIKE '%Report%' AND r LIKE '%alpha%' AND r LIKE '%─┼─%'
+FROM (SELECT db_render_blocks(db_page('Report', [
+    db_paragraph('rows:'),
+    db_query_table('SELECT * FROM render_demo ORDER BY n')
+])) AS r);
+----
+true
