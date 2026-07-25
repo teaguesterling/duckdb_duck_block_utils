@@ -17,6 +17,7 @@ This extension complements format-specific document extensions (markdown, HTML, 
 - **Pandoc AST conversion**: Bidirectional JSON AST ↔ duck_blocks (no Pandoc required)
 - **Conversion helpers**: Normalize blocks and track provenance
 - **ANSI terminal rendering**: `PRAGMA duck_block_render` — render documents and query results as styled terminal output, glow-style ([docs](docs/rendering.md))
+- **Page composition & query tables**: `db_page`, `db_query_table`, `db_table` — assemble dashboards that embed live query results as rendered tables
 
 ## Installation
 
@@ -64,7 +65,7 @@ STRUCT(
     element_type VARCHAR,               -- 'heading', 'paragraph', 'text', 'link', etc.
     content VARCHAR,                    -- Primary content
     level INTEGER,                      -- Structural nesting depth (NOT heading level)
-    encoding VARCHAR,                   -- 'text', 'json', 'yaml', 'html', 'xml'
+    encoding VARCHAR,                   -- 'text', 'json', 'yaml', 'html', 'xml', 'latex', 'markdown'
     attributes MAP(VARCHAR, VARCHAR),   -- Type-specific metadata (heading_level, href, etc.)
     element_order INTEGER               -- Position in document (0-indexed)
 )
@@ -142,18 +143,20 @@ STRUCT(
 
 ### Block Builders (Declarative Construction)
 
+Builders are **config-first, content-last** and each returns a `LIST(duck_block)`:
+
 | Function | Description |
 |----------|-------------|
-| `db_heading(content, level)` | Create heading block |
+| `db_heading(level, content)` | Create heading block |
 | `db_paragraph(content)` | Create paragraph block |
-| `db_code(content, language)` | Create code block |
-| `db_blockquote(content, level)` | Create blockquote block |
-| `db_list_block(items[], ordered)` | Create list block (strings or rich items) |
-| `db_div(children, id, class)` | Create generic container |
+| `db_code(language, content)` | Create code block |
+| `db_blockquote(content)` / `db_blockquote(level, content)` | Create blockquote block |
+| `db_list_block(items[])` / `db_list_block(ordered, items[])` | Create list block (strings or rich items) |
+| `db_div(children[])` / `db_div(id, class, children[])` | Create generic container |
 | `db_hr()` | Create horizontal rule |
 | `db_metadata(yaml_content)` | Create metadata block |
 | `db_image(src, alt, title)` | Create image block |
-| `db_raw(content, format)` | Create raw content block |
+| `db_raw(format, content)` | Create raw content block |
 
 ### Flattening Builder Overloads
 
@@ -268,11 +271,12 @@ SELECT [
     db_text('.')
 ];
 
--- Using flattening overloads for nested structure
+-- Compose a paragraph from mixed inline builders
 SELECT db_paragraph([
     db_text('This is '),
-    db_bold([db_text('bold and '), db_italic([db_text('italic')])[1], db_italic([db_text('italic')])[2]])[1],
-    db_bold([db_text('bold and '), db_italic([db_text('italic')])[1], db_italic([db_text('italic')])[2]])[2],
+    db_bold('bold'),
+    db_text(' and '),
+    db_italic('italic'),
     db_text(' text.')
 ]);
 ```
@@ -351,6 +355,28 @@ SELECT db_blocks_render_ansi(
 SELECT rendered FROM db_render_query('SELECT * FROM my_table LIMIT 10');
 ```
 
+### Composing pages with embedded query results
+
+`db_page(title, blocks)` assembles a titled page, `db_query_table(sql)` embeds a
+query's results as a table block, and `db_table(json)` does the same for a JSON
+array — a dashboard in one expression:
+
+```sql
+PRAGMA duck_block_render;
+
+SELECT db_render_blocks(db_page('Sales Report', [
+    db_paragraph('Top rows:'),
+    db_query_table('SELECT * FROM t ORDER BY id'),
+    db_paragraph('Aggregate:'),
+    db_query_table('SELECT count(*) AS n, round(avg(score), 2) AS avg_score FROM t')
+]));
+```
+
+Text-based charts compose too — `textplot` output drops straight into block
+content (see [`examples/textplot_dashboard.sql`](examples/textplot_dashboard.sql)).
+On the terminal-graphics landscape and where a bitmap tier could go, see
+[Terminal Graphics (Notes)](docs/terminal_graphics.md).
+
 Width is auto-detected from the terminal (even when piped to `less -R`); pass
 it explicitly with `db_blocks_render_ansi(blocks, width)`. See
 [Terminal Rendering](docs/rendering.md) for details, or try
@@ -408,12 +434,14 @@ This extension is part of the DuckDB document processing ecosystem:
 | Extension | Purpose |
 |-----------|---------|
 | [duckdb_markdown](https://github.com/teaguesterling/duckdb_markdown) | Markdown reading/writing |
-| [duckdb_webbed](https://github.com/teaguesterling/duckdb_webbed) | HTML/XML parsing (planned) |
-| duckdb_yaml | YAML document parsing (planned) |
+| [duckdb_webbed](https://github.com/teaguesterling/duckdb_webbed) | HTML/XML parsing |
+| [duckdb_yaml](https://github.com/teaguesterling/duckdb_yaml) | YAML document parsing |
+| [textplot](https://community-extensions.duckdb.org/extensions/textplot.html) | Text-based charts/sparklines (compose into rendered pages) |
 | [panduck](https://github.com/teaguesterling/panduck) | Pandoc integration (planned) |
 
 ## Documentation
 
+- [Getting Started](docs/getting_started.md) - Quickstart and common patterns
 - [Design Document](docs/design.md) - Architecture and implementation details
 - [API Reference](docs/api.md) - Complete function reference
 - [Block Builders](docs/block_builders.md) - Declarative document construction
@@ -421,6 +449,7 @@ This extension is part of the DuckDB document processing ecosystem:
 - [Duck Blocks Spec](docs/duck_blocks_spec.md) - Unified duck_block type specification
 - [Pandoc AST Spec](docs/pandoc_ast_spec.md) - Pandoc JSON conversion rules
 - [Terminal Rendering](docs/rendering.md) - ANSI output, word wrapping, pretty query tables
+- [Terminal Graphics (Notes)](docs/terminal_graphics.md) - Bitmap-graphics landscape and roadmap
 
 ## License
 
