@@ -15,13 +15,16 @@ The macros require the `json` extension (autoloaded in standard builds).
 ## Rendering documents
 
 ```sql
--- Render blocks built with the builder API
+-- Render blocks built with the builder API. Rich text is structured inline
+-- elements (db_bold/db_italic/db_inline_code/db_link), NOT markdown in content:
 SELECT db_render_blocks(
     db_heading(1, 'Report')
-    || db_paragraph('All systems **nominal**.')
+    || db_paragraph([db_text('All systems '), db_bold('nominal'), db_text('.')])
 );
 
--- Render a markdown file (requires the markdown extension)
+-- Render a markdown file: read_markdown_blocks emits structured inlines, so the
+-- formatting renders directly (requires the markdown extension >= the structured
+-- release).
 LOAD markdown;
 SELECT db_render_blocks(list(b ORDER BY b.element_order))
 FROM (SELECT read_markdown_blocks('README.md') AS b);
@@ -55,7 +58,7 @@ document is one expression:
 
 ```sql
 SELECT db_render_blocks(db_page('Sales Report', [
-    db_paragraph('**Rows** by id:'),
+    db_paragraph([db_bold('Rows'), db_text(' by id:')]),
     db_query_table('SELECT * FROM t ORDER BY id'),
     db_paragraph('Aggregate:'),
     db_query_table('SELECT count(*) AS n, round(avg(score), 2) AS avg_score FROM t')
@@ -92,7 +95,7 @@ macro users get wrapping for free.
 |-------|-------------|
 | `db_blocks_render_ansi(blocks[, width])` | C++ renderer: `LIST(duck_block)` → wrapped ANSI document |
 | `db_terminal_width()` | Detected terminal width (`/dev/tty`, `$COLUMNS`, default 80) |
-| `db_render_blocks(blocks)` | Render `LIST(duck_block)` to a full ANSI document (inline-kind elements are skipped; delegates to `db_blocks_render_ansi`) |
+| `db_render_blocks(blocks)` | Render `LIST(duck_block)` to a full ANSI document; each block's structured `kind='inline'` children are styled by `element_type` (bold/italic/code/link). Delegates to `db_blocks_render_ansi` |
 | `db_render_block(element_type, content, attributes)` | Render a single block element |
 | `db_render_query(sql)` | Table macro: run `sql` via `query()` and render the result as an ANSI table (column `rendered`) |
 | `db_json_to_table_block(json)` | JSON array of objects → `table` duck_block (headers from the first object's keys) |
@@ -100,19 +103,27 @@ macro users get wrapping for free.
 | `db_query_table(sql)` | Run `sql` and return its results as an embeddable `table` block list (safe to nest in `db_page`) |
 | `db_page(title, blocks)` | Compose an `h1` title + a list of block-lists into one assembled `LIST(duck_block)` |
 | `db_ansi(code, s)` | Wrap `s` in an SGR escape (e.g. `db_ansi('1;31', 'bold red')`) |
-| `db_ansi_inline(s)` | Inline markdown (`**bold**`, `*italic*`, `` `code` ``, `[text](url)`) → ANSI |
+| `db_ansi_inline(s)` | Returns `s` unchanged — content is literal; inline formatting comes from structured inline elements, not markdown syntax |
 | `db_render_table_json(j)` | `{"headers": [...], "rows": [[...]]}` JSON → aligned box table |
 | `db_render_list_json(j, ordered)` | JSON array of items → bulleted/numbered list |
 | `db_render_code(content, lang)` | Code block with dim gutter and language tag |
 | `db_ansi_pad(s, w)` | Space-pad to width (naive `length`-based) |
 
+## Rich text is structural, not markdown
+
+The renderer is **format-agnostic**: it styles a block's `kind='inline'` children
+by `element_type` (`bold`, `italic`, `code`, `underline`, `strikethrough`,
+`link`, `image`) and treats `content` as **literal** text. Markdown syntax in a
+`content` string (`**bold**`, `[x](y)`) is *not* interpreted — it prints
+verbatim. Build rich text with the inline builders (`db_bold`, `db_italic`,
+`db_link`, `db_inline_code`), or get it from a producer that emits structured
+inlines (`read_markdown_blocks` / `parse_markdown_to_duck_blocks`).
+
 ## Known limitations
 
-- **Inline styling parses raw markdown text** (`**`, `*`, `` ` ``, `[](...)`)
-  from the `content` field; inline duck_block children (containers with
-  `content=''`) are not walked.
-- **Table/list content must be JSON-encoded** (the shape the markdown reader
-  emits).
+- **Table/list content must be JSON-encoded** (the shape the builders and the
+  markdown reader emit); inline styling inside list items / table cells is not
+  yet walked.
 - **Code blocks are not wrapped** (wrapping would corrupt meaning); long code
   lines overflow the width.
 - **No syntax highlighting** inside code blocks.

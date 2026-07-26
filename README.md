@@ -348,7 +348,8 @@ PRAGMA duck_block_render;
 
 -- Documents: width-aware word wrap, styled headings/lists/tables
 SELECT db_blocks_render_ansi(
-    db_heading(1, 'Report') || db_paragraph('All systems **nominal**.')
+    db_heading(1, 'Report')
+    || db_paragraph([db_text('All systems '), db_bold('nominal'), db_text('.')])
 );
 
 -- Any query as a pretty ANSI table

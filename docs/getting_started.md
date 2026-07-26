@@ -320,15 +320,17 @@ SELECT 'hello'::duck_block;
 ## Rendering to the Terminal
 
 `PRAGMA duck_block_render` registers macros that pretty-print blocks as ANSI
-terminal output (headings, tables, lists, code, inline `**bold**`/`*italic*`/
-`` `code` ``/links):
+terminal output — headings, tables, lists, code, and structured inline
+formatting (bold/italic/code/links). Rich text is built from inline elements,
+not markdown syntax in `content`:
 
 ```sql
 PRAGMA duck_block_render;
 
--- Render a document
+-- Render a document (formatting via structured inline elements)
 SELECT db_render_blocks(
-    db_heading(1, 'Report') || db_paragraph('All systems **nominal**.')
+    db_heading(1, 'Report')
+    || db_paragraph([db_text('All systems '), db_bold('nominal'), db_text('.')])
 );
 
 -- Render any query as an ANSI table
