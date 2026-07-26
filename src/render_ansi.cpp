@@ -586,82 +586,6 @@ static string JValToText(const JVal &v) {
 }
 
 // ---------------------------------------------------------------------------
-// Inline markdown -> ANSI (single-pass scanner: **bold**, *italic*, `code`,
-// [text](url); nesting of bold/italic around other spans works because
-// open/close codes are targeted rather than full resets).
-// ---------------------------------------------------------------------------
-static string StyleInline(const string &text) {
-	string out;
-	bool bold = false;
-	bool italic = false;
-	size_t pos = 0;
-	size_t n = text.size();
-
-	while (pos < n) {
-		char c = text[pos];
-		if (c == '*' && pos + 1 < n && text[pos + 1] == '*') {
-			bold = !bold;
-			out += Sgr(bold ? "1" : "22");
-			pos += 2;
-			continue;
-		}
-		if (c == '*') {
-			// avoid treating stray asterisks surrounded by spaces as emphasis
-			bool openable = !italic && pos + 1 < n && text[pos + 1] != ' ';
-			bool closable = italic;
-			if (openable || closable) {
-				italic = !italic;
-				out += Sgr(italic ? "3" : "23");
-				pos++;
-				continue;
-			}
-			out += c;
-			pos++;
-			continue;
-		}
-		if (c == '`') {
-			size_t close = text.find('`', pos + 1);
-			if (close != string::npos) {
-				out += Sgr(STYLE_CODE_INLINE);
-				out += text.substr(pos + 1, close - pos - 1);
-				out += Sgr("39");
-				pos = close + 1;
-				continue;
-			}
-			out += c;
-			pos++;
-			continue;
-		}
-		if (c == '[') {
-			size_t close_br = text.find(']', pos + 1);
-			if (close_br != string::npos && close_br + 1 < n && text[close_br + 1] == '(') {
-				size_t close_par = text.find(')', close_br + 2);
-				if (close_par != string::npos) {
-					string label = text.substr(pos + 1, close_br - pos - 1);
-					string url = text.substr(close_br + 2, close_par - close_br - 2);
-					out += Sgr(STYLE_LINK) + label + RESET;
-					out += Sgr(STYLE_DIM) + " (" + url + ")" + RESET;
-					pos = close_par + 1;
-					continue;
-				}
-			}
-			out += c;
-			pos++;
-			continue;
-		}
-		out += c;
-		pos++;
-	}
-	if (bold) {
-		out += Sgr("22");
-	}
-	if (italic) {
-		out += Sgr("23");
-	}
-	return out;
-}
-
-// ---------------------------------------------------------------------------
 // Terminal width detection
 // ---------------------------------------------------------------------------
 static idx_t DetectTerminalWidth() {
@@ -697,6 +621,14 @@ static string GetStringField(const Value &element, idx_t field_idx) {
 	return children[field_idx].GetValue<string>();
 }
 
+static int GetIntField(const Value &element, idx_t field_idx) {
+	auto &children = StructValue::GetChildren(element);
+	if (field_idx >= children.size() || children[field_idx].IsNull()) {
+		return 0;
+	}
+	return children[field_idx].GetValue<int32_t>();
+}
+
 static string GetAttribute(const Value &element, const string &key) {
 	auto &children = StructValue::GetChildren(element);
 	auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
@@ -719,6 +651,95 @@ static string GetAttribute(const Value &element, const string &key) {
 }
 
 // ---------------------------------------------------------------------------
+// Structured inline rendering. Rich text is kind='inline' child elements
+// (bold, italic, code, link, ...) with LITERAL content and encoding='text' --
+// never markdown syntax inside content. We style by element_type using targeted
+// SGR open/close codes so a block's base style (e.g. heading color) survives
+// across the run. This extension is format-agnostic: it renders the structured
+// duck_block model, not any one input format's syntax.
+// ---------------------------------------------------------------------------
+static void InlineStyleCodes(const string &element_type, string &open, string &close) {
+	if (element_type == BlockTypes::INLINE_BOLD) {
+		open = Sgr("1");
+		close = Sgr("22");
+	} else if (element_type == BlockTypes::INLINE_ITALIC) {
+		open = Sgr("3");
+		close = Sgr("23");
+	} else if (element_type == BlockTypes::INLINE_UNDERLINE) {
+		open = Sgr("4");
+		close = Sgr("24");
+	} else if (element_type == BlockTypes::INLINE_STRIKETHROUGH) {
+		open = Sgr("9");
+		close = Sgr("29");
+	} else if (element_type == BlockTypes::INLINE_CODE || element_type == BlockTypes::INLINE_MATH) {
+		open = Sgr(STYLE_CODE_INLINE);
+		close = Sgr("39");
+	} else {
+		open.clear();
+		close.clear();
+	}
+}
+
+// Consume the run of kind='inline' elements starting at `i` (advancing it past
+// them) and return the styled string. Nesting is reconstructed from `level`: a
+// container element has empty content and styles its deeper-level children.
+static string RenderInlineRun(const vector<Value> &list, idx_t &i) {
+	string out;
+	vector<std::pair<int, string>> stack; // (level, deferred close string)
+	while (i < list.size()) {
+		auto &el = list[i];
+		if (el.IsNull()) {
+			i++;
+			continue;
+		}
+		if (GetStringField(el, BlockTypes::KIND_IDX) != BlockTypes::KIND_INLINE) {
+			break;
+		}
+		int level = GetIntField(el, BlockTypes::LEVEL_IDX);
+		while (!stack.empty() && stack.back().first >= level) {
+			out += stack.back().second;
+			stack.pop_back();
+		}
+		auto etype = GetStringField(el, BlockTypes::ELEMENT_TYPE_IDX);
+		auto content = GetStringField(el, BlockTypes::CONTENT_IDX);
+
+		if (etype == BlockTypes::INLINE_LINK) {
+			string href = GetAttribute(el, "href");
+			string suffix = href.empty() ? "" : Sgr(STYLE_DIM) + " (" + href + ")" + RESET;
+			if (!content.empty()) {
+				out += Sgr(STYLE_LINK) + content + RESET + suffix;
+			} else {
+				out += Sgr(STYLE_LINK);
+				stack.push_back({level, string(RESET) + suffix});
+			}
+			i++;
+			continue;
+		}
+		if (etype == BlockTypes::INLINE_IMAGE) {
+			string alt = content.empty() ? GetAttribute(el, "alt") : content;
+			out += Sgr(STYLE_DIM) + "[image: " + alt + "]" + RESET;
+			i++;
+			continue;
+		}
+
+		string open, close;
+		InlineStyleCodes(etype, open, close);
+		if (!content.empty()) {
+			out += open + content + close; // leaf
+		} else {
+			out += open; // container: defer close until level drops
+			stack.push_back({level, close});
+		}
+		i++;
+	}
+	while (!stack.empty()) {
+		out += stack.back().second;
+		stack.pop_back();
+	}
+	return out;
+}
+
+// ---------------------------------------------------------------------------
 // Block renderers: each appends fully assembled lines
 // ---------------------------------------------------------------------------
 static void RenderHeading(const string &content, const string &level_attr, size_t width, vector<string> &lines) {
@@ -730,7 +751,7 @@ static void RenderHeading(const string &content, const string &level_attr, size_
 	}
 	// Whole heading (prefix + text) shares one style; wrap with the bar on
 	// every line.
-	string styled = Sgr(style) + StyleInline(content);
+	string styled = Sgr(style) + content;
 	WrapPrefix prefix;
 	prefix.first = Sgr(style) + "▍ ";
 	prefix.cont = prefix.first;
@@ -742,7 +763,7 @@ static void RenderHeading(const string &content, const string &level_attr, size_
 
 static void RenderParagraph(const string &content, size_t width, vector<string> &lines) {
 	auto prefix = MakePrefix("", "", "");
-	for (auto &l : WrapStyled(StyleInline(content), width, prefix)) {
+	for (auto &l : WrapStyled(content, width, prefix)) {
 		lines.push_back(l);
 	}
 }
@@ -797,7 +818,7 @@ static void RenderListItems(const JVal &items, bool ordered, int depth, size_t w
 		} else {
 			text = JValToText(item);
 		}
-		for (auto &l : WrapStyled(StyleInline(text), width, prefix)) {
+		for (auto &l : WrapStyled(text, width, prefix)) {
 			lines.push_back(l);
 		}
 		if (item.type == JVal::Type::OBJECT) {
@@ -819,7 +840,7 @@ static void RenderBlockquote(const string &content, size_t width, vector<string>
 	while (start <= content.size()) {
 		size_t nl = content.find('\n', start);
 		string logical = content.substr(start, nl == string::npos ? string::npos : nl - start);
-		string styled = Sgr(STYLE_QUOTE) + StyleInline(logical) + RESET;
+		string styled = Sgr(STYLE_QUOTE) + logical + RESET;
 		for (auto &l : WrapStyled(styled, width, prefix)) {
 			lines.push_back(l);
 		}
@@ -850,7 +871,7 @@ static void RenderTable(const JVal &table, size_t width, vector<string> &lines) 
 		for (auto &row : rows_v->arr) {
 			vector<string> cells(ncols);
 			for (idx_t c = 0; c < ncols && c < row.arr.size(); c++) {
-				cells[c] = StyleInline(JValToText(row.arr[c]));
+				cells[c] = JValToText(row.arr[c]);
 				natural[c] = MaxValue<size_t>(natural[c], DisplayWidth(cells[c]));
 			}
 			row_cells.push_back(std::move(cells));
@@ -977,22 +998,35 @@ static string RenderDocument(const Value &blocks_val, size_t width) {
 	auto &blocks_list = ListValue::GetChildren(blocks_val);
 	string out;
 	bool first = true;
-	for (auto &block : blocks_list) {
+	idx_t bi = 0;
+	while (bi < blocks_list.size()) {
+		auto &block = blocks_list[bi];
 		if (block.IsNull()) {
+			bi++;
 			continue;
 		}
 		auto kind = GetStringField(block, BlockTypes::KIND_IDX);
-		if (kind != "block") {
+		if (kind != BlockTypes::KIND_BLOCK) {
+			// A stray inline with no parent block: skip (it is not a document).
+			bi++;
 			continue;
 		}
 		auto element_type = GetStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
 		auto content = GetStringField(block, BlockTypes::CONTENT_IDX);
 
+		// Gather this block's structured inline children (rich text). Per spec,
+		// `content` is populated iff the container has a single text child, so a
+		// non-empty content is the literal simple case; otherwise the styled run
+		// of inline children is the text.
+		idx_t j = bi + 1;
+		string inline_text = RenderInlineRun(blocks_list, j);
+		string text = content.empty() ? inline_text : content;
+
 		vector<string> lines;
 		if (element_type == BlockTypes::TYPE_HEADING) {
-			RenderHeading(content, GetAttribute(block, "heading_level"), width, lines);
+			RenderHeading(text, GetAttribute(block, "heading_level"), width, lines);
 		} else if (element_type == BlockTypes::TYPE_PARAGRAPH) {
-			RenderParagraph(content, width, lines);
+			RenderParagraph(text, width, lines);
 		} else if (element_type == BlockTypes::TYPE_CODE) {
 			RenderCode(content, GetAttribute(block, "language"), lines);
 		} else if (element_type == BlockTypes::TYPE_LIST) {
@@ -1008,16 +1042,18 @@ static string RenderDocument(const Value &blocks_val, size_t width) {
 				RenderTable(table, width, lines);
 			}
 		} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE) {
-			RenderBlockquote(content, width, lines);
+			RenderBlockquote(text, width, lines);
 		} else if (element_type == BlockTypes::TYPE_HR) {
 			RenderHr(width, lines);
 		} else if (element_type == BlockTypes::TYPE_METADATA) {
 			// suppressed
 		} else if (element_type == BlockTypes::TYPE_IMAGE) {
 			RenderImage(block, content, lines);
-		} else if (!content.empty()) {
-			RenderParagraph(content, width, lines);
+		} else if (!text.empty()) {
+			RenderParagraph(text, width, lines);
 		}
+
+		bi = j; // advance past the consumed inline children
 
 		if (lines.empty()) {
 			continue;

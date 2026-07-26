@@ -4,6 +4,8 @@
 
 require duck_block_utils
 
+require parquet
+
 # Strip SGR escapes helper used throughout: regexp_replace(l, chr(27)||'\[[0-9;]*m', '', 'g')
 
 # test-local generic block constructor
@@ -40,6 +42,65 @@ true
 # Explicit width <= 0 means auto-detect (still renders)
 query I
 SELECT db_blocks_render_ansi(db_paragraph('hi'), 0) LIKE '%hi%';
+----
+true
+
+# ============================================================================
+# Structured inline elements are styled by element_type (format-agnostic)
+# ============================================================================
+
+# bold/italic/code children render with targeted SGR; link carries its href;
+# content is taken literally (no markdown parsing anywhere)
+query I
+SELECT r LIKE '%' || chr(27) || '[1mbold' || chr(27) || '[22m%'
+   AND r LIKE '%' || chr(27) || '[3mem' || chr(27) || '[23m%'
+   AND r LIKE '%' || chr(27) || '[38;5;203mcode' || chr(27) || '[39m%'
+   AND r LIKE '%duckdb.org%'
+FROM (SELECT db_blocks_render_ansi(db_paragraph([
+    db_text('has '), db_bold('bold'), db_text(' '), db_italic('em'),
+    db_text(' '), db_inline_code('code'), db_text(' '),
+    db_link('https://duckdb.org', 'site')])) AS r);
+----
+true
+
+# a paragraph built from inline children renders (regression: previously the
+# inline children were skipped and this produced empty output)
+query I
+SELECT length(db_blocks_render_ansi(db_paragraph([db_text('x'), db_bold('y')]))) > 0;
+----
+true
+
+# markdown syntax sitting in a content string is rendered LITERALLY -- the
+# renderer has no awareness of markdown (that is a producer's concern)
+query I
+SELECT r LIKE '%**not bold**%' AND position(chr(27) || '[1m' IN r) = 0
+FROM (SELECT db_blocks_render_ansi(db_paragraph('**not bold**')) AS r);
+----
+true
+
+# nested inlines: italic inside a link keeps both the link color and italic
+query I
+SELECT r LIKE '%' || chr(27) || '[4;38;5;75m%' || chr(27) || '[3mdeep' || chr(27) || '[23m%'
+FROM (SELECT db_blocks_render_ansi(db_paragraph([db_link('https://x.io', [db_italic('deep')])])) AS r);
+----
+true
+
+# ============================================================================
+# Fixture: canonical structured document renders with styling, no markdown
+# ============================================================================
+
+query I
+SELECT r LIKE '%Duck Blocks Fixture%'
+   AND r LIKE '%' || chr(27) || '[1mbold' || chr(27) || '[22m%'
+   AND r NOT LIKE '%**%'
+FROM (
+  SELECT db_blocks_render_ansi(
+    (SELECT list({'kind': kind, 'element_type': element_type, 'content': content,
+                  'level': level, 'encoding': encoding, 'attributes': attributes,
+                  'element_order': element_order}::duck_block ORDER BY element_order)
+     FROM read_parquet('test/fixtures/sample_document.parquet'))
+  ) AS r
+);
 ----
 true
 
@@ -81,11 +142,11 @@ true
 # SGR state survives line breaks
 # ============================================================================
 
-# a bold span that wraps re-opens bold at the start of the continuation line
+# a bold inline that wraps re-opens bold at the start of the continuation line
 query I
 SELECT lines[2] LIKE chr(27) || '[1m%'
 FROM (
-  SELECT string_split(db_blocks_render_ansi(db_paragraph('**' || repeat('bold ', 20) || '**'), 30), chr(10)) AS lines
+  SELECT string_split(db_blocks_render_ansi(db_paragraph([db_bold(repeat('bold ', 20))]), 30), chr(10)) AS lines
 );
 ----
 true

@@ -23,28 +23,14 @@ SELECT db_ansi('1', 'x') = chr(27) || '[1m' || 'x' || chr(27) || '[0m';
 true
 
 # ============================================================================
-# db_ansi_inline: inline markdown -> ANSI
+# db_ansi_inline: content is literal (the extension has no markdown awareness)
 # ============================================================================
 
-# bold introduces SGR codes and strips the asterisks
+# markdown syntax is NOT interpreted -- content is returned verbatim
 query I
-SELECT db_ansi_inline('**bold** text') LIKE '%' || chr(27) || '[1mbold' || chr(27) || '[22m%';
+SELECT db_ansi_inline('**bold** and `code` and [x](y)');
 ----
-true
-
-# inline code is styled and backticks removed
-query I
-SELECT position('`' IN db_ansi_inline('use `SELECT 1` here')) = 0
-   AND db_ansi_inline('use `SELECT 1` here') LIKE '%SELECT 1%';
-----
-true
-
-# links keep text and href
-query I
-SELECT db_ansi_inline('[docs](https://example.com)') LIKE '%docs%'
-   AND db_ansi_inline('[docs](https://example.com)') LIKE '%https://example.com%';
-----
-true
+**bold** and `code` and [x](y)
 
 # plain text passes through untouched
 query I
@@ -69,9 +55,10 @@ SELECT db_render_block('heading', 'Title', MAP {'heading_level': '1'}) LIKE '%Ti
 ----
 true
 
-# paragraph renders inline markdown
+# paragraph content is rendered literally (structured inline styling is the
+# C++ renderer's job; the per-block SQL helper has no sibling context)
 query I
-SELECT db_render_block('paragraph', 'a **b** c', MAP {}::MAP(VARCHAR, VARCHAR)) LIKE '%' || chr(27) || '[1mb' || chr(27) || '[22m%';
+SELECT db_render_block('paragraph', 'a **b** c', MAP {}::MAP(VARCHAR, VARCHAR)) = 'a **b** c';
 ----
 true
 
