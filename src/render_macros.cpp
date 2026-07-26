@@ -18,17 +18,12 @@ CREATE OR REPLACE MACRO db_ansi(code, s) AS
 CREATE OR REPLACE MACRO db_ansi_pad(s, w) AS
     coalesce(s, '') || repeat(' ', greatest(w - length(coalesce(s, '')), 0));
 
--- Inline markdown -> ANSI: **bold**, *italic*, `code`, [text](url)
-CREATE OR REPLACE MACRO db_ansi_inline(s) AS
-    regexp_replace(
-      regexp_replace(
-        regexp_replace(
-          regexp_replace(coalesce(s, ''),
-            '\*\*([^*]+)\*\*', chr(27) || '[1m\1' || chr(27) || '[22m', 'g'),
-          '(?:^|\s)\*([^*]+)\*', ' ' || chr(27) || '[3m\1' || chr(27) || '[23m', 'g'),
-        '`([^`]+)`', chr(27) || '[38;5;203m\1' || chr(27) || '[39m', 'g'),
-      '\[([^\]]+)\]\(([^)]+)\)',
-        chr(27) || '[4;38;5;75m\1' || chr(27) || '[0m' || chr(27) || '[2m (\2)' || chr(27) || '[0m', 'g');
+-- content is rendered literally. Formatting comes from structured inline
+-- elements (bold/italic/code/link), not from markdown syntax in content --
+-- this extension is format-agnostic and has no markdown awareness. The C++
+-- renderer (db_blocks_render_ansi / db_render_blocks) styles structured inlines;
+-- the pure-SQL helpers below operate per-block and so render content verbatim.
+CREATE OR REPLACE MACRO db_ansi_inline(s) AS coalesce(s, '');
 
 -- Code block with a dim gutter and language tag
 CREATE OR REPLACE MACRO db_render_code(content, lang) AS

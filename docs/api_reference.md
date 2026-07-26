@@ -755,12 +755,14 @@ Native renderer producing UTF-8 text with ANSI SGR escapes, word-wrapped to a
 display width. Escape sequences count as zero columns and CJK/emoji as two
 (utf8proc); active styles are re-opened across line breaks; tables wrap cells
 to fit the width budget. Omit `width` (or pass `<= 0`) to auto-detect the
-terminal size (`/dev/tty`, then `$COLUMNS`, then 80). Inline-kind elements are
-skipped; `metadata` blocks are suppressed.
+terminal size (`/dev/tty`, then `$COLUMNS`, then 80). A block's structured
+`kind='inline'` children are styled by `element_type`; a loose inline with no
+parent block is skipped; `metadata` blocks are suppressed.
 
 ```sql
 SELECT db_blocks_render_ansi(
-    db_heading(1, 'Report') || db_paragraph('All systems **nominal**.'),
+    db_heading(1, 'Report')
+    || db_paragraph([db_text('All systems '), db_bold('nominal'), db_text('.')]),
     72
 );
 ```
