@@ -396,7 +396,7 @@ WITH data AS (
 )
 SELECT db_blocks_render_ansi(
     db_heading(1, 'Nightly Run')
-    || db_paragraph('Pipeline finished with **0 errors**.')
+    || db_paragraph([db_text('Pipeline finished with '), db_bold('0 errors'), db_text('.')])
     || [db_json_to_table_block(j)],
     72
 ) FROM data;
