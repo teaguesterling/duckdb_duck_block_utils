@@ -858,3 +858,128 @@ query I
 SELECT pandoc_ast_to_blocks('[{"t":"CodeBlock","c":[["",["haskell"],[]],"main = putStrLn"]}]')[1].attributes['language'];
 ----
 haskell
+
+# ============================================================================
+# Inline Code / Math preservation and structured inline children (issue #21)
+#
+# ExtractInlinesText only ever saw Str/Space/SoftBreak/LineBreak, so `Code` and
+# `Math` inlines were dropped outright: "Run `make install` first." converted to
+# "Run  first.". Rich inline runs now become kind='inline' children (the shape
+# parse_markdown_to_duck_blocks emits and the renderer already styles), while
+# text-only runs keep the flat, content-carrying shape.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Text-only runs are unchanged: one block, text in `content`
+# ----------------------------------------------------------------------------
+
+query I
+SELECT len(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"Hello"},{"t":"Space"},{"t":"Str","c":"world"}]}]'));
+----
+1
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"Hello"},{"t":"Space"},{"t":"Str","c":"world"}]}]')[1].content;
+----
+Hello world
+
+# ----------------------------------------------------------------------------
+# Code inlines survive (they used to disappear)
+# ----------------------------------------------------------------------------
+
+# The reported reproduction: "Run `make install` first."
+query I
+SELECT db_blocks_to_text(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"Run"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"make install"]},{"t":"Space"},{"t":"Str","c":"first."}]}]'));
+----
+Run make install first.
+
+# The code text is carried by a structured inline child
+query I
+SELECT list_filter(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"Run"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"make install"]},{"t":"Space"},{"t":"Str","c":"first."}]}]'), b -> b.kind = 'inline' AND b.element_type = 'code')[1].content;
+----
+make install
+
+# The parent block carries no duplicated (and truncated) text
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"Run"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"make install"]},{"t":"Space"},{"t":"Str","c":"first."}]}]')[1].content;
+----
+(empty)
+
+# ----------------------------------------------------------------------------
+# Math inlines survive
+# ----------------------------------------------------------------------------
+
+query I
+SELECT list_filter(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"E"},{"t":"Space"},{"t":"Math","c":[{"t":"InlineMath"},"E=mc^2"]}]}]'), b -> b.kind = 'inline' AND b.element_type = 'math')[1].content;
+----
+E=mc^2
+
+query I
+SELECT db_blocks_to_text(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"E"},{"t":"Space"},{"t":"Math","c":[{"t":"InlineMath"},"E=mc^2"]}]}]'));
+----
+E E=mc^2
+
+# ----------------------------------------------------------------------------
+# Link text and image alt text must not regress into the structured shape
+# ----------------------------------------------------------------------------
+
+# Link text is a child of the link container
+query I
+SELECT db_blocks_to_text(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"See"},{"t":"Space"},{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"the docs"}],["http://x",""]]}]}]'));
+----
+See the docs
+
+# The link keeps its href
+query I
+SELECT list_filter(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"See"},{"t":"Space"},{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"the docs"}],["http://x",""]]}]}]'), b -> b.element_type = 'link')[1].attributes['href'];
+----
+http://x
+
+# Image alt text is kept as content plus an alt attribute, and src is the target
+query I
+SELECT list_filter(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"a"},{"t":"Space"},{"t":"Str","c":"duck"}],["duck.png","t"]]}]}]'), b -> b.element_type = 'image')[1].content;
+----
+a duck
+
+query I
+SELECT list_filter(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"a"},{"t":"Space"},{"t":"Str","c":"duck"}],["duck.png","t"]]}]}]'), b -> b.element_type = 'image')[1].attributes['src'];
+----
+duck.png
+
+# ----------------------------------------------------------------------------
+# Headings: title extraction sees the structured children (issues #20 + #21)
+# ----------------------------------------------------------------------------
+
+query I
+SELECT db_blocks_headings(pandoc_ast_to_blocks('[{"t":"Header","c":[2,["fmt",[],[]],[{"t":"Str","c":"The"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"mrconfig"]},{"t":"Space"},{"t":"Str","c":"format"}]]}]'))[1].title;
+----
+The mrconfig format
+
+query I
+SELECT db_blocks_headings(pandoc_ast_to_blocks('[{"t":"Header","c":[2,["fmt",[],[]],[{"t":"Str","c":"The"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"mrconfig"]},{"t":"Space"},{"t":"Str","c":"format"}]]}]'))[1].id;
+----
+fmt
+
+# ----------------------------------------------------------------------------
+# element_order stays sequential across blocks and their inline children
+# ----------------------------------------------------------------------------
+
+query I
+SELECT list_transform(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"a"},{"t":"Code","c":[["",[],[]],"c"]}]},{"t":"Para","c":[{"t":"Str","c":"b"}]}]'), b -> b.element_order);
+----
+[0, 1, 2, 3]
+
+# ----------------------------------------------------------------------------
+# Round-trip back to Pandoc JSON keeps the Code inline
+# ----------------------------------------------------------------------------
+
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"Run"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"make install"]}]}]'));
+----
+[{"t":"Para","c":[{"t":"Str","c":"Run"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"make install"]}]}]
+
+# Rich inline text inside a Div child round-trips too
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Div","c":[["d",[],[]],[{"t":"Para","c":[{"t":"Code","c":[["",[],[]],"x"]}]}]]}]'));
+----
+[{"t":"Div","c":[["d",[],[]],[{"t":"Para","c":[{"t":"Code","c":[["",[],[]],"x"]}]}]]}]

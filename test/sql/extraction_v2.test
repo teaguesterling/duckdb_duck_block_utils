@@ -327,3 +327,113 @@ query I
 SELECT len(db_blocks_links(db_assemble([db_paragraph('Just text'), db_heading(1, 'Title')])));
 ----
 0
+
+# ============================================================================
+# Inline children as block text (issue #20)
+#
+# Producers disagree about where a block's text lives: `markdown` flattens it
+# into `content`, while `webbed` leaves `content` NULL and emits kind='inline'
+# children for any heading containing <code>, <em>, <a>, ... Extraction has to
+# handle both, or such headings come back with an empty title and drop out of a
+# table of contents.
+# ============================================================================
+
+# The exact shape webbed emits for <h2>The <code>mrconfig</code> format</h2>:
+# a heading with NULL content followed by its inline children
+statement ok
+CREATE MACRO webbed_h2() AS ([
+    {'kind':'block','element_type':'heading','content':NULL::VARCHAR,'level':1,'encoding':'text',
+     'attributes':map(['heading_level'],['2']),'element_order':0}::duck_block,
+    {'kind':'inline','element_type':'text','content':'The ','level':1,'encoding':'text',
+     'attributes':map([]::VARCHAR[],[]::VARCHAR[]),'element_order':1}::duck_block,
+    {'kind':'inline','element_type':'code','content':'mrconfig','level':1,'encoding':'text',
+     'attributes':map([]::VARCHAR[],[]::VARCHAR[]),'element_order':2}::duck_block,
+    {'kind':'inline','element_type':'text','content':' format','level':1,'encoding':'text',
+     'attributes':map([]::VARCHAR[],[]::VARCHAR[]),'element_order':3}::duck_block
+]);
+
+# Title falls back to the inline children (was '')
+query I
+SELECT db_blocks_headings(webbed_h2())[1].title;
+----
+The mrconfig format
+
+# The heading level still comes from the heading_level attribute
+query I
+SELECT db_blocks_headings(webbed_h2())[1].level;
+----
+2
+
+# Inline children are not mistaken for headings of their own
+query I
+SELECT len(db_blocks_headings(webbed_h2()));
+----
+1
+
+# db_blocks_toc gets the same fallback (was a blank TOC line)
+query I
+SELECT db_blocks_toc(webbed_h2())[1].title;
+----
+The mrconfig format
+
+# Inline children belong to their parent block, so the text joins without a
+# separator between them
+query I
+SELECT db_blocks_to_text(webbed_h2(), ' ');
+----
+The mrconfig format
+
+# Same heading built with this extension's own builders
+query I
+SELECT db_blocks_headings(db_heading(2, [db_text('The '), db_inline_code('mrconfig'), db_text(' format')]))[1].title;
+----
+The mrconfig format
+
+# Nested inline containers contribute their children's text
+query I
+SELECT db_blocks_headings(db_heading(3, [db_text('A '), db_bold([db_text('bold '), db_italic('word')])]))[1].title;
+----
+A bold word
+
+# A populated content field still wins over any children
+query I
+SELECT db_blocks_headings(db_heading(2, 'Plain title'))[1].title;
+----
+Plain title
+
+# Headings with inline children are still counted and ordered correctly
+query I
+SELECT len(db_blocks_headings(db_assemble([
+    db_heading(1, [db_text('One')]),
+    db_paragraph([db_text('body '), db_inline_code('text')]),
+    db_heading(2, [db_text('Two')])
+])));
+----
+2
+
+# A paragraph's inline children read as one run of text
+query I
+SELECT db_blocks_to_text(db_paragraph([db_text('Run '), db_inline_code('make install'), db_text(' first.')]));
+----
+Run make install first.
+
+# Whitespace inlines contribute their whitespace
+query I
+SELECT db_blocks_to_text(db_paragraph([db_text('a'), db_space(), db_text('b')]));
+----
+a b
+
+# Blocks are still joined by the separator, inline children are not
+query I
+SELECT db_blocks_to_text(db_assemble([
+    db_paragraph([db_text('first '), db_bold('one')]),
+    db_paragraph([db_text('second '), db_bold('two')])
+]), ' | ');
+----
+first one | second two
+
+# A bare inline run with no parent block is still one unit of text
+query I
+SELECT db_blocks_to_text(db_link('https://example.com', 'Click here'));
+----
+Click here

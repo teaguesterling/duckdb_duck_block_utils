@@ -424,6 +424,24 @@ SELECT pandoc_yaml_to_meta('title: My Doc\nauthor: Jane');
 | `Figure` | `pandoc:figure` | NULL | json | Pandoc 3.0+ |
 | `Null` | (skipped) | - | - | Empty block |
 
+### Inline Handling (Header, Para, Plain)
+
+A block's inline run is converted one of two ways, decided by the run's content:
+
+- **Text-only run** (`Str`, `Space`, `SoftBreak`, `LineBreak`): flattened into the
+  block's `content`, and no inline children are emitted. This is the spec's
+  normalized simple case and keeps one duck_block per Pandoc block.
+- **Rich run** (anything containing `Code`, `Math`, `Emph`, `Strong`, `Link`,
+  `Strikeout`, `Span`, …): the block is emitted with empty `content`, followed by
+  its `kind='inline'` children — the same structured shape
+  `parse_markdown_to_duck_blocks` produces, which the ANSI renderer styles and
+  `duck_blocks_to_pandoc_blocks` round-trips.
+
+Flattening a rich run into `content` is lossy: `Code` and `Math` have no text
+representation there and used to be dropped outright, turning
+``Run `make install` first.`` into `Run  first.`. Structured children are the
+only representation that can carry them.
+
 ### duck_block → Pandoc
 
 | element_type | Pandoc Type | Notes |

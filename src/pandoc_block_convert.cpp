@@ -352,6 +352,28 @@ static string ExtractInlinesText(const string &json) {
 	return result;
 }
 
+// True when a flattened inline run holds nothing but text and whitespace, i.e.
+// when ExtractInlinesText's flattened `content` is a lossless representation of
+// it. Any other inline type (code, math, bold, link, ...) carries information
+// that only structured children can hold (issue #21).
+static bool InlinesAreTextOnly(const vector<Value> &inlines) {
+	for (auto &el : inlines) {
+		if (el.IsNull()) {
+			continue;
+		}
+		auto &children = StructValue::GetChildren(el);
+		if (children[BlockTypes::ELEMENT_TYPE_IDX].IsNull()) {
+			continue;
+		}
+		auto element_type = children[BlockTypes::ELEMENT_TYPE_IDX].GetValue<string>();
+		if (element_type != BlockTypes::INLINE_TEXT && element_type != BlockTypes::INLINE_SPACE &&
+		    element_type != BlockTypes::INLINE_SOFTBREAK && element_type != BlockTypes::INLINE_LINEBREAK) {
+			return false;
+		}
+	}
+	return true;
+}
+
 // Process a single Pandoc block and add to result.
 // `depth` is the nesting depth of this block (1 for top-level blocks); the
 // converter refuses input nested deeper than PANDOC_MAX_NESTING_DEPTH so a
@@ -386,6 +408,10 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 	string content;
 	string block_type;
 	string encoding = "text";
+	// The block's raw Pandoc inline run, for blocks whose text is inlines
+	// (Header / Para / Plain). See the structured-inline handling at the end of
+	// this function (issue #21).
+	string inlines_json;
 
 	if (pandoc_type == "Header") {
 		block_type = BlockTypes::TYPE_HEADING;
@@ -412,6 +438,7 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 						size_t inlines_end = FindMatchingBracket(block_json, inlines_start, '[', ']');
 						string inlines = block_json.substr(inlines_start, inlines_end - inlines_start);
 						content = ExtractInlinesText(inlines);
+						inlines_json = inlines;
 					}
 				}
 			}
@@ -425,6 +452,7 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 				size_t arr_end = FindMatchingBracket(block_json, arr_start, '[', ']');
 				string inlines = block_json.substr(arr_start, arr_end - arr_start);
 				content = ExtractInlinesText(inlines);
+				inlines_json = inlines;
 			}
 		}
 	} else if (pandoc_type == "Plain") {
@@ -436,6 +464,7 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 				size_t arr_end = FindMatchingBracket(block_json, arr_start, '[', ']');
 				string inlines = block_json.substr(arr_start, arr_end - arr_start);
 				content = ExtractInlinesText(inlines);
+				inlines_json = inlines;
 			}
 		}
 	} else if (pandoc_type == "CodeBlock") {
@@ -635,8 +664,51 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 		return;
 	}
 
-	if (!block_type.empty()) {
-		result.push_back(CreateDocBlock(block_type, content, attrs, order++, encoding, block_level));
+	if (block_type.empty()) {
+		return;
+	}
+
+	// ------------------------------------------------------------------------
+	// Structured inline children (issue #21)
+	//
+	// ExtractInlinesText only ever sees Str/Space/SoftBreak/LineBreak, so a
+	// Code or Math inline used to vanish from the document entirely: "Run
+	// `make install` first." came out as "Run  first.". Rich text belongs in
+	// kind='inline' children -- the representation parse_markdown_to_duck_blocks
+	// already emits, the renderer already styles, and the emit side
+	// (BuildBlocksJson / ConvertDivToPandocJson) already round-trips.
+	//
+	// A run that is only text and whitespace stays flattened into `content`:
+	// that is the spec's normalized simple case, and it keeps the flat one
+	// block per Pandoc block shape every existing consumer of this path relies
+	// on. Anything richer becomes children with `content` left empty, so no
+	// inline can be silently dropped.
+	//
+	// The inline flattener shares this block's recursion budget rather than
+	// starting a new one, so total nesting stays bounded by
+	// PANDOC_MAX_NESTING_DEPTH-ish and no input that converted before is
+	// rejected now.
+	// ------------------------------------------------------------------------
+	const int32_t block_order = order++;
+	vector<Value> inline_children;
+	if (!inlines_json.empty()) {
+		const int32_t order_before_children = order;
+		PandocInlineConvert::ConvertPandocInlinesToDbInlines(inlines_json, effective_level + 1, order, inline_children,
+		                                                     depth);
+		if (InlinesAreTextOnly(inline_children)) {
+			// Simple case: keep the flattened text, emit no children
+			inline_children.clear();
+			order = order_before_children;
+		} else {
+			// Rich case: the children carry the text, `content` must not
+			// duplicate (and truncate) it
+			content.clear();
+		}
+	}
+
+	result.push_back(CreateDocBlock(block_type, content, attrs, block_order, encoding, block_level));
+	for (auto &child : inline_children) {
+		result.push_back(child);
 	}
 }
 
