@@ -82,6 +82,90 @@ static string ExtractJsonString(const string &json, const string &key) {
 	return "";
 }
 
+// Split a Pandoc [Attr, [inlines], Target] content array (Link, Image) into its
+// inline array and its target array.
+//
+// The previous hand-rolled version walked three "find the next [" steps, which
+// landed on the *classes* array nested inside Attr rather than on the inline
+// array, so a Link's text was silently dropped (it only survived the block path
+// because that path scanned the raw JSON for Str tokens). Bracket matching here
+// is quote-aware, so brackets inside document text cannot unbalance the scan.
+static bool SplitAttrInlinesTarget(const string &obj_content, string &inlines, string &target) {
+	size_t c_pos = obj_content.find("\"c\":");
+	if (c_pos == string::npos) {
+		return false;
+	}
+	size_t outer = obj_content.find("[", c_pos);
+	if (outer == string::npos) {
+		return false;
+	}
+	// Element 1: the Attr triple [id, [classes], [[k,v]...]]
+	size_t attr_start = obj_content.find("[", outer + 1);
+	if (attr_start == string::npos) {
+		return false;
+	}
+	size_t attr_end = PandocFindMatchingBracket(obj_content, attr_start, '[', ']');
+	// Element 2: the inline array
+	size_t inl_start = obj_content.find("[", attr_end);
+	if (inl_start == string::npos) {
+		return false;
+	}
+	size_t inl_end = PandocFindMatchingBracket(obj_content, inl_start, '[', ']');
+	inlines = obj_content.substr(inl_start, inl_end - inl_start);
+	// Element 3: the Target pair [url, title] (absent for Span)
+	size_t tgt_start = obj_content.find("[", inl_end);
+	if (tgt_start != string::npos) {
+		size_t tgt_end = PandocFindMatchingBracket(obj_content, tgt_start, '[', ']');
+		target = obj_content.substr(tgt_start, tgt_end - tgt_start);
+	}
+	return true;
+}
+
+// First JSON string literal in `json`, unescaped enough for a URL
+static string FirstJsonString(const string &json) {
+	size_t start = json.find("\"");
+	if (start == string::npos) {
+		return "";
+	}
+	start++;
+	string out;
+	for (size_t i = start; i < json.length(); i++) {
+		if (json[i] == '\\' && i + 1 < json.length()) {
+			i++;
+			out += json[i];
+			continue;
+		}
+		if (json[i] == '"') {
+			break;
+		}
+		out += json[i];
+	}
+	return out;
+}
+
+// Plain text of already-flattened inline Values (used for an image's alt text,
+// which duck_blocks carries as a string, not as inline children)
+static string InlineValuesToText(const vector<Value> &inlines) {
+	string out;
+	for (auto &el : inlines) {
+		if (el.IsNull()) {
+			continue;
+		}
+		auto &ch = StructValue::GetChildren(el);
+		string element_type =
+		    ch[BlockTypes::ELEMENT_TYPE_IDX].IsNull() ? "" : ch[BlockTypes::ELEMENT_TYPE_IDX].GetValue<string>();
+		string content = ch[BlockTypes::CONTENT_IDX].IsNull() ? "" : ch[BlockTypes::CONTENT_IDX].GetValue<string>();
+		if (element_type == BlockTypes::INLINE_SPACE || element_type == BlockTypes::INLINE_SOFTBREAK) {
+			out += " ";
+		} else if (element_type == BlockTypes::INLINE_LINEBREAK) {
+			out += "\n";
+		} else {
+			out += content;
+		}
+	}
+	return out;
+}
+
 // Recursively flatten Pandoc inlines.
 // `depth` is the nesting depth (1 at the top level); input nested deeper than
 // PANDOC_MAX_NESTING_DEPTH is rejected with a clean error so a deeply nested
@@ -284,67 +368,43 @@ static void FlattenPandocInlines(const string &json, int32_t level, int32_t &ord
 			}
 		} else if (pandoc_type == "Link") {
 			inline_type = BlockTypes::INLINE_LINK;
-			// Link has [Attr, [inlines], Target] - Target is [url, title]
-			// For now, extract URL and flatten inlines
-			size_t c_start = obj_content.find("\"c\":");
-			if (c_start != string::npos) {
-				// Find target array at the end
-				size_t last_bracket = obj_content.rfind("[");
-				if (last_bracket != string::npos) {
-					// Extract URL
-					size_t url_start = obj_content.find("\"", last_bracket);
-					if (url_start != string::npos) {
-						url_start++;
-						size_t url_end = obj_content.find("\"", url_start);
-						if (url_end != string::npos) {
-							attrs["href"] = obj_content.substr(url_start, url_end - url_start);
-						}
-					}
+			// Link has [Attr, [inlines], Target] where Target is [url, title]
+			string link_inlines, link_target;
+			if (SplitAttrInlinesTarget(obj_content, link_inlines, link_target)) {
+				if (!link_target.empty()) {
+					attrs["href"] = FirstJsonString(link_target);
 				}
 			}
+			// Container first, then its text as deeper-level children
 			result.push_back(CreateDocInline(inline_type, "", level, attrs, order++));
-
-			// Recurse for link text inlines (second element of content array)
-			size_t arr_start = obj_content.find("[", obj_content.find("\"c\":"));
-			if (arr_start != string::npos) {
-				arr_start = obj_content.find("[", arr_start + 1); // Skip attr
-				if (arr_start != string::npos) {
-					arr_start = obj_content.find("[", arr_start + 1); // Find inlines array
-					if (arr_start != string::npos) {
-						int bracket_count = 1;
-						size_t arr_end = arr_start + 1;
-						while (arr_end < obj_content.length() && bracket_count > 0) {
-							if (obj_content[arr_end] == '[')
-								bracket_count++;
-							else if (obj_content[arr_end] == ']')
-								bracket_count--;
-							arr_end++;
-						}
-						string children = obj_content.substr(arr_start, arr_end - arr_start);
-						FlattenPandocInlines(children, level + 1, order, result, depth + 1);
-					}
-				}
+			if (!link_inlines.empty()) {
+				FlattenPandocInlines(link_inlines, level + 1, order, result, depth + 1);
 			}
 			pos = obj_end;
 			continue;
 		} else if (pandoc_type == "Image") {
 			inline_type = BlockTypes::INLINE_IMAGE;
-			// Image has [Attr, [alt inlines], Target]
-			size_t c_start = obj_content.find("\"c\":");
-			if (c_start != string::npos) {
-				size_t last_bracket = obj_content.rfind("[");
-				if (last_bracket != string::npos) {
-					size_t src_start = obj_content.find("\"", last_bracket);
-					if (src_start != string::npos) {
-						src_start++;
-						size_t src_end = obj_content.find("\"", src_start);
-						if (src_end != string::npos) {
-							attrs["src"] = obj_content.substr(src_start, src_end - src_start);
-						}
+			// Image has [Attr, [alt inlines], Target]. duck_blocks carry alt text
+			// as a string (both `content` and the `alt` attribute, matching
+			// db_inline_image), not as inline children, so flatten it here --
+			// otherwise the alt text is dropped outright.
+			string alt_inlines, img_target;
+			string alt_text;
+			if (SplitAttrInlinesTarget(obj_content, alt_inlines, img_target)) {
+				if (!img_target.empty()) {
+					attrs["src"] = FirstJsonString(img_target);
+				}
+				if (!alt_inlines.empty()) {
+					vector<Value> alt_values;
+					int32_t alt_order = 0;
+					FlattenPandocInlines(alt_inlines, level + 1, alt_order, alt_values, depth + 1);
+					alt_text = InlineValuesToText(alt_values);
+					if (!alt_text.empty()) {
+						attrs["alt"] = alt_text;
 					}
 				}
 			}
-			result.push_back(CreateDocInline(inline_type, "", level, attrs, order++));
+			result.push_back(CreateDocInline(inline_type, alt_text, level, attrs, order++));
 			pos = obj_end;
 			continue;
 		} else if (pandoc_type == "RawInline") {
@@ -436,6 +496,11 @@ static void FlattenPandocInlines(const string &json, int32_t level, int32_t &ord
 
 		pos = obj_end;
 	}
+}
+
+void PandocInlineConvert::ConvertPandocInlinesToDbInlines(const string &json, int32_t base_level, int32_t &order,
+                                                          vector<Value> &result, idx_t depth) {
+	FlattenPandocInlines(json, base_level, order, result, depth);
 }
 
 void PandocInlineConvert::PandocInlinesToDbInlinesFun(DataChunk &args, ExpressionState &state, Vector &result) {

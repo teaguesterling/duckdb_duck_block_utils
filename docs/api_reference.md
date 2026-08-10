@@ -626,6 +626,14 @@ SELECT db_blocks_headings(my_blocks);
 -- Returns: [{level: 1, title: 'Introduction', id: '', element_order: 0}, ...]
 ```
 
+**Heading text resolution:** `title` is the heading's `content` when that is
+populated, and otherwise the text of the heading's structured inline children —
+the `kind='inline'` elements that immediately follow it. Producers differ here:
+`markdown` flattens plain heading text into `content`, while `webbed` leaves
+`content` NULL and emits inline children for any heading containing `<code>`,
+`<em>`, `<a>`, … Both shapes yield the same title. `db_blocks_toc` and
+`db_blocks_to_text` apply the same rule.
+
 ---
 
 ### db_blocks_code_blocks

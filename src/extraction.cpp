@@ -50,6 +50,116 @@ static string GetElementAttribute(const Value &element, const string &key) {
 	return "";
 }
 
+// ---------------------------------------------------------------------------
+// Structured inline children (issue #20)
+//
+// Rich text is not stored in a block's `content`; it is the run of kind='inline'
+// elements that immediately follows the block in the flat list. Producers
+// disagree about which representation they use: `markdown` flattens plain text
+// into `content`, while `webbed` leaves `content` NULL and emits inline children
+// for any heading containing <code>, <em>, <a>, ... Consumers therefore have to
+// handle both, exactly as the ANSI renderer's RenderInlineRun already does.
+//
+// This is the plain-text counterpart of that traversal: consume the run of
+// inline elements starting at `i` (advancing `i` past them) and concatenate
+// their literal text. A container inline (bold, link, span, ...) carries empty
+// content and its deeper-level children supply the text, so plain concatenation
+// in document order reconstructs the run without needing the level stack that
+// styled rendering requires.
+// ---------------------------------------------------------------------------
+static string CollectInlineRunText(const vector<Value> &list, idx_t &i) {
+	string text;
+	while (i < list.size()) {
+		auto &el = list[i];
+		if (el.IsNull()) {
+			i++;
+			continue;
+		}
+		if (GetElementStringField(el, BlockTypes::KIND_IDX) != BlockTypes::KIND_INLINE) {
+			break;
+		}
+
+		auto element_type = GetElementStringField(el, BlockTypes::ELEMENT_TYPE_IDX);
+		auto content = GetElementStringField(el, BlockTypes::CONTENT_IDX);
+
+		if (element_type == BlockTypes::INLINE_SPACE || element_type == BlockTypes::INLINE_SOFTBREAK) {
+			// Whitespace inlines may carry either " " (pandoc) or "" (builders)
+			text += " ";
+		} else if (element_type == BlockTypes::INLINE_LINEBREAK) {
+			text += "\n";
+		} else if (element_type == BlockTypes::INLINE_IMAGE) {
+			// An image contributes its alt text, if any
+			text += content.empty() ? GetElementAttribute(el, "alt") : content;
+		} else {
+			text += content;
+		}
+		i++;
+	}
+	return text;
+}
+
+// Text of a single block: its literal `content` when populated, otherwise the
+// text of its structured inline children. `i` points at the block and is left
+// pointing past the block and any inline run it owns.
+static string BlockText(const vector<Value> &list, idx_t &i) {
+	auto &block = list[i];
+	auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
+	i++;
+	auto inline_text = CollectInlineRunText(list, i);
+	return content.empty() ? inline_text : content;
+}
+
+static string BlocksToText(const vector<Value> &blocks_list, const string &separator) {
+	string text_content;
+	bool first = true;
+
+	idx_t i = 0;
+	while (i < blocks_list.size()) {
+		auto &block = blocks_list[i];
+		if (block.IsNull()) {
+			i++;
+			continue;
+		}
+
+		auto kind = GetElementStringField(block, BlockTypes::KIND_IDX);
+		if (kind == BlockTypes::KIND_INLINE) {
+			// A leading run of inlines with no parent block (e.g. the output of
+			// an inline builder used on its own) is still one unit of text
+			auto stray = CollectInlineRunText(blocks_list, i);
+			if (!stray.empty()) {
+				if (!first) {
+					text_content += separator;
+				}
+				first = false;
+				text_content += stray;
+			}
+			continue;
+		}
+
+		auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
+
+		// Skip blocks that don't have meaningful text content. Their inline
+		// children (if any) are consumed and discarded along with them.
+		auto text = BlockText(blocks_list, i);
+		if (element_type == BlockTypes::TYPE_HR || element_type == BlockTypes::TYPE_RAW) {
+			continue;
+		}
+
+		// Skip empty content
+		if (text.empty()) {
+			continue;
+		}
+
+		if (!first) {
+			text_content += separator;
+		}
+		first = false;
+		text_content += text;
+	}
+
+	return text_content;
+}
+
 void ExtractionFunctions::DbBlocksToTextFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &blocks_vec = args.data[0];
 	auto &separator_vec = args.data[1];
@@ -69,35 +179,25 @@ void ExtractionFunctions::DbBlocksToTextFun(DataChunk &args, ExpressionState &st
 		string separator = separator_val.IsNull() ? "\n\n" : separator_val.GetValue<string>();
 		auto &blocks_list = ListValue::GetChildren(blocks_val);
 
-		string text_content;
-		bool first = true;
+		result.SetValue(i, Value(BlocksToText(blocks_list, separator)));
+	}
+}
 
-		for (auto &block : blocks_list) {
-			if (block.IsNull()) {
-				continue;
-			}
+// db_blocks_to_text(blocks) -- same as above with the default "\n\n" separator
+static void DbBlocksToTextDefaultSeparatorFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &blocks_vec = args.data[0];
+	auto count = args.size();
 
-			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
-			auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
+	for (idx_t i = 0; i < count; i++) {
+		auto blocks_val = blocks_vec.GetValue(i);
 
-			// Skip blocks that don't have meaningful text content
-			if (element_type == BlockTypes::TYPE_HR || element_type == BlockTypes::TYPE_RAW) {
-				continue;
-			}
-
-			// Skip empty content
-			if (content.empty()) {
-				continue;
-			}
-
-			if (!first) {
-				text_content += separator;
-			}
-			first = false;
-			text_content += content;
+		if (blocks_val.IsNull()) {
+			result.SetValue(i, Value());
+			continue;
 		}
 
-		result.SetValue(i, Value(text_content));
+		auto &blocks_list = ListValue::GetChildren(blocks_val);
+		result.SetValue(i, Value(BlocksToText(blocks_list, "\n\n")));
 	}
 }
 
@@ -126,14 +226,18 @@ void ExtractionFunctions::DbBlocksHeadingsFun(DataChunk &args, ExpressionState &
 		auto &blocks_list = ListValue::GetChildren(blocks_val);
 		vector<Value> headings;
 
-		for (auto &block : blocks_list) {
+		idx_t bi = 0;
+		while (bi < blocks_list.size()) {
+			auto &block = blocks_list[bi];
 			if (block.IsNull()) {
+				bi++;
 				continue;
 			}
 
 			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
 
 			if (element_type != BlockTypes::TYPE_HEADING) {
+				bi++;
 				continue;
 			}
 
@@ -147,9 +251,12 @@ void ExtractionFunctions::DbBlocksHeadingsFun(DataChunk &args, ExpressionState &
 				// Fall back to level field (for backward compatibility)
 				level = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
 			}
-			auto title = GetElementStringField(block, BlockTypes::CONTENT_IDX);
 			auto id = GetElementAttribute(block, "id");
 			auto element_order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
+			// Title is the literal content when populated, otherwise the text of
+			// the heading's structured inline children (issue #20). Advances `bi`
+			// past the heading and the inline run it owns.
+			auto title = BlockText(blocks_list, bi);
 
 			child_list_t<Value> heading_values;
 			heading_values.push_back(make_pair("level", Value(level)));
@@ -247,14 +354,18 @@ void ExtractionFunctions::DbBlocksTocFun(DataChunk &args, ExpressionState &state
 		// First pass: find headings and minimum level
 		vector<std::tuple<int32_t, string, string, int32_t>> headings; // level, title, id, element_order
 
-		for (auto &block : blocks_list) {
+		idx_t bi = 0;
+		while (bi < blocks_list.size()) {
+			auto &block = blocks_list[bi];
 			if (block.IsNull()) {
+				bi++;
 				continue;
 			}
 
 			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
 
 			if (element_type != BlockTypes::TYPE_HEADING) {
+				bi++;
 				continue;
 			}
 
@@ -267,9 +378,10 @@ void ExtractionFunctions::DbBlocksTocFun(DataChunk &args, ExpressionState &state
 			} else {
 				level = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
 			}
-			auto title = GetElementStringField(block, BlockTypes::CONTENT_IDX);
 			auto id = GetElementAttribute(block, "id");
 			auto element_order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
+			// Same content-or-inline-children rule as db_blocks_headings (issue #20)
+			auto title = BlockText(blocks_list, bi);
 
 			if (level < min_level) {
 				min_level = level;
@@ -441,50 +553,8 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	loader.RegisterFunction(to_text_func);
 
 	// Single-arg version with default separator
-	auto to_text_func_simple =
-	    ScalarFunction("db_blocks_to_text", {duck_block_list_type}, LogicalType::VARCHAR,
-	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
-		                   auto &blocks_vec = args.data[0];
-		                   auto count = args.size();
-
-		                   for (idx_t i = 0; i < count; i++) {
-			                   auto blocks_val = blocks_vec.GetValue(i);
-
-			                   if (blocks_val.IsNull()) {
-				                   result.SetValue(i, Value());
-				                   continue;
-			                   }
-
-			                   auto &blocks_list = ListValue::GetChildren(blocks_val);
-			                   string text_content;
-			                   bool first = true;
-
-			                   for (auto &block : blocks_list) {
-				                   if (block.IsNull()) {
-					                   continue;
-				                   }
-
-				                   auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
-				                   auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
-
-				                   if (element_type == BlockTypes::TYPE_HR || element_type == BlockTypes::TYPE_RAW) {
-					                   continue;
-				                   }
-
-				                   if (content.empty()) {
-					                   continue;
-				                   }
-
-				                   if (!first) {
-					                   text_content += "\n\n";
-				                   }
-				                   first = false;
-				                   text_content += content;
-			                   }
-
-			                   result.SetValue(i, Value(text_content));
-		                   }
-	                   });
+	auto to_text_func_simple = ScalarFunction("db_blocks_to_text", {duck_block_list_type}, LogicalType::VARCHAR,
+	                                          DbBlocksToTextDefaultSeparatorFun);
 	loader.RegisterFunction(to_text_func_simple);
 
 	// Define return types for headings
