@@ -2,6 +2,7 @@
 
 #include "duckdb.hpp"
 #include "duckdb/function/scalar_function.hpp"
+#include "yyjson.hpp"
 
 namespace duckdb {
 
@@ -13,6 +14,12 @@ public:
 	// Convert a list of duck_block inline Values to Pandoc JSON string
 	static string ConvertInlinesToPandocJson(const vector<Value> &inlines);
 
+	// Convert a list of duck_block inline Values to Pandoc yyjson_mut_val array
+	static duckdb_yyjson::yyjson_mut_val *ConvertDbInlinesToPandocVal(duckdb_yyjson::yyjson_mut_doc *doc,
+	                                                                 const vector<Value> &inlines, idx_t start_idx,
+	                                                                 int32_t target_level, idx_t &end_idx,
+	                                                                 idx_t depth);
+
 	// Convert nested Pandoc inline JSON to flat duck_block inline Values,
 	// appending them to `result` (issue #21). `base_level` is the level given to
 	// top-level inlines (children of a container at level N are at N+1), `order`
@@ -20,6 +27,10 @@ public:
 	// elements, and `depth` is the recursion budget shared with the caller.
 	static void ConvertPandocInlinesToDbInlines(const string &json, int32_t base_level, int32_t &order,
 	                                            vector<Value> &result, idx_t depth);
+
+	// Convert yyjson inline AST to flat duck_block inline Values
+	static void ConvertPandocInlinesValToDbInlines(duckdb_yyjson::yyjson_val *inlines_val, int32_t base_level,
+	                                               int32_t &order, vector<Value> &result, idx_t depth);
 
 private:
 	// pandoc_inlines_to_db_inlines(json) -> LIST(duck_block)

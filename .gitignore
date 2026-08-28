@@ -14,3 +14,5 @@ test/python/__pycache__/
 !.bird/hooks/
 !.bird/config.toml
 !.bird/commands.toml
+
+.cache/

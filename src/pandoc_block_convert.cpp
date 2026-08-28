@@ -44,111 +44,19 @@ static Value CreateDocBlock(const string &block_type, const string &content, con
 	return Value::STRUCT(std::move(struct_values));
 }
 
-// Simple JSON string extractor
-static string ExtractJsonString(const string &json, const string &key) {
-	string search = "\"" + key + "\":";
-	size_t pos = json.find(search);
-	if (pos == string::npos)
+using namespace duckdb_yyjson;
+
+static string ValToJsonString(yyjson_val *val) {
+	if (!val) {
 		return "";
-
-	pos += search.length();
-	while (pos < json.length() && (json[pos] == ' ' || json[pos] == '\t'))
-		pos++;
-
-	if (pos >= json.length())
-		return "";
-
-	if (json[pos] == '"') {
-		pos++;
-		string result;
-		while (pos < json.length() && json[pos] != '"') {
-			if (json[pos] == '\\' && pos + 1 < json.length()) {
-				pos++;
-				switch (json[pos]) {
-				case 'n':
-					result += '\n';
-					break;
-				case 'r':
-					result += '\r';
-					break;
-				case 't':
-					result += '\t';
-					break;
-				case '"':
-					result += '"';
-					break;
-				case '\\':
-					result += '\\';
-					break;
-				default:
-					result += json[pos];
-				}
-			} else {
-				result += json[pos];
-			}
-			pos++;
-		}
-		return result;
 	}
-	return "";
-}
-
-// Extract integer from JSON
-static int32_t ExtractJsonInt(const string &json, size_t start_pos) {
-	while (start_pos < json.length() && !isdigit(json[start_pos]) && json[start_pos] != '-') {
-		start_pos++;
+	size_t len = 0;
+	char *str = yyjson_val_write(val, 0, &len);
+	string res(str ? str : "", len);
+	if (str) {
+		free(str);
 	}
-	if (start_pos >= json.length())
-		return 0;
-
-	string num_str;
-	while (start_pos < json.length() && (isdigit(json[start_pos]) || json[start_pos] == '-')) {
-		num_str += json[start_pos++];
-	}
-	// ParseInt32OrDefault instead of std::stoi: an out-of-range number in the
-	// document must not throw std::out_of_range
-	return ParseInt32OrDefault(num_str, 0);
-}
-
-// Find matching bracket/brace (quote-aware, see PandocFindMatchingBracket)
-static size_t FindMatchingBracket(const string &json, size_t start, char open, char close) {
-	return PandocFindMatchingBracket(json, start, open, close);
-}
-
-// Read a JSON string literal whose opening quote is at quote_pos; returns the
-// decoded value and sets end_quote to the index of the closing quote.
-static string ReadJsonStringAt(const string &json, size_t quote_pos, size_t &end_quote) {
-	string result;
-	size_t pos = quote_pos + 1;
-	while (pos < json.length() && json[pos] != '"') {
-		if (json[pos] == '\\' && pos + 1 < json.length()) {
-			pos++;
-			switch (json[pos]) {
-			case 'n':
-				result += '\n';
-				break;
-			case 'r':
-				result += '\r';
-				break;
-			case 't':
-				result += '\t';
-				break;
-			case '"':
-				result += '"';
-				break;
-			case '\\':
-				result += '\\';
-				break;
-			default:
-				result += json[pos];
-			}
-		} else {
-			result += json[pos];
-		}
-		pos++;
-	}
-	end_quote = pos;
-	return result;
+	return res;
 }
 
 // A parsed Pandoc attr triple: ["id", ["class", ...], [["key","value"], ...]]
@@ -158,84 +66,50 @@ struct PandocAttr {
 	vector<std::pair<string, string>> key_values;
 };
 
-// Parse a Pandoc attr triple starting at attr_start (the opening '[').
-// Returns the index one past the closing ']'.
-static size_t ParsePandocAttr(const string &json, size_t attr_start, PandocAttr &attr) {
-	size_t attr_end = FindMatchingBracket(json, attr_start, '[', ']');
-
-	// First element: the id string
-	size_t id_quote = json.find('"', attr_start + 1);
-	size_t pos = attr_start + 1;
-	if (id_quote != string::npos && id_quote < attr_end) {
-		size_t classes_bracket = json.find('[', attr_start + 1);
-		if (classes_bracket == string::npos || id_quote < classes_bracket) {
-			size_t id_end;
-			attr.id = ReadJsonStringAt(json, id_quote, id_end);
-			pos = id_end + 1;
+static void ParsePandocAttrVal(yyjson_val *attr_val, PandocAttr &attr) {
+	if (!attr_val || !yyjson_is_arr(attr_val)) {
+		return;
+	}
+	// Element 0: id
+	yyjson_val *id_val = yyjson_arr_get(attr_val, 0);
+	if (id_val && yyjson_is_str(id_val)) {
+		attr.id = string(yyjson_get_str(id_val), yyjson_get_len(id_val));
+	}
+	// Element 1: classes
+	yyjson_val *classes_val = yyjson_arr_get(attr_val, 1);
+	if (classes_val && yyjson_is_arr(classes_val)) {
+		size_t idx, max;
+		yyjson_val *cls;
+		yyjson_arr_foreach(classes_val, idx, max, cls) {
+			if (yyjson_is_str(cls)) {
+				attr.classes.emplace_back(yyjson_get_str(cls), yyjson_get_len(cls));
+			}
 		}
 	}
-
-	// Second element: the classes array
-	size_t cls_start = json.find('[', pos);
-	if (cls_start == string::npos || cls_start >= attr_end) {
-		return attr_end;
-	}
-	size_t cls_end = FindMatchingBracket(json, cls_start, '[', ']');
-	size_t p = cls_start + 1;
-	while (p + 1 < cls_end) {
-		size_t q = json.find('"', p);
-		if (q == string::npos || q + 1 >= cls_end) {
-			break;
+	// Element 2: key-values
+	yyjson_val *kvs_val = yyjson_arr_get(attr_val, 2);
+	if (kvs_val && yyjson_is_arr(kvs_val)) {
+		size_t idx, max;
+		yyjson_val *kv;
+		yyjson_arr_foreach(kvs_val, idx, max, kv) {
+			if (yyjson_is_arr(kv) && yyjson_arr_size(kv) >= 2) {
+				yyjson_val *k = yyjson_arr_get(kv, 0);
+				yyjson_val *v = yyjson_arr_get(kv, 1);
+				if (k && yyjson_is_str(k) && v && yyjson_is_str(v)) {
+					attr.key_values.emplace_back(string(yyjson_get_str(k), yyjson_get_len(k)),
+					                             string(yyjson_get_str(v), yyjson_get_len(v)));
+				}
+			}
 		}
-		size_t qe;
-		attr.classes.push_back(ReadJsonStringAt(json, q, qe));
-		p = qe + 1;
 	}
-
-	// Third element: the key-value array [["k","v"], ...]
-	size_t kv_start = json.find('[', cls_end);
-	if (kv_start == string::npos || kv_start >= attr_end) {
-		return attr_end;
-	}
-	size_t kv_end = FindMatchingBracket(json, kv_start, '[', ']');
-	p = kv_start + 1;
-	while (p + 1 < kv_end) {
-		size_t pair_start = json.find('[', p);
-		if (pair_start == string::npos || pair_start + 1 >= kv_end) {
-			break;
-		}
-		size_t pair_end = FindMatchingBracket(json, pair_start, '[', ']');
-		size_t kq = json.find('"', pair_start + 1);
-		if (kq == string::npos || kq >= pair_end) {
-			p = pair_end;
-			continue;
-		}
-		size_t kqe;
-		string key = ReadJsonStringAt(json, kq, kqe);
-		string val;
-		size_t vq = json.find('"', kqe + 1);
-		if (vq != string::npos && vq < pair_end) {
-			size_t vqe;
-			val = ReadJsonStringAt(json, vq, vqe);
-		}
-		attr.key_values.emplace_back(std::move(key), std::move(val));
-		p = pair_end;
-	}
-	return attr_end;
 }
 
-// Attribute keys that carry converter semantics; user-supplied key/value
-// attrs with these names are not merged into the attributes map (they would
-// corrupt the reserved meaning) and reserved keys are not re-emitted as
-// generic key/value attrs.
 static bool IsReservedAttrKey(const string &key) {
 	return key == "id" || key == "class" || key == "heading_level" || key == "language" || key == "list_type" ||
 	       key == "format" || key == "src" || key == "alt" || key == "title" || key == "href" || key == "quote_type" ||
 	       key == "display";
 }
 
-// Merge a parsed Pandoc attr triple into a duck_block attributes map
-// (issue #11: previously only the id / first class survived).
 static void StorePandocAttr(const PandocAttr &attr, map<string, string> &attrs) {
 	if (!attr.id.empty()) {
 		attrs["id"] = attr.id;
@@ -258,104 +132,47 @@ static void StorePandocAttr(const PandocAttr &attr, map<string, string> &attrs) 
 	}
 }
 
-// Extract content from inlines array (simple text extraction)
-static string ExtractInlinesText(const string &json) {
-	string result;
-	size_t pos = 0;
-
-	while (pos < json.length()) {
-		// Find next Str or Space element
-		size_t str_pos = json.find("\"t\":\"Str\"", pos);
-		size_t space_pos = json.find("\"t\":\"Space\"", pos);
-		size_t softbreak_pos = json.find("\"t\":\"SoftBreak\"", pos);
-		size_t linebreak_pos = json.find("\"t\":\"LineBreak\"", pos);
-
-		// Find the earliest element
-		size_t next_pos = string::npos;
-		string token_type;
-
-		if (str_pos != string::npos && (next_pos == string::npos || str_pos < next_pos)) {
-			next_pos = str_pos;
-			token_type = "Str";
-		}
-		if (space_pos != string::npos && (next_pos == string::npos || space_pos < next_pos)) {
-			next_pos = space_pos;
-			token_type = "Space";
-		}
-		if (softbreak_pos != string::npos && (next_pos == string::npos || softbreak_pos < next_pos)) {
-			next_pos = softbreak_pos;
-			token_type = "SoftBreak";
-		}
-		if (linebreak_pos != string::npos && (next_pos == string::npos || linebreak_pos < next_pos)) {
-			next_pos = linebreak_pos;
-			token_type = "LineBreak";
-		}
-
-		if (next_pos == string::npos)
-			break;
-
-		if (token_type == "Space") {
-			result += " ";
-			pos = next_pos + 11; // strlen("\"t\":\"Space\"")
-		} else if (token_type == "SoftBreak") {
-			result += " ";
-			pos = next_pos + 15; // strlen("\"t\":\"SoftBreak\"")
-		} else if (token_type == "LineBreak") {
-			result += "\n";
-			pos = next_pos + 15; // strlen("\"t\":\"LineBreak\"")
-		} else if (token_type == "Str") {
-			size_t c_pos = json.find("\"c\":", next_pos);
-			if (c_pos != string::npos) {
-				size_t quote_start = json.find("\"", c_pos + 4);
-				if (quote_start != string::npos) {
-					quote_start++;
-					size_t quote_end = quote_start;
-					while (quote_end < json.length() && json[quote_end] != '"') {
-						if (json[quote_end] == '\\' && quote_end + 1 < json.length()) {
-							quote_end += 2;
-						} else {
-							quote_end++;
-						}
-					}
-					// Decode escaped string
-					for (size_t i = quote_start; i < quote_end; i++) {
-						if (json[i] == '\\' && i + 1 < quote_end) {
-							i++;
-							switch (json[i]) {
-							case 'n':
-								result += '\n';
-								break;
-							case 't':
-								result += '\t';
-								break;
-							case '"':
-								result += '"';
-								break;
-							case '\\':
-								result += '\\';
-								break;
-							default:
-								result += json[i];
-							}
-						} else {
-							result += json[i];
-						}
-					}
-					pos = quote_end + 1;
-					continue;
-				}
-			}
-			pos = next_pos + 10; // strlen("\"t\":\"Str\"")
-		}
+static string ExtractInlinesTextVal(yyjson_val *inlines_arr) {
+	if (!inlines_arr) {
+		return "";
 	}
+	if (yyjson_is_str(inlines_arr)) {
+		return string(yyjson_get_str(inlines_arr), yyjson_get_len(inlines_arr));
+	}
+	string result;
+	auto process_item = [&](yyjson_val *item) {
+		if (!yyjson_is_obj(item)) {
+			return;
+		}
+		yyjson_val *t_val = yyjson_obj_get(item, "t");
+		if (!t_val || !yyjson_is_str(t_val)) {
+			return;
+		}
+		const char *t = yyjson_get_str(t_val);
+		yyjson_val *c_val = yyjson_obj_get(item, "c");
+		if (strcmp(t, "Str") == 0) {
+			if (c_val && yyjson_is_str(c_val)) {
+				result.append(yyjson_get_str(c_val), yyjson_get_len(c_val));
+			}
+		} else if (strcmp(t, "Space") == 0 || strcmp(t, "SoftBreak") == 0) {
+			result += " ";
+		} else if (strcmp(t, "LineBreak") == 0) {
+			result += "\n";
+		}
+	};
 
+	if (yyjson_is_arr(inlines_arr)) {
+		size_t idx, max;
+		yyjson_val *item;
+		yyjson_arr_foreach(inlines_arr, idx, max, item) {
+			process_item(item);
+		}
+	} else if (yyjson_is_obj(inlines_arr)) {
+		process_item(inlines_arr);
+	}
 	return result;
 }
 
-// True when a flattened inline run holds nothing but text and whitespace, i.e.
-// when ExtractInlinesText's flattened `content` is a lossless representation of
-// it. Any other inline type (code, math, bold, link, ...) carries information
-// that only structured children can hold (issue #21).
 static bool InlinesAreTextOnly(const vector<Value> &inlines) {
 	for (auto &el : inlines) {
 		if (el.IsNull()) {
@@ -374,293 +191,119 @@ static bool InlinesAreTextOnly(const vector<Value> &inlines) {
 	return true;
 }
 
-// Process a single Pandoc block and add to result.
-// `depth` is the nesting depth of this block (1 for top-level blocks); the
-// converter refuses input nested deeper than PANDOC_MAX_NESTING_DEPTH so a
-// deeply nested document cannot exhaust the call stack.
-// `parent_div_level` is 0 for top-level blocks; for blocks nested inside a
-// Div it is the div's effective level, so children get level parent + 1 and
-// the emit side can reconstruct the nesting (issue #11).
-static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<Value> &result, idx_t depth,
-                               int32_t parent_div_level) {
+static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<Value> &result, idx_t depth,
+                                  int32_t parent_div_level) {
 	CheckPandocDepth(depth);
-	// Top-level blocks keep a NULL level (existing behavior); div children
-	// carry their nesting level explicitly
+	if (!block_val || !yyjson_is_obj(block_val)) {
+		return;
+	}
+
 	const int32_t effective_level = (parent_div_level == 0) ? 1 : parent_div_level + 1;
 	const Value block_level = (parent_div_level == 0) ? Value() : Value(effective_level);
-	// Find the type
-	size_t type_start = block_json.find("\"t\":");
-	if (type_start == string::npos)
-		return;
 
-	size_t quote_start = block_json.find("\"", type_start + 4);
-	if (quote_start == string::npos)
+	yyjson_val *t_val = yyjson_obj_get(block_val, "t");
+	if (!t_val || !yyjson_is_str(t_val)) {
 		return;
-	quote_start++;
-
-	size_t quote_end = block_json.find("\"", quote_start);
-	if (quote_end == string::npos)
-		return;
-
-	string pandoc_type = block_json.substr(quote_start, quote_end - quote_start);
+	}
+	const char *pandoc_type = yyjson_get_str(t_val);
+	yyjson_val *c_val = yyjson_obj_get(block_val, "c");
 
 	map<string, string> attrs;
 	string content;
 	string block_type;
 	string encoding = "text";
-	// The block's raw Pandoc inline run, for blocks whose text is inlines
-	// (Header / Para / Plain). See the structured-inline handling at the end of
-	// this function (issue #21).
-	string inlines_json;
+	yyjson_val *inlines_val_p = nullptr;
 
-	if (pandoc_type == "Header") {
+	if (strcmp(pandoc_type, "Header") == 0) {
 		block_type = BlockTypes::TYPE_HEADING;
-		// Header format: [level, [id, classes, attrs], inlines]
-		size_t c_pos = block_json.find("\"c\":");
-		if (c_pos != string::npos) {
-			size_t arr_start = block_json.find("[", c_pos);
-			if (arr_start != string::npos) {
-				// Extract level (first element)
-				int32_t level = ExtractJsonInt(block_json, arr_start + 1);
-				attrs["heading_level"] = std::to_string(level);
+		if (c_val && yyjson_is_arr(c_val) && yyjson_arr_size(c_val) >= 3) {
+			yyjson_val *level_val = yyjson_arr_get(c_val, 0);
+			yyjson_val *attr_val = yyjson_arr_get(c_val, 1);
+			yyjson_val *inlines_val = yyjson_arr_get(c_val, 2);
 
-				// Find the inlines array (third element)
-				// Skip past level and attr array
-				size_t attr_arr = block_json.find("[", arr_start + 1);
-				if (attr_arr != string::npos) {
-					// Preserve id, classes and key/value attrs (issue #11)
-					PandocAttr pattr;
-					size_t attr_end = ParsePandocAttr(block_json, attr_arr, pattr);
-					StorePandocAttr(pattr, attrs);
+			int32_t level = yyjson_is_num(level_val) ? yyjson_get_int(level_val) : 1;
+			attrs["heading_level"] = std::to_string(level);
 
-					size_t inlines_start = block_json.find("[", attr_end);
-					if (inlines_start != string::npos) {
-						size_t inlines_end = FindMatchingBracket(block_json, inlines_start, '[', ']');
-						string inlines = block_json.substr(inlines_start, inlines_end - inlines_start);
-						content = ExtractInlinesText(inlines);
-						inlines_json = inlines;
-					}
-				}
-			}
+			PandocAttr pattr;
+			ParsePandocAttrVal(attr_val, pattr);
+			StorePandocAttr(pattr, attrs);
+
+			content = ExtractInlinesTextVal(inlines_val);
+			inlines_val_p = inlines_val;
 		}
-	} else if (pandoc_type == "Para") {
+	} else if (strcmp(pandoc_type, "Para") == 0 || strcmp(pandoc_type, "Plain") == 0) {
 		block_type = BlockTypes::TYPE_PARAGRAPH;
-		size_t c_pos = block_json.find("\"c\":");
-		if (c_pos != string::npos) {
-			size_t arr_start = block_json.find("[", c_pos);
-			if (arr_start != string::npos) {
-				size_t arr_end = FindMatchingBracket(block_json, arr_start, '[', ']');
-				string inlines = block_json.substr(arr_start, arr_end - arr_start);
-				content = ExtractInlinesText(inlines);
-				inlines_json = inlines;
-			}
+		if (c_val) {
+			content = ExtractInlinesTextVal(c_val);
+			inlines_val_p = c_val;
 		}
-	} else if (pandoc_type == "Plain") {
-		block_type = BlockTypes::TYPE_PARAGRAPH; // Treat Plain as paragraph
-		size_t c_pos = block_json.find("\"c\":");
-		if (c_pos != string::npos) {
-			size_t arr_start = block_json.find("[", c_pos);
-			if (arr_start != string::npos) {
-				size_t arr_end = FindMatchingBracket(block_json, arr_start, '[', ']');
-				string inlines = block_json.substr(arr_start, arr_end - arr_start);
-				content = ExtractInlinesText(inlines);
-				inlines_json = inlines;
-			}
-		}
-	} else if (pandoc_type == "CodeBlock") {
+	} else if (strcmp(pandoc_type, "CodeBlock") == 0) {
 		block_type = BlockTypes::TYPE_CODE;
-		// CodeBlock format: [[id, classes, attrs], code_string]
-		size_t c_pos = block_json.find("\"c\":");
-		if (c_pos != string::npos) {
-			size_t arr_start = block_json.find("[", c_pos);
-			if (arr_start != string::npos) {
-				// Find the attributes array
-				size_t attr_arr = block_json.find("[", arr_start + 1);
-				if (attr_arr != string::npos) {
-					// Preserve id, all classes and key/value attrs (issue #11);
-					// the first class doubles as the language (compatibility)
-					PandocAttr pattr;
-					size_t attr_end = ParsePandocAttr(block_json, attr_arr, pattr);
-					if (!pattr.classes.empty()) {
-						attrs["language"] = pattr.classes[0];
-					}
-					StorePandocAttr(pattr, attrs);
-					// Find the code string after attr array
-					size_t code_quote = block_json.find("\"", attr_end);
-					if (code_quote != string::npos) {
-						code_quote++;
-						size_t code_end = code_quote;
-						// Find end quote (handling escapes)
-						while (code_end < block_json.length()) {
-							if (block_json[code_end] == '"')
-								break;
-							if (block_json[code_end] == '\\' && code_end + 1 < block_json.length()) {
-								code_end += 2;
-							} else {
-								code_end++;
-							}
-						}
-						// Decode the code content
-						for (size_t i = code_quote; i < code_end; i++) {
-							if (block_json[i] == '\\' && i + 1 < code_end) {
-								i++;
-								switch (block_json[i]) {
-								case 'n':
-									content += '\n';
-									break;
-								case 't':
-									content += '\t';
-									break;
-								case '"':
-									content += '"';
-									break;
-								case '\\':
-									content += '\\';
-									break;
-								default:
-									content += block_json[i];
-								}
-							} else {
-								content += block_json[i];
-							}
-						}
-					}
-				}
+		if (c_val && yyjson_is_arr(c_val) && yyjson_arr_size(c_val) >= 2) {
+			yyjson_val *attr_val = yyjson_arr_get(c_val, 0);
+			yyjson_val *code_val = yyjson_arr_get(c_val, 1);
+
+			PandocAttr pattr;
+			ParsePandocAttrVal(attr_val, pattr);
+			if (!pattr.classes.empty()) {
+				attrs["language"] = pattr.classes[0];
+			}
+			StorePandocAttr(pattr, attrs);
+
+			if (code_val && yyjson_is_str(code_val)) {
+				content = string(yyjson_get_str(code_val), yyjson_get_len(code_val));
 			}
 		}
-	} else if (pandoc_type == "BlockQuote") {
+	} else if (strcmp(pandoc_type, "BlockQuote") == 0) {
 		block_type = BlockTypes::TYPE_BLOCKQUOTE;
-		// BlockQuote contains nested blocks. Preserve them verbatim as JSON
-		// (issue #11: flattening them to a text string destroyed multi-block
-		// quotes); the emit side passes json-encoded content back through.
 		encoding = "json";
-		size_t c_pos = block_json.find("\"c\":");
-		if (c_pos != string::npos) {
-			size_t arr_start = block_json.find("[", c_pos);
-			if (arr_start != string::npos) {
-				size_t arr_end = FindMatchingBracket(block_json, arr_start, '[', ']');
-				content = block_json.substr(arr_start, arr_end - arr_start);
-			}
-		}
-	} else if (pandoc_type == "BulletList" || pandoc_type == "OrderedList") {
+		content = ValToJsonString(c_val);
+	} else if (strcmp(pandoc_type, "BulletList") == 0 || strcmp(pandoc_type, "OrderedList") == 0) {
 		block_type = BlockTypes::TYPE_LIST;
-		attrs["list_type"] = (pandoc_type == "BulletList") ? "bullet" : "ordered";
+		attrs["list_type"] = (strcmp(pandoc_type, "BulletList") == 0) ? "bullet" : "ordered";
 		encoding = "json";
-		// Store the list content as JSON
-		size_t c_pos = block_json.find("\"c\":");
-		if (c_pos != string::npos) {
-			size_t arr_start = block_json.find("[", c_pos);
-			if (arr_start != string::npos) {
-				size_t arr_end = FindMatchingBracket(block_json, arr_start, '[', ']');
-				content = block_json.substr(arr_start, arr_end - arr_start);
-			}
-		}
-	} else if (pandoc_type == "Table") {
+		content = ValToJsonString(c_val);
+	} else if (strcmp(pandoc_type, "Table") == 0) {
 		block_type = BlockTypes::TYPE_TABLE;
 		encoding = "json";
-		// Store table as JSON
-		size_t c_pos = block_json.find("\"c\":");
-		if (c_pos != string::npos) {
-			content = block_json.substr(c_pos + 4);
-			// Trim to just the content
-			size_t end = content.rfind("}");
-			if (end != string::npos) {
-				content = content.substr(0, end);
-			}
-		}
-	} else if (pandoc_type == "HorizontalRule") {
+		content = ValToJsonString(c_val);
+	} else if (strcmp(pandoc_type, "HorizontalRule") == 0) {
 		block_type = BlockTypes::TYPE_HR;
 		content = "";
-	} else if (pandoc_type == "RawBlock") {
+	} else if (strcmp(pandoc_type, "RawBlock") == 0) {
 		block_type = BlockTypes::TYPE_RAW;
-		// RawBlock format: [format_string, content_string]
-		size_t c_pos = block_json.find("\"c\":");
-		if (c_pos != string::npos) {
-			size_t arr_start = block_json.find("[", c_pos);
-			if (arr_start != string::npos) {
-				// Extract format
-				size_t fmt_quote = block_json.find("\"", arr_start);
-				if (fmt_quote != string::npos) {
-					size_t fmt_end = block_json.find("\"", fmt_quote + 1);
-					if (fmt_end != string::npos) {
-						attrs["format"] = block_json.substr(fmt_quote + 1, fmt_end - fmt_quote - 1);
-					}
-					// Extract content
-					size_t content_quote = block_json.find("\"", fmt_end + 1);
-					if (content_quote != string::npos) {
-						content_quote++;
-						size_t content_end = content_quote;
-						while (content_end < block_json.length()) {
-							if (block_json[content_end] == '"')
-								break;
-							if (block_json[content_end] == '\\' && content_end + 1 < block_json.length()) {
-								content_end += 2;
-							} else {
-								content_end++;
-							}
-						}
-						for (size_t i = content_quote; i < content_end; i++) {
-							if (block_json[i] == '\\' && i + 1 < content_end) {
-								i++;
-								switch (block_json[i]) {
-								case 'n':
-									content += '\n';
-									break;
-								case 't':
-									content += '\t';
-									break;
-								default:
-									content += block_json[i];
-								}
-							} else {
-								content += block_json[i];
-							}
-						}
-					}
-				}
+		if (c_val && yyjson_is_arr(c_val) && yyjson_arr_size(c_val) >= 2) {
+			yyjson_val *fmt = yyjson_arr_get(c_val, 0);
+			yyjson_val *str = yyjson_arr_get(c_val, 1);
+			if (fmt && yyjson_is_str(fmt)) {
+				attrs["format"] = string(yyjson_get_str(fmt), yyjson_get_len(fmt));
+			}
+			if (str && yyjson_is_str(str)) {
+				content = string(yyjson_get_str(str), yyjson_get_len(str));
 			}
 		}
-	} else if (pandoc_type == "Div") {
+	} else if (strcmp(pandoc_type, "Div") == 0) {
 		block_type = BlockTypes::TYPE_DIV;
-		// Div format: [attr, [blocks]] where attr is [id, [classes], [[key,val]...]]
-		size_t c_pos = block_json.find("\"c\":");
-		if (c_pos != string::npos) {
-			size_t arr_start = block_json.find("[", c_pos);
-			if (arr_start != string::npos) {
-				// Find attr array [id, [classes], [...]]
-				size_t attr_arr = block_json.find("[", arr_start + 1);
-				if (attr_arr != string::npos) {
-					// Preserve id, all classes and key/value attrs (issue #11)
-					PandocAttr pattr;
-					size_t attr_end = ParsePandocAttr(block_json, attr_arr, pattr);
-					StorePandocAttr(pattr, attrs);
+		if (c_val && yyjson_is_arr(c_val) && yyjson_arr_size(c_val) >= 2) {
+			yyjson_val *attr_val = yyjson_arr_get(c_val, 0);
+			yyjson_val *blocks_arr = yyjson_arr_get(c_val, 1);
 
-					size_t blocks_start = block_json.find("[", attr_end);
-					if (blocks_start != string::npos) {
-						size_t blocks_end = FindMatchingBracket(block_json, blocks_start, '[', ']');
-						string nested_blocks = block_json.substr(blocks_start, blocks_end - blocks_start);
+			PandocAttr pattr;
+			ParsePandocAttrVal(attr_val, pattr);
+			StorePandocAttr(pattr, attrs);
 
-						// First add the div block itself
-						result.push_back(CreateDocBlock(block_type, "", attrs, order++, encoding, block_level));
+			result.push_back(CreateDocBlock(block_type, "", attrs, order++, encoding, block_level));
 
-						// Inline parsing of nested blocks (can't call ParsePandocBlocks - defined later)
-						size_t nested_pos = 0;
-						while (nested_pos < nested_blocks.length()) {
-							size_t obj_start = nested_blocks.find("{\"t\":", nested_pos);
-							if (obj_start == string::npos)
-								break;
-							size_t obj_end = FindMatchingBracket(nested_blocks, obj_start, '{', '}');
-							string child_block = nested_blocks.substr(obj_start, obj_end - obj_start);
-							ProcessPandocBlock(child_block, order, result, depth + 1, effective_level);
-							nested_pos = obj_end;
-						}
-						return; // Already added blocks
-					}
+			if (blocks_arr && yyjson_is_arr(blocks_arr)) {
+				size_t idx, max;
+				yyjson_val *child_block;
+				yyjson_arr_foreach(blocks_arr, idx, max, child_block) {
+					ProcessPandocBlockVal(child_block, order, result, depth + 1, effective_level);
 				}
 			}
+			return;
 		}
 	} else {
-		// Unknown block type - skip
 		return;
 	}
 
@@ -668,40 +311,16 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 		return;
 	}
 
-	// ------------------------------------------------------------------------
-	// Structured inline children (issue #21)
-	//
-	// ExtractInlinesText only ever sees Str/Space/SoftBreak/LineBreak, so a
-	// Code or Math inline used to vanish from the document entirely: "Run
-	// `make install` first." came out as "Run  first.". Rich text belongs in
-	// kind='inline' children -- the representation parse_markdown_to_duck_blocks
-	// already emits, the renderer already styles, and the emit side
-	// (BuildBlocksJson / ConvertDivToPandocJson) already round-trips.
-	//
-	// A run that is only text and whitespace stays flattened into `content`:
-	// that is the spec's normalized simple case, and it keeps the flat one
-	// block per Pandoc block shape every existing consumer of this path relies
-	// on. Anything richer becomes children with `content` left empty, so no
-	// inline can be silently dropped.
-	//
-	// The inline flattener shares this block's recursion budget rather than
-	// starting a new one, so total nesting stays bounded by
-	// PANDOC_MAX_NESTING_DEPTH-ish and no input that converted before is
-	// rejected now.
-	// ------------------------------------------------------------------------
 	const int32_t block_order = order++;
 	vector<Value> inline_children;
-	if (!inlines_json.empty()) {
+	if (inlines_val_p) {
 		const int32_t order_before_children = order;
-		PandocInlineConvert::ConvertPandocInlinesToDbInlines(inlines_json, effective_level + 1, order, inline_children,
-		                                                     depth);
+		PandocInlineConvert::ConvertPandocInlinesValToDbInlines(inlines_val_p, effective_level + 1, order,
+		                                                        inline_children, depth);
 		if (InlinesAreTextOnly(inline_children)) {
-			// Simple case: keep the flattened text, emit no children
 			inline_children.clear();
 			order = order_before_children;
 		} else {
-			// Rich case: the children carry the text, `content` must not
-			// duplicate (and truncate) it
 			content.clear();
 		}
 	}
@@ -712,45 +331,38 @@ static void ProcessPandocBlock(const string &block_json, int32_t &order, vector<
 	}
 }
 
-// Parse Pandoc blocks array
-static void ParsePandocBlocks(const string &json, int32_t &order, vector<Value> &result) {
-	// Find each block object in the array
-	size_t pos = 0;
-
-	while (pos < json.length()) {
-		// Find next block object
-		size_t obj_start = json.find("{\"t\":", pos);
-		if (obj_start == string::npos)
-			break;
-
-		// Find matching closing brace
-		size_t obj_end = FindMatchingBracket(json, obj_start, '{', '}');
-
-		string block_json = json.substr(obj_start, obj_end - obj_start);
-		ProcessPandocBlock(block_json, order, result, 1, 0);
-
-		pos = obj_end;
-	}
-}
-
-// Public function for converting Pandoc AST JSON to blocks
 void PandocBlockConvert::ConvertPandocAstToBlocks(const string &json, vector<Value> &blocks) {
-	int32_t order = 0;
-
-	// Check if this is a full Pandoc AST or just blocks array
-	size_t blocks_key = json.find("\"blocks\":");
-	if (blocks_key != string::npos) {
-		// Full AST - find blocks array
-		size_t arr_start = json.find("[", blocks_key);
-		if (arr_start != string::npos) {
-			size_t arr_end = FindMatchingBracket(json, arr_start, '[', ']');
-			string blocks_json = json.substr(arr_start, arr_end - arr_start);
-			ParsePandocBlocks(blocks_json, order, blocks);
-		}
-	} else {
-		// Assume it's just a blocks array
-		ParsePandocBlocks(json, order, blocks);
+	if (json.empty()) {
+		return;
 	}
+	yyjson_doc *doc = yyjson_read(json.c_str(), json.size(), 0);
+	if (!doc) {
+		return;
+	}
+	yyjson_val *root = yyjson_doc_get_root(doc);
+	if (!root) {
+		yyjson_doc_free(doc);
+		return;
+	}
+
+	int32_t order = 0;
+	yyjson_val *blocks_val = root;
+	if (yyjson_is_obj(root)) {
+		yyjson_val *b = yyjson_obj_get(root, "blocks");
+		if (b) {
+			blocks_val = b;
+		}
+	}
+
+	if (yyjson_is_arr(blocks_val)) {
+		size_t idx, max;
+		yyjson_val *block_val;
+		yyjson_arr_foreach(blocks_val, idx, max, block_val) {
+			ProcessPandocBlockVal(block_val, order, blocks, 1, 0);
+		}
+	}
+
+	yyjson_doc_free(doc);
 }
 
 void PandocBlockConvert::PandocAstToBlocksFun(DataChunk &args, ExpressionState &state, Vector &result) {
@@ -760,7 +372,6 @@ void PandocBlockConvert::PandocAstToBlocksFun(DataChunk &args, ExpressionState &
 	for (idx_t i = 0; i < count; i++) {
 		auto json_val = json_vec.GetValue(i);
 
-		// Handle NULL input
 		if (json_val.IsNull()) {
 			result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), vector<Value>()));
 			continue;
@@ -774,12 +385,6 @@ void PandocBlockConvert::PandocAstToBlocksFun(DataChunk &args, ExpressionState &
 	}
 }
 
-// Helper to escape string for JSON (escapes all control characters)
-static string JsonEscape(const string &s) {
-	return PandocJsonEscape(s);
-}
-
-// Helper to get string field from duck_block
 static string GetElementStringField(const Value &element, idx_t field_idx) {
 	auto &children = StructValue::GetChildren(element);
 	if (children[field_idx].IsNull()) {
@@ -788,7 +393,6 @@ static string GetElementStringField(const Value &element, idx_t field_idx) {
 	return children[field_idx].GetValue<string>();
 }
 
-// Helper to get attribute from duck_block
 static string GetElementAttribute(const Value &element, const string &key) {
 	auto &children = StructValue::GetChildren(element);
 	auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
@@ -798,8 +402,9 @@ static string GetElementAttribute(const Value &element, const string &key) {
 
 	auto &map_entries = MapValue::GetChildren(attrs);
 	for (auto &entry : map_entries) {
-		if (entry.IsNull())
+		if (entry.IsNull()) {
 			continue;
+		}
 		auto &kv = StructValue::GetChildren(entry);
 		if (kv.size() >= 2 && !kv[0].IsNull() && kv[0].GetValue<string>() == key) {
 			if (!kv[1].IsNull()) {
@@ -810,7 +415,6 @@ static string GetElementAttribute(const Value &element, const string &key) {
 	return "";
 }
 
-// Helper to get level from duck_block
 static int32_t GetElementLevel(const Value &element) {
 	auto &children = StructValue::GetChildren(element);
 	if (children[BlockTypes::LEVEL_IDX].IsNull()) {
@@ -819,43 +423,35 @@ static int32_t GetElementLevel(const Value &element) {
 	return children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
 }
 
-// Emit a Pandoc attr triple ["id",["class",...],[["k","v"],...]] from a
-// duck_block's attributes map (issue #11: previously classes beyond the
-// first and all key/value attrs were dropped). `fallback_class` is used when
-// no "class" attribute is present (e.g. a code block's language).
-static void AppendPandocAttrJson(std::ostringstream &oss, const Value &element, const string &fallback_class) {
+static yyjson_mut_val *CreatePandocAttrVal(yyjson_mut_doc *doc, const Value &element, const string &fallback_class) {
 	auto id = GetElementAttribute(element, "id");
 	auto classes = GetElementAttribute(element, "class");
 	if (classes.empty()) {
 		classes = fallback_class;
 	}
 
-	oss << "[\"" << JsonEscape(id) << "\",[";
-	// Classes are stored space-joined; emit each as its own class string
-	bool first = true;
+	yyjson_mut_val *attr_arr = yyjson_mut_arr(doc);
+	yyjson_mut_arr_add_strn(doc, attr_arr, id.data(), id.size());
+
+	yyjson_mut_val *classes_arr = yyjson_mut_arr(doc);
 	size_t start = 0;
 	while (start < classes.length()) {
 		size_t space = classes.find(' ', start);
 		size_t len = (space == string::npos) ? string::npos : space - start;
 		string cls = classes.substr(start, len);
 		if (!cls.empty()) {
-			if (!first) {
-				oss << ",";
-			}
-			first = false;
-			oss << "\"" << JsonEscape(cls) << "\"";
+			yyjson_mut_arr_add_strn(doc, classes_arr, cls.data(), cls.size());
 		}
 		if (space == string::npos) {
 			break;
 		}
 		start = space + 1;
 	}
-	oss << "],[";
+	yyjson_mut_arr_add_val(attr_arr, classes_arr);
 
-	// Emit non-reserved attributes as key/value pairs
+	yyjson_mut_val *kvs_arr = yyjson_mut_arr(doc);
 	auto &children = StructValue::GetChildren(element);
 	auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
-	first = true;
 	if (!attrs.IsNull()) {
 		auto &map_entries = MapValue::GetChildren(attrs);
 		for (auto &entry : map_entries) {
@@ -870,41 +466,35 @@ static void AppendPandocAttrJson(std::ostringstream &oss, const Value &element, 
 			if (IsReservedAttrKey(key)) {
 				continue;
 			}
-			if (!first) {
-				oss << ",";
-			}
-			first = false;
-			oss << "[\"" << JsonEscape(key) << "\",\"" << JsonEscape(kv[1].GetValue<string>()) << "\"]";
+			string val = kv[1].GetValue<string>();
+			yyjson_mut_val *pair_arr = yyjson_mut_arr(doc);
+			yyjson_mut_arr_add_strn(doc, pair_arr, key.data(), key.size());
+			yyjson_mut_arr_add_strn(doc, pair_arr, val.data(), val.size());
+			yyjson_mut_arr_add_val(kvs_arr, pair_arr);
 		}
 	}
-	oss << "]]";
+	yyjson_mut_arr_add_val(attr_arr, kvs_arr);
+	return attr_arr;
 }
 
-// Forward declaration for recursive list processing
-static string ConvertListToPandocJson(const vector<Value> &blocks_list, idx_t &start_idx, int32_t list_level,
-                                      idx_t depth);
+static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list,
+                                              idx_t &start_idx, int32_t list_level, idx_t depth);
+static yyjson_mut_val *ConvertDivToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list,
+                                             idx_t &start_idx, int32_t div_level, idx_t depth);
 
-// Forward declaration for recursive div processing
-static string ConvertDivToPandocJson(const vector<Value> &blocks_list, idx_t &start_idx, int32_t div_level,
-                                     idx_t depth);
-
-// Convert a list block and its children to Pandoc JSON, handling nested lists recursively.
-// `depth` bounds the (mutual) recursion between the list and div converters.
-static string ConvertListToPandocJson(const vector<Value> &blocks_list, idx_t &start_idx, int32_t list_level,
-                                      idx_t depth) {
+static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list,
+                                              idx_t &start_idx, int32_t list_level, idx_t depth) {
 	CheckPandocDepth(depth);
 	auto &list_block = blocks_list[start_idx];
 	auto list_type = GetElementAttribute(list_block, "list_type");
 	auto ordered_attr = GetElementAttribute(list_block, "ordered");
 	bool is_ordered = (list_type == "ordered") || (ordered_attr == "true");
-	string pandoc_type = is_ordered ? "OrderedList" : "BulletList";
+	const char *pandoc_type = is_ordered ? "OrderedList" : "BulletList";
 
-	// List items: each item is a list of blocks (Plain + optional nested list)
-	// Structure: vector of (content, inlines, nested_list_json)
 	struct ListItem {
 		string content;
 		vector<Value> inlines;
-		string nested_list_json;
+		yyjson_mut_val *nested_list_val = nullptr;
 	};
 	vector<ListItem> items;
 	ListItem current_item;
@@ -922,10 +512,8 @@ static string ConvertListToPandocJson(const vector<Value> &blocks_list, idx_t &s
 		auto child_type = GetElementStringField(child, BlockTypes::ELEMENT_TYPE_IDX);
 		int32_t child_level = GetElementLevel(child);
 
-		// Check if this element belongs to this list (level > list_level)
 		if (child_kind == BlockTypes::KIND_BLOCK) {
 			if (child_type == BlockTypes::TYPE_LIST_ITEM && child_level == list_level + 1) {
-				// This is a direct item of this list
 				if (in_item) {
 					items.push_back(current_item);
 				}
@@ -934,24 +522,17 @@ static string ConvertListToPandocJson(const vector<Value> &blocks_list, idx_t &s
 				in_item = true;
 				j++;
 			} else if (child_type == BlockTypes::TYPE_LIST && child_level == list_level + 1) {
-				// Nested list at same level as items - attach to previous item
 				if (in_item) {
-					// Recursively convert the nested list
-					current_item.nested_list_json = ConvertListToPandocJson(blocks_list, j, child_level, depth + 1);
-					// j is advanced by the recursive call
+					current_item.nested_list_val = ConvertListToPandocVal(doc, blocks_list, j, child_level, depth + 1);
 				} else {
-					// No previous item - treat as orphan nested list, skip
 					j++;
 				}
 			} else if (child_level <= list_level) {
-				// Back to parent level or above - done with this list
 				break;
 			} else {
-				// Some other block at deeper level - skip
 				j++;
 			}
 		} else if (child_kind == BlockTypes::KIND_INLINE && in_item) {
-			// Inline children for current item - check if they belong to this item
 			if (child_level == list_level + 2) {
 				current_item.inlines.push_back(child);
 			}
@@ -961,74 +542,82 @@ static string ConvertListToPandocJson(const vector<Value> &blocks_list, idx_t &s
 		}
 	}
 
-	// Don't forget the last item
 	if (in_item) {
 		items.push_back(current_item);
 	}
 
-	// Update start_idx to where we stopped
 	start_idx = j;
 
-	// Build Pandoc JSON for this list
-	std::ostringstream oss;
-	oss << "{\"t\":\"" << pandoc_type << "\",\"c\":";
+	yyjson_mut_val *root_obj = yyjson_mut_obj(doc);
+	yyjson_mut_obj_add_str(doc, root_obj, "t", pandoc_type);
+
+	yyjson_mut_val *c_outer = nullptr;
+	yyjson_mut_val *items_arr = yyjson_mut_arr(doc);
+
 	if (is_ordered) {
-		oss << "[[1,{\"t\":\"Decimal\"},{\"t\":\"Period\"}],[";
+		c_outer = yyjson_mut_arr(doc);
+		yyjson_mut_val *order_spec = yyjson_mut_arr(doc);
+		yyjson_mut_arr_add_int(doc, order_spec, 1);
+		yyjson_mut_val *style_obj = yyjson_mut_obj(doc);
+		yyjson_mut_obj_add_str(doc, style_obj, "t", "Decimal");
+		yyjson_mut_arr_add_val(order_spec, style_obj);
+		yyjson_mut_val *delim_obj = yyjson_mut_obj(doc);
+		yyjson_mut_obj_add_str(doc, delim_obj, "t", "Period");
+		yyjson_mut_arr_add_val(order_spec, delim_obj);
+		yyjson_mut_arr_add_val(c_outer, order_spec);
+		yyjson_mut_arr_add_val(c_outer, items_arr);
+		yyjson_mut_obj_add_val(doc, root_obj, "c", c_outer);
 	} else {
-		oss << "[";
+		yyjson_mut_obj_add_val(doc, root_obj, "c", items_arr);
 	}
 
-	bool first_item = true;
 	for (auto &item : items) {
-		if (!first_item)
-			oss << ",";
-		first_item = false;
+		yyjson_mut_val *item_blocks = yyjson_mut_arr(doc);
+		yyjson_mut_val *plain_obj = yyjson_mut_obj(doc);
+		yyjson_mut_obj_add_str(doc, plain_obj, "t", "Plain");
 
-		// Each item is an array of blocks
-		oss << "[";
-
-		// First block: Plain with content/inlines
 		if (!item.inlines.empty()) {
-			string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(item.inlines);
-			oss << "{\"t\":\"Plain\",\"c\":" << inlines_json << "}";
+			idx_t inl_end = 0;
+			yyjson_mut_val *inl_arr =
+			    PandocInlineConvert::ConvertDbInlinesToPandocVal(doc, item.inlines, 0, list_level + 2, inl_end, 1);
+			yyjson_mut_obj_add_val(doc, plain_obj, "c", inl_arr);
 		} else if (!item.content.empty()) {
-			oss << "{\"t\":\"Plain\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(item.content) << "\"}]}";
+			yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
+			yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+			yyjson_mut_obj_add_strn(doc, str_obj, "c", item.content.data(), item.content.size());
+			yyjson_mut_arr_add_val(inl_arr, str_obj);
+			yyjson_mut_obj_add_val(doc, plain_obj, "c", inl_arr);
 		} else {
-			oss << "{\"t\":\"Plain\",\"c\":[]}";
+			yyjson_mut_obj_add_val(doc, plain_obj, "c", yyjson_mut_arr(doc));
 		}
+		yyjson_mut_arr_add_val(item_blocks, plain_obj);
 
-		// Second block (optional): nested list
-		if (!item.nested_list_json.empty()) {
-			oss << "," << item.nested_list_json;
+		if (item.nested_list_val) {
+			yyjson_mut_arr_add_val(item_blocks, item.nested_list_val);
 		}
-
-		oss << "]";
+		yyjson_mut_arr_add_val(items_arr, item_blocks);
 	}
 
-	if (is_ordered) {
-		oss << "]]}";
-	} else {
-		oss << "]}";
-	}
-
-	return oss.str();
+	return root_obj;
 }
 
-// Convert a div block and its children to Pandoc JSON
-// Div format: {"t":"Div","c":[["id",["classes"],[]],...blocks...]}
-// `depth` bounds the (mutual) recursion between the div and list converters.
-static string ConvertDivToPandocJson(const vector<Value> &blocks_list, idx_t &start_idx, int32_t div_level,
-                                     idx_t depth) {
+static yyjson_mut_val *ConvertDivToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list,
+                                             idx_t &start_idx, int32_t div_level, idx_t depth) {
 	CheckPandocDepth(depth);
 	auto &div_block = blocks_list[start_idx];
 
-	std::ostringstream oss;
-	oss << "{\"t\":\"Div\",\"c\":[";
-	AppendPandocAttrJson(oss, div_block, "");
-	oss << ",[";
+	yyjson_mut_val *div_obj = yyjson_mut_obj(doc);
+	yyjson_mut_obj_add_str(doc, div_obj, "t", "Div");
 
-	// Collect and convert child blocks
-	bool first_child = true;
+	yyjson_mut_val *c_arr = yyjson_mut_arr(doc);
+	yyjson_mut_val *attr_val = CreatePandocAttrVal(doc, div_block, "");
+	yyjson_mut_arr_add_val(c_arr, attr_val);
+
+	yyjson_mut_val *child_blocks_arr = yyjson_mut_arr(doc);
+	yyjson_mut_arr_add_val(c_arr, child_blocks_arr);
+	yyjson_mut_obj_add_val(doc, div_obj, "c", c_arr);
+
 	idx_t j = start_idx + 1;
 	while (j < blocks_list.size()) {
 		auto &child = blocks_list[j];
@@ -1041,95 +630,141 @@ static string ConvertDivToPandocJson(const vector<Value> &blocks_list, idx_t &st
 		auto child_type = GetElementStringField(child, BlockTypes::ELEMENT_TYPE_IDX);
 		int32_t child_level = GetElementLevel(child);
 
-		// Stop when we reach blocks at or above div level
 		if (child_level <= div_level && child_kind == BlockTypes::KIND_BLOCK) {
 			break;
 		}
-
-		// Skip inlines - they're handled by their parent blocks
-		if (child_kind == BlockTypes::KIND_INLINE) {
+		if (child_kind == BlockTypes::KIND_INLINE || child_type == BlockTypes::TYPE_LIST_ITEM) {
 			j++;
 			continue;
 		}
 
-		// Skip list_item - handled by list converter
-		if (child_type == BlockTypes::TYPE_LIST_ITEM) {
-			j++;
-			continue;
-		}
-
-		// Convert child blocks
 		if (child_kind == BlockTypes::KIND_BLOCK) {
 			auto content = GetElementStringField(child, BlockTypes::CONTENT_IDX);
 
-			// Collect inline children for this block
 			vector<Value> inline_children;
 			for (idx_t k = j + 1; k < blocks_list.size(); k++) {
 				auto &inl = blocks_list[k];
-				if (inl.IsNull())
+				if (inl.IsNull()) {
 					continue;
+				}
 				auto inl_kind = GetElementStringField(inl, BlockTypes::KIND_IDX);
-				if (inl_kind == BlockTypes::KIND_BLOCK)
+				if (inl_kind == BlockTypes::KIND_BLOCK) {
 					break;
+				}
 				if (inl_kind == BlockTypes::KIND_INLINE) {
 					inline_children.push_back(inl);
 				}
 			}
 
-			if (!first_child)
-				oss << ",";
-			first_child = false;
-
 			if (child_type == BlockTypes::TYPE_PARAGRAPH) {
+				yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, para_obj, "t", "Para");
 				if (!inline_children.empty()) {
-					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
-					oss << "{\"t\":\"Para\",\"c\":" << inlines_json << "}";
+					idx_t inl_end = 0;
+					yyjson_mut_val *inl_arr = PandocInlineConvert::ConvertDbInlinesToPandocVal(
+					    doc, inline_children, 0, child_level + 1, inl_end, 1);
+					yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
 				} else {
-					oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}";
+					yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
+					yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+					yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+					yyjson_mut_obj_add_strn(doc, str_obj, "c", content.data(), content.size());
+					yyjson_mut_arr_add_val(inl_arr, str_obj);
+					yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
 				}
+				yyjson_mut_arr_add_val(child_blocks_arr, para_obj);
 				j++;
 			} else if (child_type == BlockTypes::TYPE_HEADING) {
 				auto level_str = GetElementAttribute(child, "heading_level");
 				int level = ParseInt32OrDefault(level_str, 1);
-				oss << "{\"t\":\"Header\",\"c\":[" << level << ",";
-				AppendPandocAttrJson(oss, child, "");
+				yyjson_mut_val *header_obj = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, header_obj, "t", "Header");
+				yyjson_mut_val *hc_arr = yyjson_mut_arr(doc);
+				yyjson_mut_arr_add_int(doc, hc_arr, level);
+				yyjson_mut_arr_add_val(hc_arr, CreatePandocAttrVal(doc, child, ""));
 				if (!inline_children.empty()) {
-					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
-					oss << "," << inlines_json << "]}";
+					idx_t inl_end = 0;
+					yyjson_mut_val *inl_arr = PandocInlineConvert::ConvertDbInlinesToPandocVal(
+					    doc, inline_children, 0, child_level + 1, inl_end, 1);
+					yyjson_mut_arr_add_val(hc_arr, inl_arr);
 				} else {
-					oss << ",[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
+					yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
+					yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+					yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+					yyjson_mut_obj_add_strn(doc, str_obj, "c", content.data(), content.size());
+					yyjson_mut_arr_add_val(inl_arr, str_obj);
+					yyjson_mut_arr_add_val(hc_arr, inl_arr);
 				}
+				yyjson_mut_obj_add_val(doc, header_obj, "c", hc_arr);
+				yyjson_mut_arr_add_val(child_blocks_arr, header_obj);
 				j++;
 			} else if (child_type == BlockTypes::TYPE_CODE) {
 				auto language = GetElementAttribute(child, "language");
-				oss << "{\"t\":\"CodeBlock\",\"c\":[";
-				AppendPandocAttrJson(oss, child, language);
-				oss << ",\"" << JsonEscape(content) << "\"]}";
+				yyjson_mut_val *code_obj = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, code_obj, "t", "CodeBlock");
+				yyjson_mut_val *cc_arr = yyjson_mut_arr(doc);
+				yyjson_mut_arr_add_val(cc_arr, CreatePandocAttrVal(doc, child, language));
+				yyjson_mut_arr_add_strn(doc, cc_arr, content.data(), content.size());
+				yyjson_mut_obj_add_val(doc, code_obj, "c", cc_arr);
+				yyjson_mut_arr_add_val(child_blocks_arr, code_obj);
 				j++;
 			} else if (child_type == BlockTypes::TYPE_BLOCKQUOTE) {
 				auto child_encoding = GetElementStringField(child, BlockTypes::ENCODING_IDX);
+				yyjson_mut_val *bq_obj = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, bq_obj, "t", "BlockQuote");
 				if (child_encoding == BlockTypes::ENCODING_JSON && !content.empty()) {
-					// Nested blocks preserved verbatim at parse time (issue #11)
-					oss << "{\"t\":\"BlockQuote\",\"c\":" << content << "}";
+					yyjson_doc *sub_doc = yyjson_read(content.c_str(), content.size(), 0);
+					if (sub_doc) {
+						yyjson_mut_val *imported = yyjson_val_mut_copy(doc, yyjson_doc_get_root(sub_doc));
+						yyjson_mut_obj_add_val(doc, bq_obj, "c", imported);
+						yyjson_doc_free(sub_doc);
+					} else {
+						yyjson_mut_obj_add_val(doc, bq_obj, "c", yyjson_mut_arr(doc));
+					}
 				} else if (!inline_children.empty()) {
-					string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
-					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":" << inlines_json << "}]}";
+					yyjson_mut_val *bqc_arr = yyjson_mut_arr(doc);
+					yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
+					yyjson_mut_obj_add_str(doc, para_obj, "t", "Para");
+					idx_t inl_end = 0;
+					yyjson_mut_val *inl_arr = PandocInlineConvert::ConvertDbInlinesToPandocVal(
+					    doc, inline_children, 0, child_level + 1, inl_end, 1);
+					yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
+					yyjson_mut_arr_add_val(bqc_arr, para_obj);
+					yyjson_mut_obj_add_val(doc, bq_obj, "c", bqc_arr);
 				} else if (!content.empty()) {
-					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\""
-					    << JsonEscape(content) << "\"}]}]}";
+					yyjson_mut_val *bqc_arr = yyjson_mut_arr(doc);
+					yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
+					yyjson_mut_obj_add_str(doc, para_obj, "t", "Para");
+					yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
+					yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+					yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+					yyjson_mut_obj_add_strn(doc, str_obj, "c", content.data(), content.size());
+					yyjson_mut_arr_add_val(inl_arr, str_obj);
+					yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
+					yyjson_mut_arr_add_val(bqc_arr, para_obj);
+					yyjson_mut_obj_add_val(doc, bq_obj, "c", bqc_arr);
 				} else {
-					oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[]}]}";
+					yyjson_mut_val *bqc_arr = yyjson_mut_arr(doc);
+					yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
+					yyjson_mut_obj_add_str(doc, para_obj, "t", "Para");
+					yyjson_mut_obj_add_val(doc, para_obj, "c", yyjson_mut_arr(doc));
+					yyjson_mut_arr_add_val(bqc_arr, para_obj);
+					yyjson_mut_obj_add_val(doc, bq_obj, "c", bqc_arr);
 				}
+				yyjson_mut_arr_add_val(child_blocks_arr, bq_obj);
 				j++;
 			} else if (child_type == BlockTypes::TYPE_HR) {
-				oss << "{\"t\":\"HorizontalRule\"}";
+				yyjson_mut_val *hr_obj = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, hr_obj, "t", "HorizontalRule");
+				yyjson_mut_arr_add_val(child_blocks_arr, hr_obj);
 				j++;
 			} else if (child_type == BlockTypes::TYPE_LIST) {
-				oss << ConvertListToPandocJson(blocks_list, j, child_level, depth + 1);
+				yyjson_mut_val *list_obj = ConvertListToPandocVal(doc, blocks_list, j, child_level, depth + 1);
+				yyjson_mut_arr_add_val(child_blocks_arr, list_obj);
 			} else if (child_type == BlockTypes::TYPE_DIV) {
-				oss << ConvertDivToPandocJson(blocks_list, j, child_level, depth + 1);
+				yyjson_mut_val *nested_div_obj = ConvertDivToPandocVal(doc, blocks_list, j, child_level, depth + 1);
+				yyjson_mut_arr_add_val(child_blocks_arr, nested_div_obj);
 			} else {
-				// Unknown block - skip
 				j++;
 			}
 		} else {
@@ -1137,70 +772,14 @@ static string ConvertDivToPandocJson(const vector<Value> &blocks_list, idx_t &st
 		}
 	}
 
-	oss << "]]}";
 	start_idx = j;
-	return oss.str();
+	return div_obj;
 }
 
-// Forward declaration (defined below); shared by all duck_blocks -> Pandoc
-// emit entry points so the recursion cap covers every path.
-static string BuildBlocksJson(const vector<Value> &blocks_list);
-
-void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &blocks_vec = args.data[0];
-	auto count = args.size();
-
-	for (idx_t i = 0; i < count; i++) {
-		auto blocks_val = blocks_vec.GetValue(i);
-
-		// Handle NULL input
-		if (blocks_val.IsNull()) {
-			result.SetValue(i, Value("[]"));
-			continue;
-		}
-
-		auto &blocks_list = ListValue::GetChildren(blocks_val);
-		result.SetValue(i, Value(BuildBlocksJson(blocks_list)));
-	}
-}
-
-void PandocBlockConvert::ReadPandocAstFun(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &path_vec = args.data[0];
-	auto count = args.size();
-
-	for (idx_t i = 0; i < count; i++) {
-		auto path_val = path_vec.GetValue(i);
-
-		// Handle NULL input
-		if (path_val.IsNull()) {
-			result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), vector<Value>()));
-			continue;
-		}
-
-		string file_path = path_val.GetValue<string>();
-
-		// Read file content using standard C++ file I/O
-		std::ifstream file(file_path);
-		if (!file.is_open()) {
-			throw IOException("Could not open file: " + file_path);
-		}
-
-		std::stringstream buffer;
-		buffer << file.rdbuf();
-		string json = buffer.str();
-
-		vector<Value> blocks;
-		ConvertPandocAstToBlocks(json, blocks);
-
-		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(blocks)));
-	}
-}
-
-// Helper to build blocks JSON array from duck_blocks
 static string BuildBlocksJson(const vector<Value> &blocks_list) {
-	std::ostringstream oss;
-	oss << "[";
-	bool first = true;
+	yyjson_mut_doc *doc = yyjson_mut_doc_new(nullptr);
+	yyjson_mut_val *blocks_arr = yyjson_mut_arr(doc);
+	yyjson_mut_doc_set_root(doc, blocks_arr);
 
 	for (idx_t block_idx = 0; block_idx < blocks_list.size();) {
 		auto &block = blocks_list[block_idx];
@@ -1218,13 +797,7 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 		auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
 		auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
 
-		if (element_type == BlockTypes::TYPE_LIST_ITEM) {
-			block_idx++;
-			continue;
-		}
-
-		// Skip metadata blocks - they don't belong in Pandoc's blocks array
-		if (element_type == BlockTypes::TYPE_METADATA) {
+		if (element_type == BlockTypes::TYPE_LIST_ITEM || element_type == BlockTypes::TYPE_METADATA) {
 			block_idx++;
 			continue;
 		}
@@ -1232,105 +805,212 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 		vector<Value> inline_children;
 		for (idx_t j = block_idx + 1; j < blocks_list.size(); j++) {
 			auto &child = blocks_list[j];
-			if (child.IsNull())
+			if (child.IsNull()) {
 				continue;
+			}
 			auto child_kind = GetElementStringField(child, BlockTypes::KIND_IDX);
-			if (child_kind == BlockTypes::KIND_BLOCK)
+			if (child_kind == BlockTypes::KIND_BLOCK) {
 				break;
+			}
 			if (child_kind == BlockTypes::KIND_INLINE) {
 				inline_children.push_back(child);
 			}
 		}
 
-		if (!first)
-			oss << ",";
-		first = false;
-
 		if (element_type == BlockTypes::TYPE_HEADING) {
 			auto level_str = GetElementAttribute(block, "heading_level");
 			int level = ParseInt32OrDefault(level_str, 1);
-			oss << "{\"t\":\"Header\",\"c\":[" << level << ",";
-			AppendPandocAttrJson(oss, block, "");
+			yyjson_mut_val *header_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, header_obj, "t", "Header");
+			yyjson_mut_val *hc_arr = yyjson_mut_arr(doc);
+			yyjson_mut_arr_add_int(doc, hc_arr, level);
+			yyjson_mut_arr_add_val(hc_arr, CreatePandocAttrVal(doc, block, ""));
 			if (!inline_children.empty()) {
-				string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
-				oss << "," << inlines_json << "]}";
+				idx_t inl_end = 0;
+				yyjson_mut_val *inl_arr =
+				    PandocInlineConvert::ConvertDbInlinesToPandocVal(doc, inline_children, 0, 2, inl_end, 1);
+				yyjson_mut_arr_add_val(hc_arr, inl_arr);
 			} else {
-				oss << ",[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]]}";
+				yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
+				yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+				yyjson_mut_obj_add_strn(doc, str_obj, "c", content.data(), content.size());
+				yyjson_mut_arr_add_val(inl_arr, str_obj);
+				yyjson_mut_arr_add_val(hc_arr, inl_arr);
 			}
+			yyjson_mut_obj_add_val(doc, header_obj, "c", hc_arr);
+			yyjson_mut_arr_add_val(blocks_arr, header_obj);
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_PARAGRAPH) {
+			yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, para_obj, "t", "Para");
 			if (!inline_children.empty()) {
-				string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
-				oss << "{\"t\":\"Para\",\"c\":" << inlines_json << "}";
+				idx_t inl_end = 0;
+				yyjson_mut_val *inl_arr =
+				    PandocInlineConvert::ConvertDbInlinesToPandocVal(doc, inline_children, 0, 2, inl_end, 1);
+				yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
 			} else {
-				oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}";
+				yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
+				yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+				yyjson_mut_obj_add_strn(doc, str_obj, "c", content.data(), content.size());
+				yyjson_mut_arr_add_val(inl_arr, str_obj);
+				yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
 			}
+			yyjson_mut_arr_add_val(blocks_arr, para_obj);
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_CODE) {
 			auto language = GetElementAttribute(block, "language");
-			oss << "{\"t\":\"CodeBlock\",\"c\":[";
-			AppendPandocAttrJson(oss, block, language);
-			oss << ",\"" << JsonEscape(content) << "\"]}";
+			yyjson_mut_val *code_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, code_obj, "t", "CodeBlock");
+			yyjson_mut_val *cc_arr = yyjson_mut_arr(doc);
+			yyjson_mut_arr_add_val(cc_arr, CreatePandocAttrVal(doc, block, language));
+			yyjson_mut_arr_add_strn(doc, cc_arr, content.data(), content.size());
+			yyjson_mut_obj_add_val(doc, code_obj, "c", cc_arr);
+			yyjson_mut_arr_add_val(blocks_arr, code_obj);
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE &&
 		           GetElementStringField(block, BlockTypes::ENCODING_IDX) == BlockTypes::ENCODING_JSON &&
 		           !content.empty()) {
-			// Nested blocks preserved verbatim at parse time (issue #11)
-			oss << "{\"t\":\"BlockQuote\",\"c\":" << content << "}";
+			yyjson_mut_val *bq_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, bq_obj, "t", "BlockQuote");
+			yyjson_doc *sub_doc = yyjson_read(content.c_str(), content.size(), 0);
+			if (sub_doc) {
+				yyjson_mut_val *imported = yyjson_val_mut_copy(doc, yyjson_doc_get_root(sub_doc));
+				yyjson_mut_obj_add_val(doc, bq_obj, "c", imported);
+				yyjson_doc_free(sub_doc);
+			} else {
+				yyjson_mut_obj_add_val(doc, bq_obj, "c", yyjson_mut_arr(doc));
+			}
+			yyjson_mut_arr_add_val(blocks_arr, bq_obj);
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE) {
-			// BlockQuote contains blocks; use inline children to build Para content
+			yyjson_mut_val *bq_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, bq_obj, "t", "BlockQuote");
+			yyjson_mut_val *bqc_arr = yyjson_mut_arr(doc);
+			yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, para_obj, "t", "Para");
 			if (!inline_children.empty()) {
-				string inlines_json = PandocInlineConvert::ConvertInlinesToPandocJson(inline_children);
-				oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":" << inlines_json << "}]}";
+				idx_t inl_end = 0;
+				yyjson_mut_val *inl_arr =
+				    PandocInlineConvert::ConvertDbInlinesToPandocVal(doc, inline_children, 0, 2, inl_end, 1);
+				yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
 			} else if (!content.empty()) {
-				oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\""
-				    << JsonEscape(content) << "\"}]}]}";
+				yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
+				yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+				yyjson_mut_obj_add_strn(doc, str_obj, "c", content.data(), content.size());
+				yyjson_mut_arr_add_val(inl_arr, str_obj);
+				yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
 			} else {
-				oss << "{\"t\":\"BlockQuote\",\"c\":[{\"t\":\"Para\",\"c\":[]}]}";
+				yyjson_mut_obj_add_val(doc, para_obj, "c", yyjson_mut_arr(doc));
 			}
+			yyjson_mut_arr_add_val(bqc_arr, para_obj);
+			yyjson_mut_obj_add_val(doc, bq_obj, "c", bqc_arr);
+			yyjson_mut_arr_add_val(blocks_arr, bq_obj);
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_HR) {
-			oss << "{\"t\":\"HorizontalRule\"}";
+			yyjson_mut_val *hr_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, hr_obj, "t", "HorizontalRule");
+			yyjson_mut_arr_add_val(blocks_arr, hr_obj);
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_RAW) {
 			auto format = GetElementAttribute(block, "format");
-			if (format.empty())
+			if (format.empty()) {
 				format = "html";
-			oss << "{\"t\":\"RawBlock\",\"c\":[\"" << JsonEscape(format) << "\",\"" << JsonEscape(content) << "\"]}";
+			}
+			yyjson_mut_val *raw_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, raw_obj, "t", "RawBlock");
+			yyjson_mut_val *rc_arr = yyjson_mut_arr(doc);
+			yyjson_mut_arr_add_strn(doc, rc_arr, format.data(), format.size());
+			yyjson_mut_arr_add_strn(doc, rc_arr, content.data(), content.size());
+			yyjson_mut_obj_add_val(doc, raw_obj, "c", rc_arr);
+			yyjson_mut_arr_add_val(blocks_arr, raw_obj);
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_LIST) {
-			// Use recursive list converter that handles nested lists properly
 			int32_t list_level = GetElementLevel(block);
-			oss << ConvertListToPandocJson(blocks_list, block_idx, list_level, 1);
-			// block_idx is advanced by ConvertListToPandocJson
+			yyjson_mut_val *list_obj = ConvertListToPandocVal(doc, blocks_list, block_idx, list_level, 1);
+			yyjson_mut_arr_add_val(blocks_arr, list_obj);
 		} else if (element_type == BlockTypes::TYPE_DIV) {
-			// Use recursive div converter
 			int32_t div_level = GetElementLevel(block);
-			oss << ConvertDivToPandocJson(blocks_list, block_idx, div_level, 1);
-			// block_idx is advanced by ConvertDivToPandocJson
+			yyjson_mut_val *div_obj = ConvertDivToPandocVal(doc, blocks_list, block_idx, div_level, 1);
+			yyjson_mut_arr_add_val(blocks_arr, div_obj);
 		} else if (element_type == BlockTypes::TYPE_TABLE) {
-			// Table content is stored as JSON - output directly
-			oss << "{\"t\":\"Table\",\"c\":" << content << "}";
+			yyjson_mut_val *tbl_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, tbl_obj, "t", "Table");
+			if (!content.empty()) {
+				yyjson_doc *sub_doc = yyjson_read(content.c_str(), content.size(), 0);
+				if (sub_doc) {
+					yyjson_mut_val *imported = yyjson_val_mut_copy(doc, yyjson_doc_get_root(sub_doc));
+					yyjson_mut_obj_add_val(doc, tbl_obj, "c", imported);
+					yyjson_doc_free(sub_doc);
+				} else {
+					yyjson_mut_obj_add_val(doc, tbl_obj, "c", yyjson_mut_arr(doc));
+				}
+			} else {
+				yyjson_mut_obj_add_val(doc, tbl_obj, "c", yyjson_mut_arr(doc));
+			}
+			yyjson_mut_arr_add_val(blocks_arr, tbl_obj);
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_IMAGE) {
-			// Image is an inline element - wrap in Para
 			auto src = GetElementAttribute(block, "src");
 			auto alt = GetElementAttribute(block, "alt");
 			auto title = GetElementAttribute(block, "title");
-			oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Image\",\"c\":[[\"\",[],[]],[{\"t\":\"Str\",\"c\":\""
-			    << JsonEscape(alt) << "\"}],[\"" << JsonEscape(src) << "\",\"" << JsonEscape(title) << "\"]]}]}";
+
+			yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, para_obj, "t", "Para");
+			yyjson_mut_val *pc_arr = yyjson_mut_arr(doc);
+			yyjson_mut_val *img_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, img_obj, "t", "Image");
+			yyjson_mut_val *ic_arr = yyjson_mut_arr(doc);
+
+			yyjson_mut_val *attr_arr = yyjson_mut_arr(doc);
+			yyjson_mut_arr_add_str(doc, attr_arr, "");
+			yyjson_mut_arr_add_val(attr_arr, yyjson_mut_arr(doc));
+			yyjson_mut_arr_add_val(attr_arr, yyjson_mut_arr(doc));
+			yyjson_mut_arr_add_val(ic_arr, attr_arr);
+
+			yyjson_mut_val *alt_arr = yyjson_mut_arr(doc);
+			yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+			yyjson_mut_obj_add_strn(doc, str_obj, "c", alt.data(), alt.size());
+			yyjson_mut_arr_add_val(alt_arr, str_obj);
+			yyjson_mut_arr_add_val(ic_arr, alt_arr);
+
+			yyjson_mut_val *tgt_arr = yyjson_mut_arr(doc);
+			yyjson_mut_arr_add_strn(doc, tgt_arr, src.data(), src.size());
+			yyjson_mut_arr_add_strn(doc, tgt_arr, title.data(), title.size());
+			yyjson_mut_arr_add_val(ic_arr, tgt_arr);
+
+			yyjson_mut_obj_add_val(doc, img_obj, "c", ic_arr);
+			yyjson_mut_arr_add_val(pc_arr, img_obj);
+			yyjson_mut_obj_add_val(doc, para_obj, "c", pc_arr);
+			yyjson_mut_arr_add_val(blocks_arr, para_obj);
 			block_idx++;
 		} else {
-			oss << "{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(content) << "\"}]}";
+			yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, para_obj, "t", "Para");
+			yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
+			yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+			yyjson_mut_obj_add_strn(doc, str_obj, "c", content.data(), content.size());
+			yyjson_mut_arr_add_val(inl_arr, str_obj);
+			yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
+			yyjson_mut_arr_add_val(blocks_arr, para_obj);
 			block_idx++;
 		}
 	}
-	oss << "]";
-	return oss.str();
+
+	size_t len = 0;
+	char *json_out = yyjson_mut_write(doc, 0, &len);
+	string res(json_out ? json_out : "[]", len);
+	if (json_out) {
+		free(json_out);
+	}
+	yyjson_mut_doc_free(doc);
+	return res;
 }
 
-// Get the Pandoc AST struct type
 static LogicalType GetPandocAstType() {
 	child_list_t<LogicalType> struct_children;
 	struct_children.push_back(make_pair("pandoc-api-version", LogicalType::LIST(LogicalType::INTEGER)));
@@ -1339,7 +1019,6 @@ static LogicalType GetPandocAstType() {
 	return LogicalType::STRUCT(std::move(struct_children));
 }
 
-// duck_blocks_to_pandoc_ast - creates complete Pandoc AST as a struct
 static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &blocks_vec = args.data[0];
 	auto count = args.size();
@@ -1347,15 +1026,11 @@ static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Ve
 	for (idx_t i = 0; i < count; i++) {
 		auto blocks_val = blocks_vec.GetValue(i);
 
-		// Build API version list
 		vector<Value> api_version_vals = {Value::INTEGER(1), Value::INTEGER(20)};
 		Value api_version = Value::LIST(LogicalType::INTEGER, api_version_vals);
-
-		// Empty meta
 		Value meta = Value("{}");
 
 		if (blocks_val.IsNull()) {
-			// Empty blocks
 			child_list_t<Value> struct_values;
 			struct_values.push_back(make_pair("pandoc-api-version", api_version));
 			struct_values.push_back(make_pair("meta", meta));
@@ -1365,11 +1040,8 @@ static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Ve
 		}
 
 		auto &blocks_list = ListValue::GetChildren(blocks_val);
-
-		// Build blocks JSON using helper
 		string blocks_json = BuildBlocksJson(blocks_list);
 
-		// Create struct
 		child_list_t<Value> struct_values;
 		struct_values.push_back(make_pair("pandoc-api-version", api_version));
 		struct_values.push_back(make_pair("meta", meta));
@@ -1378,12 +1050,6 @@ static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Ve
 	}
 }
 
-// ============================================================================
-// Table function: pandoc_ast(blocks, meta := {}, api_version := [1,20])
-// Returns a single row with Pandoc AST fields for clean JSON output
-// meta is a MAP(VARCHAR, VARCHAR) that gets converted to Pandoc MetaInlines format
-// ============================================================================
-
 struct PandocAstBindData : public TableFunctionData {
 	vector<Value> blocks;
 	string meta_json = "{}";
@@ -1391,15 +1057,6 @@ struct PandocAstBindData : public TableFunctionData {
 	bool done = false;
 };
 
-// Convert a simple string value to Pandoc MetaInlines format
-// e.g., "My Title" -> {"t":"MetaInlines","c":[{"t":"Str","c":"My Title"}]}
-static string ConvertToMetaInlines(const string &value) {
-	std::ostringstream oss;
-	oss << "{\"t\":\"MetaInlines\",\"c\":[{\"t\":\"Str\",\"c\":\"" << JsonEscape(value) << "\"}]}";
-	return oss.str();
-}
-
-// Convert MAP(VARCHAR, VARCHAR) to Pandoc meta JSON
 static string ConvertMetaMapToJson(const Value &meta_map) {
 	if (meta_map.IsNull()) {
 		return "{}";
@@ -1410,34 +1067,48 @@ static string ConvertMetaMapToJson(const Value &meta_map) {
 		return "{}";
 	}
 
-	std::ostringstream oss;
-	oss << "{";
-	bool first = true;
+	yyjson_mut_doc *doc = yyjson_mut_doc_new(nullptr);
+	yyjson_mut_val *root = yyjson_mut_obj(doc);
+	yyjson_mut_doc_set_root(doc, root);
+
 	for (auto &entry : map_entries) {
-		if (entry.IsNull())
+		if (entry.IsNull()) {
 			continue;
+		}
 		auto &kv = StructValue::GetChildren(entry);
-		if (kv.size() < 2 || kv[0].IsNull() || kv[1].IsNull())
+		if (kv.size() < 2 || kv[0].IsNull() || kv[1].IsNull()) {
 			continue;
+		}
 
 		string key = kv[0].GetValue<string>();
 		string value = kv[1].GetValue<string>();
 
-		if (!first)
-			oss << ",";
-		first = false;
+		yyjson_mut_val *meta_obj = yyjson_mut_obj(doc);
+		yyjson_mut_obj_add_str(doc, meta_obj, "t", "MetaInlines");
+		yyjson_mut_val *c_arr = yyjson_mut_arr(doc);
+		yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+		yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+		yyjson_mut_obj_add_strn(doc, str_obj, "c", value.data(), value.size());
+		yyjson_mut_arr_add_val(c_arr, str_obj);
+		yyjson_mut_obj_add_val(doc, meta_obj, "c", c_arr);
 
-		oss << "\"" << JsonEscape(key) << "\":" << ConvertToMetaInlines(value);
+		yyjson_mut_obj_add_val(doc, root, key.c_str(), meta_obj);
 	}
-	oss << "}";
-	return oss.str();
+
+	size_t len = 0;
+	char *json = yyjson_mut_write(doc, 0, &len);
+	string res(json ? json : "{}", len);
+	if (json) {
+		free(json);
+	}
+	yyjson_mut_doc_free(doc);
+	return res;
 }
 
 static unique_ptr<FunctionData> PandocAstBind(ClientContext &context, TableFunctionBindInput &input,
                                               vector<LogicalType> &return_types, vector<string> &names) {
 	auto result = make_uniq<PandocAstBindData>();
 
-	// Get the blocks parameter (first positional argument)
 	if (!input.inputs.empty() && !input.inputs[0].IsNull()) {
 		auto &blocks_val = input.inputs[0];
 		auto &blocks_list = ListValue::GetChildren(blocks_val);
@@ -1446,7 +1117,6 @@ static unique_ptr<FunctionData> PandocAstBind(ClientContext &context, TableFunct
 		}
 	}
 
-	// Process named parameters
 	for (auto &kv : input.named_parameters) {
 		if (kv.first == "meta") {
 			if (!kv.second.IsNull()) {
@@ -1463,7 +1133,6 @@ static unique_ptr<FunctionData> PandocAstBind(ClientContext &context, TableFunct
 		}
 	}
 
-	// Define output columns with Pandoc-compatible names
 	names.push_back("pandoc-api-version");
 	return_types.push_back(LogicalType::LIST(LogicalType::INTEGER));
 
@@ -1483,17 +1152,14 @@ static void PandocAstFunction(ClientContext &context, TableFunctionInput &data_p
 		return;
 	}
 
-	// Build API version from bind data
 	vector<Value> api_version_vals;
 	for (auto v : bind_data.api_version) {
 		api_version_vals.push_back(Value::INTEGER(v));
 	}
 	Value api_version = Value::LIST(LogicalType::INTEGER, api_version_vals);
 
-	// Build blocks JSON
 	string blocks_json = BuildBlocksJson(bind_data.blocks);
 
-	// Output single row
 	CompatSetOutputCardinality(output, 1);
 	output.data[0].SetValue(0, api_version);
 	output.data[1].SetValue(0, Value(bind_data.meta_json));
@@ -1502,7 +1168,6 @@ static void PandocAstFunction(ClientContext &context, TableFunctionInput &data_p
 	bind_data.done = true;
 }
 
-// write_pandoc_ast - writes duck_blocks to a file as Pandoc JSON AST
 static void WritePandocAstFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &path_vec = args.data[0];
 	auto &blocks_vec = args.data[1];
@@ -1533,7 +1198,6 @@ static void WritePandocAstFun(DataChunk &args, ExpressionState &state, Vector &r
 		}
 
 		auto &blocks_list = ListValue::GetChildren(blocks_val);
-		// Use BuildBlocksJson helper which handles nested lists properly
 		string blocks_json = BuildBlocksJson(blocks_list);
 
 		file << "{\"pandoc-api-version\":" << api_version << ",\"meta\":{},\"blocks\":" << blocks_json << "}";
