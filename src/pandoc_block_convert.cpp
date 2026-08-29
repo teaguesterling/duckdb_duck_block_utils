@@ -1050,6 +1050,53 @@ static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Ve
 	}
 }
 
+void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &blocks_vec = args.data[0];
+	auto count = args.size();
+
+	for (idx_t i = 0; i < count; i++) {
+		auto blocks_val = blocks_vec.GetValue(i);
+
+		if (blocks_val.IsNull()) {
+			result.SetValue(i, Value("[]"));
+			continue;
+		}
+
+		auto &blocks_list = ListValue::GetChildren(blocks_val);
+		result.SetValue(i, Value(BuildBlocksJson(blocks_list)));
+	}
+}
+
+void PandocBlockConvert::ReadPandocAstFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &path_vec = args.data[0];
+	auto count = args.size();
+
+	for (idx_t i = 0; i < count; i++) {
+		auto path_val = path_vec.GetValue(i);
+
+		if (path_val.IsNull()) {
+			result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), vector<Value>()));
+			continue;
+		}
+
+		string file_path = path_val.GetValue<string>();
+
+		std::ifstream file(file_path);
+		if (!file.is_open()) {
+			throw IOException("Could not open file: " + file_path);
+		}
+
+		std::stringstream buffer;
+		buffer << file.rdbuf();
+		string json = buffer.str();
+
+		vector<Value> blocks;
+		ConvertPandocAstToBlocks(json, blocks);
+
+		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(blocks)));
+	}
+}
+
 struct PandocAstBindData : public TableFunctionData {
 	vector<Value> blocks;
 	string meta_json = "{}";
