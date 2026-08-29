@@ -16,9 +16,9 @@ public:
 
 	// Convert a list of duck_block inline Values to Pandoc yyjson_mut_val array
 	static duckdb_yyjson::yyjson_mut_val *ConvertDbInlinesToPandocVal(duckdb_yyjson::yyjson_mut_doc *doc,
-	                                                                 const vector<Value> &inlines, idx_t start_idx,
-	                                                                 int32_t target_level, idx_t &end_idx,
-	                                                                 idx_t depth);
+	                                                                  const vector<Value> &inlines, idx_t start_idx,
+	                                                                  int32_t target_level, idx_t &end_idx,
+	                                                                  idx_t depth);
 
 	// Convert nested Pandoc inline JSON to flat duck_block inline Values,
 	// appending them to `result` (issue #21). `base_level` is the level given to

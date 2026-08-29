@@ -299,8 +299,8 @@ void PandocInlineConvert::PandocInlinesToDbInlinesFun(DataChunk &args, Expressio
 }
 
 yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc *doc, const vector<Value> &inlines,
-                                                                idx_t start_idx, int32_t target_level,
-                                                                idx_t &end_idx, idx_t depth) {
+                                                                 idx_t start_idx, int32_t target_level, idx_t &end_idx,
+                                                                 idx_t depth) {
 	CheckPandocDepth(depth);
 	yyjson_mut_val *arr = yyjson_mut_arr(doc);
 	idx_t i = start_idx;
@@ -357,8 +357,7 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 			}
 
 			idx_t nested_end = i + 1;
-			yyjson_mut_val *nested =
-			    ConvertDbInlinesToPandocVal(doc, inlines, i + 1, level + 1, nested_end, depth + 1);
+			yyjson_mut_val *nested = ConvertDbInlinesToPandocVal(doc, inlines, i + 1, level + 1, nested_end, depth + 1);
 			if (yyjson_mut_arr_size(nested) == 0 && !content.empty()) {
 				nested = yyjson_mut_arr(doc);
 				yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
@@ -412,8 +411,7 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 				}
 			}
 			idx_t nested_end = i + 1;
-			yyjson_mut_val *nested =
-			    ConvertDbInlinesToPandocVal(doc, inlines, i + 1, level + 1, nested_end, depth + 1);
+			yyjson_mut_val *nested = ConvertDbInlinesToPandocVal(doc, inlines, i + 1, level + 1, nested_end, depth + 1);
 			if (yyjson_mut_arr_size(nested) == 0 && !content.empty()) {
 				nested = yyjson_mut_arr(doc);
 				yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
@@ -514,8 +512,7 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 				}
 			}
 			idx_t nested_end = i + 1;
-			yyjson_mut_val *nested =
-			    ConvertDbInlinesToPandocVal(doc, inlines, i + 1, level + 1, nested_end, depth + 1);
+			yyjson_mut_val *nested = ConvertDbInlinesToPandocVal(doc, inlines, i + 1, level + 1, nested_end, depth + 1);
 			yyjson_mut_val *obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, obj, "t", "Quoted");
 			yyjson_mut_val *c_arr = yyjson_mut_arr(doc);
@@ -528,8 +525,7 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 			i = nested_end - 1;
 		} else if (inline_type == BlockTypes::INLINE_SPAN) {
 			idx_t nested_end = i + 1;
-			yyjson_mut_val *nested =
-			    ConvertDbInlinesToPandocVal(doc, inlines, i + 1, level + 1, nested_end, depth + 1);
+			yyjson_mut_val *nested = ConvertDbInlinesToPandocVal(doc, inlines, i + 1, level + 1, nested_end, depth + 1);
 			yyjson_mut_val *obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, obj, "t", "Span");
 			yyjson_mut_val *c_arr = yyjson_mut_arr(doc);

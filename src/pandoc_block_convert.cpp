@@ -477,13 +477,13 @@ static yyjson_mut_val *CreatePandocAttrVal(yyjson_mut_doc *doc, const Value &ele
 	return attr_arr;
 }
 
-static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list,
-                                              idx_t &start_idx, int32_t list_level, idx_t depth);
-static yyjson_mut_val *ConvertDivToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list,
-                                             idx_t &start_idx, int32_t div_level, idx_t depth);
+static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list, idx_t &start_idx,
+                                              int32_t list_level, idx_t depth);
+static yyjson_mut_val *ConvertDivToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list, idx_t &start_idx,
+                                             int32_t div_level, idx_t depth);
 
-static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list,
-                                              idx_t &start_idx, int32_t list_level, idx_t depth) {
+static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list, idx_t &start_idx,
+                                              int32_t list_level, idx_t depth) {
 	CheckPandocDepth(depth);
 	auto &list_block = blocks_list[start_idx];
 	auto list_type = GetElementAttribute(list_block, "list_type");
@@ -602,8 +602,8 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 	return root_obj;
 }
 
-static yyjson_mut_val *ConvertDivToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list,
-                                             idx_t &start_idx, int32_t div_level, idx_t depth) {
+static yyjson_mut_val *ConvertDivToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list, idx_t &start_idx,
+                                             int32_t div_level, idx_t depth) {
 	CheckPandocDepth(depth);
 	auto &div_block = blocks_list[start_idx];
 
