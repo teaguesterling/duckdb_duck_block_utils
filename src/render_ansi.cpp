@@ -1210,15 +1210,15 @@ void RenderAnsiFunctions::Register(ExtensionLoader &loader) {
 	loader.RegisterFunction(render_theme);
 
 	// db_blocks_render_ansi(blocks, width, theme) -> VARCHAR
-	auto render_width_theme = ScalarFunction("db_blocks_render_ansi",
-	                                         {duck_block_list_type, LogicalType::INTEGER, LogicalType::VARCHAR},
-	                                         LogicalType::VARCHAR, RenderAnsiFun);
+	auto render_width_theme =
+	    ScalarFunction("db_blocks_render_ansi", {duck_block_list_type, LogicalType::INTEGER, LogicalType::VARCHAR},
+	                   LogicalType::VARCHAR, RenderAnsiFun);
 	loader.RegisterFunction(render_width_theme);
 
 	// db_blocks_render_ansi(blocks, theme, width) -> VARCHAR
-	auto render_theme_width = ScalarFunction("db_blocks_render_ansi",
-	                                         {duck_block_list_type, LogicalType::VARCHAR, LogicalType::INTEGER},
-	                                         LogicalType::VARCHAR, RenderAnsiFun);
+	auto render_theme_width =
+	    ScalarFunction("db_blocks_render_ansi", {duck_block_list_type, LogicalType::VARCHAR, LogicalType::INTEGER},
+	                   LogicalType::VARCHAR, RenderAnsiFun);
 	loader.RegisterFunction(render_theme_width);
 
 	// db_terminal_width() -> INTEGER
