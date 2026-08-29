@@ -6,6 +6,8 @@ require duck_block_utils
 
 require parquet
 
+require json
+
 # Strip SGR escapes helper used throughout: regexp_replace(l, chr(27)||'\[[0-9;]*m', '', 'g')
 
 # test-local generic block constructor
@@ -219,3 +221,54 @@ query I
 SELECT db_blocks_render_ansi([tb('metadata', 'title: x', MAP {}::MAP(VARCHAR, VARCHAR))], 60) = '';
 ----
 true
+
+# ============================================================================
+# Theme Palettes: Dark vs Light
+# ============================================================================
+
+# Dark theme uses vibrant 256 colors (H1: 219 pink, code: 203 salmon, link: 75 blue)
+query I
+SELECT r LIKE '%' || chr(27) || '[1;38;5;219m%'
+   AND r LIKE '%' || chr(27) || '[38;5;203mcode' || chr(27) || '[39m%'
+   AND r LIKE '%' || chr(27) || '[4;38;5;75m%'
+FROM (SELECT db_blocks_render_ansi(
+    db_heading(1, 'Title') || db_paragraph([db_inline_code('code'), db_link('https://example.com', 'link')]),
+    'dark') AS r);
+----
+true
+
+# Light theme uses deep high-contrast colors (H1: 125 ruby, code: 160 crimson, link: 27 royal blue)
+query I
+SELECT r LIKE '%' || chr(27) || '[1;38;5;125m%'
+   AND r LIKE '%' || chr(27) || '[38;5;160mcode' || chr(27) || '[39m%'
+   AND r LIKE '%' || chr(27) || '[4;38;5;27m%'
+FROM (SELECT db_blocks_render_ansi(
+    db_heading(1, 'Title') || db_paragraph([db_inline_code('code'), db_link('https://example.com', 'link')]),
+    'light') AS r);
+----
+true
+
+# Overload with width and theme: db_blocks_render_ansi(blocks, width, theme)
+query I
+SELECT r LIKE '%' || chr(27) || '[1;38;5;125m%'
+FROM (SELECT db_blocks_render_ansi(db_heading(1, 'Title'), 60, 'light') AS r);
+----
+true
+
+# Overload with theme and width: db_blocks_render_ansi(blocks, theme, width)
+query I
+SELECT r LIKE '%' || chr(27) || '[1;38;5;125m%'
+FROM (SELECT db_blocks_render_ansi(db_heading(1, 'Title'), 'light', 60) AS r);
+----
+true
+
+# Macro db_render_blocks with theme
+statement ok
+PRAGMA duck_block_render;
+
+query I
+SELECT r LIKE '%' || chr(27) || '[1;38;5;125m%'
+FROM (SELECT db_render_blocks(db_heading(1, 'Title'), theme := 'light') AS r);
+----
+true
+

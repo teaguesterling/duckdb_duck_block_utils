@@ -71,12 +71,39 @@ SELECT db_render_blocks(db_page('Sales Report', [
 does the same for a JSON array you already have, returning a one-element
 `LIST(duck_block)` that composes with the other builders.
 
+## Theme Palettes (Dark and Light)
+
+The renderer supports two color palettes optimized for terminal backgrounds:
+
+- **Dark Theme (Default)**: Vibrant, saturated 256-color palette (H1: Pink 219, H2: Lavender 141, H3: Sky Blue 75, Code: Salmon 203, Link: Sky Blue 75, Quote: Mint 115).
+- **Light Theme**: High-contrast, deep jewel tones (H1: Ruby Red 125, H2: Deep Purple 55, H3: Navy Blue 25, Code: Crimson 160, Link: Royal Blue 27, Quote: Forest Green 28).
+
+### Setting the Theme
+
+1. **SQL Argument**:
+   ```sql
+   -- Explicit theme in C++ renderer:
+   SELECT db_blocks_render_ansi(blocks, 'light');
+   SELECT db_blocks_render_ansi(blocks, 80, 'light');
+
+   -- Explicit theme in macro:
+   SELECT db_render_blocks(blocks, theme := 'light');
+   SELECT db_render_blocks(blocks, 80, 'light');
+   ```
+
+2. **Environment Auto-Detection**:
+   When set to `'auto'` (the default), the renderer resolves the theme in order:
+   - `$DUCK_BLOCK_THEME` (`light` / `dark`)
+   - `$DUCKEYE_THEME` (`light` / `dark`)
+   - `$COLORFGBG` (detects light background when background color index is 7 or 15)
+   - Fallback: `dark`
+
 ## Macro reference
 
 ### C++ renderer (width-aware)
 
-`db_blocks_render_ansi(blocks[, width])` is a native scalar function that adds
-what the pure-SQL macros cannot: word wrapping at a display width. It measures
+`db_blocks_render_ansi(blocks[, width][, theme])` is a native scalar function that adds
+what the pure-SQL macros cannot: word wrapping at a display width and ANSI color palettes. It measures
 columns with utf8proc (SGR escapes are zero width, CJK/emoji are two), re-opens
 active styles after each line break and continuation prefix (list indents,
 quote bars), hard-breaks unbreakable words, and wraps table cells to fit the
@@ -86,16 +113,16 @@ thing even when stdout is piped to `less -R`.
 
 `db_terminal_width()` exposes the detected width directly.
 
-`db_render_blocks(blocks)` (from the pragma) delegates to this renderer, so
-macro users get wrapping for free.
+`db_render_blocks(blocks, width := 0, theme := 'auto')` (from the pragma) delegates to this renderer, so
+macro users get wrapping and theme palettes for free.
 
 ## Macro reference
 
 | Macro | Description |
 |-------|-------------|
-| `db_blocks_render_ansi(blocks[, width])` | C++ renderer: `LIST(duck_block)` → wrapped ANSI document |
+| `db_blocks_render_ansi(blocks[, width][, theme])` | C++ renderer: `LIST(duck_block)` → wrapped ANSI document with dark/light themes |
 | `db_terminal_width()` | Detected terminal width (`/dev/tty`, `$COLUMNS`, default 80) |
-| `db_render_blocks(blocks)` | Render `LIST(duck_block)` to a full ANSI document; each block's structured `kind='inline'` children are styled by `element_type` (bold/italic/code/link). Delegates to `db_blocks_render_ansi` |
+| `db_render_blocks(blocks, width := 0, theme := 'auto')` | Render `LIST(duck_block)` to a full ANSI document with word wrapping and theme support; each block's structured `kind='inline'` children are styled by `element_type` (bold/italic/code/link). Delegates to `db_blocks_render_ansi` |
 | `db_render_block(element_type, content, attributes)` | Render a single block element |
 | `db_render_query(sql)` | Table macro: run `sql` via `query()` and render the result as an ANSI table (column `rendered`) |
 | `db_json_to_table_block(json)` | JSON array of objects → `table` duck_block (headers from the first object's keys) |
@@ -127,8 +154,6 @@ inlines (`read_markdown_blocks` / `parse_markdown_to_duck_blocks`).
 - **Code blocks are not wrapped** (wrapping would corrupt meaning); long code
   lines overflow the width.
 - **No syntax highlighting** inside code blocks.
-- **No theming yet** — the palette is fixed (glamour-style JSON themes are a
-  natural follow-up).
 - The `db_render_*` JSON macros (table/list/inline helpers) still measure with
   `length()` (codepoints); the C++ renderer is the width-correct path.
 - **Macro arguments cannot contain subqueries** (`db_json_to_table_block`,

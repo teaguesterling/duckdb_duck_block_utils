@@ -326,7 +326,7 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 		if (inline_type == BlockTypes::INLINE_TEXT) {
 			yyjson_mut_val *obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, obj, "t", "Str");
-			yyjson_mut_obj_add_strn(doc, obj, "c", content.data(), content.size());
+			yyjson_mut_obj_add_strncpy(doc, obj, "c", content.data(), content.size());
 			yyjson_mut_arr_add_val(arr, obj);
 		} else if (inline_type == BlockTypes::INLINE_SPACE) {
 			yyjson_mut_val *obj = yyjson_mut_obj(doc);
@@ -362,7 +362,7 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 				nested = yyjson_mut_arr(doc);
 				yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
 				yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
-				yyjson_mut_obj_add_strn(doc, str_obj, "c", content.data(), content.size());
+				yyjson_mut_obj_add_strncpy(doc, str_obj, "c", content.data(), content.size());
 				yyjson_mut_arr_add_val(nested, str_obj);
 			}
 			yyjson_mut_val *obj = yyjson_mut_obj(doc);
@@ -379,7 +379,7 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 			yyjson_mut_arr_add_val(attr_arr, yyjson_mut_arr(doc));
 			yyjson_mut_arr_add_val(attr_arr, yyjson_mut_arr(doc));
 			yyjson_mut_arr_add_val(c_arr, attr_arr);
-			yyjson_mut_arr_add_strn(doc, c_arr, content.data(), content.size());
+			yyjson_mut_arr_add_strncpy(doc, c_arr, content.data(), content.size());
 			yyjson_mut_obj_add_val(doc, obj, "c", c_arr);
 			yyjson_mut_arr_add_val(arr, obj);
 		} else if (inline_type == BlockTypes::INLINE_MATH) {
@@ -389,7 +389,7 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 			yyjson_mut_val *m_type = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, m_type, "t", "InlineMath");
 			yyjson_mut_arr_add_val(c_arr, m_type);
-			yyjson_mut_arr_add_strn(doc, c_arr, content.data(), content.size());
+			yyjson_mut_arr_add_strncpy(doc, c_arr, content.data(), content.size());
 			yyjson_mut_obj_add_val(doc, obj, "c", c_arr);
 			yyjson_mut_arr_add_val(arr, obj);
 		} else if (inline_type == BlockTypes::INLINE_LINK) {
@@ -416,7 +416,7 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 				nested = yyjson_mut_arr(doc);
 				yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
 				yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
-				yyjson_mut_obj_add_strn(doc, str_obj, "c", content.data(), content.size());
+				yyjson_mut_obj_add_strncpy(doc, str_obj, "c", content.data(), content.size());
 				yyjson_mut_arr_add_val(nested, str_obj);
 			}
 			yyjson_mut_val *obj = yyjson_mut_obj(doc);
@@ -429,7 +429,7 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 			yyjson_mut_arr_add_val(c_arr, attr_arr);
 			yyjson_mut_arr_add_val(c_arr, nested);
 			yyjson_mut_val *target_arr = yyjson_mut_arr(doc);
-			yyjson_mut_arr_add_strn(doc, target_arr, href.data(), href.size());
+			yyjson_mut_arr_add_strncpy(doc, target_arr, href.data(), href.size());
 			yyjson_mut_arr_add_str(doc, target_arr, "");
 			yyjson_mut_arr_add_val(c_arr, target_arr);
 			yyjson_mut_obj_add_val(doc, obj, "c", c_arr);
@@ -463,7 +463,7 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 			yyjson_mut_arr_add_val(c_arr, attr_arr);
 			yyjson_mut_arr_add_val(c_arr, yyjson_mut_arr(doc));
 			yyjson_mut_val *target_arr = yyjson_mut_arr(doc);
-			yyjson_mut_arr_add_strn(doc, target_arr, src.data(), src.size());
+			yyjson_mut_arr_add_strncpy(doc, target_arr, src.data(), src.size());
 			yyjson_mut_arr_add_str(doc, target_arr, "");
 			yyjson_mut_arr_add_val(c_arr, target_arr);
 			yyjson_mut_obj_add_val(doc, obj, "c", c_arr);
@@ -489,8 +489,8 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 			yyjson_mut_val *obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, obj, "t", "RawInline");
 			yyjson_mut_val *c_arr = yyjson_mut_arr(doc);
-			yyjson_mut_arr_add_strn(doc, c_arr, format.data(), format.size());
-			yyjson_mut_arr_add_strn(doc, c_arr, content.data(), content.size());
+			yyjson_mut_arr_add_strncpy(doc, c_arr, format.data(), format.size());
+			yyjson_mut_arr_add_strncpy(doc, c_arr, content.data(), content.size());
 			yyjson_mut_obj_add_val(doc, obj, "c", c_arr);
 			yyjson_mut_arr_add_val(arr, obj);
 		} else if (inline_type == BlockTypes::INLINE_QUOTED) {
@@ -542,7 +542,7 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 			yyjson_mut_val *obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, obj, "t", "Str");
 			string placeholder = "[" + inline_type + "]";
-			yyjson_mut_obj_add_strn(doc, obj, "c", placeholder.data(), placeholder.size());
+			yyjson_mut_obj_add_strncpy(doc, obj, "c", placeholder.data(), placeholder.size());
 			yyjson_mut_arr_add_val(arr, obj);
 		}
 		i++;

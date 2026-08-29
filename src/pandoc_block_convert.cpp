@@ -433,7 +433,7 @@ static yyjson_mut_val *CreatePandocAttrVal(yyjson_mut_doc *doc, const Value &ele
 	}
 
 	yyjson_mut_val *attr_arr = yyjson_mut_arr(doc);
-	yyjson_mut_arr_add_strn(doc, attr_arr, id.data(), id.size());
+	yyjson_mut_arr_add_strncpy(doc, attr_arr, id.data(), id.size());
 
 	yyjson_mut_val *classes_arr = yyjson_mut_arr(doc);
 	size_t start = 0;
@@ -442,7 +442,7 @@ static yyjson_mut_val *CreatePandocAttrVal(yyjson_mut_doc *doc, const Value &ele
 		size_t len = (space == string::npos) ? string::npos : space - start;
 		string cls = classes.substr(start, len);
 		if (!cls.empty()) {
-			yyjson_mut_arr_add_strn(doc, classes_arr, cls.data(), cls.size());
+			yyjson_mut_arr_add_strncpy(doc, classes_arr, cls.data(), cls.size());
 		}
 		if (space == string::npos) {
 			break;
@@ -470,8 +470,8 @@ static yyjson_mut_val *CreatePandocAttrVal(yyjson_mut_doc *doc, const Value &ele
 			}
 			string val = kv[1].GetValue<string>();
 			yyjson_mut_val *pair_arr = yyjson_mut_arr(doc);
-			yyjson_mut_arr_add_strn(doc, pair_arr, key.data(), key.size());
-			yyjson_mut_arr_add_strn(doc, pair_arr, val.data(), val.size());
+			yyjson_mut_arr_add_strncpy(doc, pair_arr, key.data(), key.size());
+			yyjson_mut_arr_add_strncpy(doc, pair_arr, val.data(), val.size());
 			yyjson_mut_arr_add_val(kvs_arr, pair_arr);
 		}
 	}
@@ -587,7 +587,7 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 			yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
 			yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
-			yyjson_mut_obj_add_strn(doc, str_obj, "c", item.content.data(), item.content.size());
+			yyjson_mut_obj_add_strncpy(doc, str_obj, "c", item.content.data(), item.content.size());
 			yyjson_mut_arr_add_val(inl_arr, str_obj);
 			yyjson_mut_obj_add_val(doc, plain_obj, "c", inl_arr);
 		} else {
@@ -670,7 +670,7 @@ static yyjson_mut_val *ConvertDivToPandocVal(yyjson_mut_doc *doc, const vector<V
 					yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
 					yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
 					yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
-					yyjson_mut_obj_add_strn(doc, str_obj, "c", content.data(), content.size());
+					yyjson_mut_obj_add_strncpy(doc, str_obj, "c", content.data(), content.size());
 					yyjson_mut_arr_add_val(inl_arr, str_obj);
 					yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
 				}
@@ -693,7 +693,7 @@ static yyjson_mut_val *ConvertDivToPandocVal(yyjson_mut_doc *doc, const vector<V
 					yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
 					yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
 					yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
-					yyjson_mut_obj_add_strn(doc, str_obj, "c", content.data(), content.size());
+					yyjson_mut_obj_add_strncpy(doc, str_obj, "c", content.data(), content.size());
 					yyjson_mut_arr_add_val(inl_arr, str_obj);
 					yyjson_mut_arr_add_val(hc_arr, inl_arr);
 				}
@@ -706,7 +706,7 @@ static yyjson_mut_val *ConvertDivToPandocVal(yyjson_mut_doc *doc, const vector<V
 				yyjson_mut_obj_add_str(doc, code_obj, "t", "CodeBlock");
 				yyjson_mut_val *cc_arr = yyjson_mut_arr(doc);
 				yyjson_mut_arr_add_val(cc_arr, CreatePandocAttrVal(doc, child, language));
-				yyjson_mut_arr_add_strn(doc, cc_arr, content.data(), content.size());
+				yyjson_mut_arr_add_strncpy(doc, cc_arr, content.data(), content.size());
 				yyjson_mut_obj_add_val(doc, code_obj, "c", cc_arr);
 				yyjson_mut_arr_add_val(child_blocks_arr, code_obj);
 				j++;
@@ -740,7 +740,7 @@ static yyjson_mut_val *ConvertDivToPandocVal(yyjson_mut_doc *doc, const vector<V
 					yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
 					yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
 					yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
-					yyjson_mut_obj_add_strn(doc, str_obj, "c", content.data(), content.size());
+					yyjson_mut_obj_add_strncpy(doc, str_obj, "c", content.data(), content.size());
 					yyjson_mut_arr_add_val(inl_arr, str_obj);
 					yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
 					yyjson_mut_arr_add_val(bqc_arr, para_obj);
@@ -836,7 +836,7 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 				yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
 				yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
 				yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
-				yyjson_mut_obj_add_strn(doc, str_obj, "c", content.data(), content.size());
+				yyjson_mut_obj_add_strncpy(doc, str_obj, "c", content.data(), content.size());
 				yyjson_mut_arr_add_val(inl_arr, str_obj);
 				yyjson_mut_arr_add_val(hc_arr, inl_arr);
 			}
@@ -855,7 +855,7 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 				yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
 				yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
 				yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
-				yyjson_mut_obj_add_strn(doc, str_obj, "c", content.data(), content.size());
+				yyjson_mut_obj_add_strncpy(doc, str_obj, "c", content.data(), content.size());
 				yyjson_mut_arr_add_val(inl_arr, str_obj);
 				yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
 			}
@@ -867,7 +867,7 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			yyjson_mut_obj_add_str(doc, code_obj, "t", "CodeBlock");
 			yyjson_mut_val *cc_arr = yyjson_mut_arr(doc);
 			yyjson_mut_arr_add_val(cc_arr, CreatePandocAttrVal(doc, block, language));
-			yyjson_mut_arr_add_strn(doc, cc_arr, content.data(), content.size());
+			yyjson_mut_arr_add_strncpy(doc, cc_arr, content.data(), content.size());
 			yyjson_mut_obj_add_val(doc, code_obj, "c", cc_arr);
 			yyjson_mut_arr_add_val(blocks_arr, code_obj);
 			block_idx++;
@@ -901,7 +901,7 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 				yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
 				yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
 				yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
-				yyjson_mut_obj_add_strn(doc, str_obj, "c", content.data(), content.size());
+				yyjson_mut_obj_add_strncpy(doc, str_obj, "c", content.data(), content.size());
 				yyjson_mut_arr_add_val(inl_arr, str_obj);
 				yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
 			} else {
@@ -924,8 +924,8 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			yyjson_mut_val *raw_obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, raw_obj, "t", "RawBlock");
 			yyjson_mut_val *rc_arr = yyjson_mut_arr(doc);
-			yyjson_mut_arr_add_strn(doc, rc_arr, format.data(), format.size());
-			yyjson_mut_arr_add_strn(doc, rc_arr, content.data(), content.size());
+			yyjson_mut_arr_add_strncpy(doc, rc_arr, format.data(), format.size());
+			yyjson_mut_arr_add_strncpy(doc, rc_arr, content.data(), content.size());
 			yyjson_mut_obj_add_val(doc, raw_obj, "c", rc_arr);
 			yyjson_mut_arr_add_val(blocks_arr, raw_obj);
 			block_idx++;
@@ -975,13 +975,13 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			yyjson_mut_val *alt_arr = yyjson_mut_arr(doc);
 			yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
-			yyjson_mut_obj_add_strn(doc, str_obj, "c", alt.data(), alt.size());
+			yyjson_mut_obj_add_strncpy(doc, str_obj, "c", alt.data(), alt.size());
 			yyjson_mut_arr_add_val(alt_arr, str_obj);
 			yyjson_mut_arr_add_val(ic_arr, alt_arr);
 
 			yyjson_mut_val *tgt_arr = yyjson_mut_arr(doc);
-			yyjson_mut_arr_add_strn(doc, tgt_arr, src.data(), src.size());
-			yyjson_mut_arr_add_strn(doc, tgt_arr, title.data(), title.size());
+			yyjson_mut_arr_add_strncpy(doc, tgt_arr, src.data(), src.size());
+			yyjson_mut_arr_add_strncpy(doc, tgt_arr, title.data(), title.size());
 			yyjson_mut_arr_add_val(ic_arr, tgt_arr);
 
 			yyjson_mut_obj_add_val(doc, img_obj, "c", ic_arr);
@@ -992,12 +992,19 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 		} else {
 			yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, para_obj, "t", "Para");
-			yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
-			yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
-			yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
-			yyjson_mut_obj_add_strn(doc, str_obj, "c", content.data(), content.size());
-			yyjson_mut_arr_add_val(inl_arr, str_obj);
-			yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
+			if (!inline_children.empty()) {
+				idx_t inl_end = 0;
+				yyjson_mut_val *inl_arr =
+				    PandocInlineConvert::ConvertDbInlinesToPandocVal(doc, inline_children, 0, 2, inl_end, 1);
+				yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
+			} else {
+				yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
+				yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+				yyjson_mut_obj_add_strncpy(doc, str_obj, "c", content.data(), content.size());
+				yyjson_mut_arr_add_val(inl_arr, str_obj);
+				yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
+			}
 			yyjson_mut_arr_add_val(blocks_arr, para_obj);
 			block_idx++;
 		}
@@ -1067,6 +1074,39 @@ void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, Expression
 		auto &blocks_list = ListValue::GetChildren(blocks_val);
 		result.SetValue(i, Value(BuildBlocksJson(blocks_list)));
 	}
+}
+
+static yyjson_mut_val *MapToMetaObj(yyjson_mut_doc *doc, const Value &meta_map) {
+	yyjson_mut_val *meta_obj = yyjson_mut_obj(doc);
+	if (meta_map.IsNull()) {
+		return meta_obj;
+	}
+
+	auto &map_entries = MapValue::GetChildren(meta_map);
+	for (auto &entry : map_entries) {
+		if (entry.IsNull()) {
+			continue;
+		}
+		auto &kv = StructValue::GetChildren(entry);
+		if (kv.size() < 2 || kv[0].IsNull() || kv[1].IsNull()) {
+			continue;
+		}
+
+		string key = kv[0].GetValue<string>();
+		string value = kv[1].GetValue<string>();
+
+		yyjson_mut_val *meta_val_obj = yyjson_mut_obj(doc);
+		yyjson_mut_obj_add_str(doc, meta_val_obj, "t", "MetaInlines");
+		yyjson_mut_val *c_arr = yyjson_mut_arr(doc);
+		yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+		yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+		yyjson_mut_obj_add_strncpy(doc, str_obj, "c", value.data(), value.size());
+		yyjson_mut_arr_add_val(c_arr, str_obj);
+		yyjson_mut_obj_add_val(doc, meta_val_obj, "c", c_arr);
+
+		yyjson_mut_obj_add_val(doc, meta_obj, key.c_str(), meta_val_obj);
+	}
+	return meta_obj;
 }
 
 void PandocBlockConvert::ReadPandocAstFun(DataChunk &args, ExpressionState &state, Vector &result) {

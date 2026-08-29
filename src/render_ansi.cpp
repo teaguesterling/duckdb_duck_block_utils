@@ -22,18 +22,83 @@ constexpr idx_t MIN_TABLE_COL = 5;
 const char *const ESC = "\x1b[";
 const char *const RESET = "\x1b[0m";
 
-// Theme (matches the duck_block_render macro palette)
-const char *const STYLE_H1 = "1;38;5;219";
-const char *const STYLE_H2 = "1;38;5;141";
-const char *const STYLE_H3 = "1;38;5;75";
-const char *const STYLE_CODE_INLINE = "38;5;203";
-const char *const STYLE_CODE_TEXT = "38;5;252";
-const char *const STYLE_CODE_LANG = "38;5;222";
-const char *const STYLE_LINK = "4;38;5;75";
-const char *const STYLE_BULLET = "38;5;212";
-const char *const STYLE_QUOTE = "3;38;5;115";
-const char *const STYLE_DIM = "2";
-const char *const STYLE_BOLD_HDR = "1";
+// Theme palettes (ANSI 256-color codes for dark and light backgrounds)
+struct ThemePalette {
+	const char *h1;
+	const char *h2;
+	const char *h3;
+	const char *code_inline;
+	const char *code_text;
+	const char *code_lang;
+	const char *link;
+	const char *bullet;
+	const char *quote;
+	const char *dim;
+	const char *bold_hdr;
+};
+
+// Dark theme: vibrant high contrast for dark terminal backgrounds
+const ThemePalette THEME_DARK = {
+    "1;38;5;219", // H1: bubblegum pink bold
+    "1;38;5;141", // H2: lavender bold
+    "1;38;5;75",  // H3: sky blue bold
+    "38;5;203",   // code_inline: salmon red
+    "38;5;252",   // code_text: light grey
+    "38;5;222",   // code_lang: pale gold
+    "4;38;5;75",  // link: underlined sky blue
+    "38;5;212",   // bullet: hot pink
+    "3;38;5;115", // quote: mint italic
+    "2",          // dim
+    "1"           // bold_hdr
+};
+
+// Light theme: deeper, saturated high contrast for white/light terminal backgrounds
+const ThemePalette THEME_LIGHT = {
+    "1;38;5;125", // H1: deep ruby bold
+    "1;38;5;55",  // H2: deep purple bold
+    "1;38;5;25",  // H3: deep navy bold
+    "38;5;160",   // code_inline: crimson
+    "38;5;236",   // code_text: dark charcoal
+    "38;5;130",   // code_lang: amber/sienna
+    "4;38;5;27",  // link: underlined royal blue
+    "38;5;161",   // bullet: deep magenta
+    "3;38;5;28",  // quote: forest green italic
+    "2",          // dim
+    "1"           // bold_hdr
+};
+
+static const ThemePalette &ResolveTheme(const string &theme_name = "") {
+	string name = theme_name;
+	if (name.empty() || name == "auto") {
+		const char *env_theme = std::getenv("DUCK_BLOCK_THEME");
+		if (!env_theme) {
+			env_theme = std::getenv("DUCKEYE_THEME");
+		}
+		if (env_theme) {
+			name = env_theme;
+		} else {
+			const char *colorfgbg = std::getenv("COLORFGBG");
+			if (colorfgbg) {
+				string cfg(colorfgbg);
+				auto pos = cfg.rfind(';');
+				if (pos != string::npos) {
+					int bg = std::atoi(cfg.substr(pos + 1).c_str());
+					if (bg == 7 || bg == 15) {
+						name = "light";
+					}
+				}
+			}
+		}
+	}
+	string lower;
+	for (char c : name) {
+		lower += (char)std::tolower(c);
+	}
+	if (lower == "light") {
+		return THEME_LIGHT;
+	}
+	return THEME_DARK;
+}
 
 static string Sgr(const string &params) {
 	return string(ESC) + params + "m";
@@ -658,7 +723,7 @@ static string GetAttribute(const Value &element, const string &key) {
 // across the run. This extension is format-agnostic: it renders the structured
 // duck_block model, not any one input format's syntax.
 // ---------------------------------------------------------------------------
-static void InlineStyleCodes(const string &element_type, string &open, string &close) {
+static void InlineStyleCodes(const string &element_type, const ThemePalette &theme, string &open, string &close) {
 	if (element_type == BlockTypes::INLINE_BOLD) {
 		open = Sgr("1");
 		close = Sgr("22");
@@ -672,7 +737,7 @@ static void InlineStyleCodes(const string &element_type, string &open, string &c
 		open = Sgr("9");
 		close = Sgr("29");
 	} else if (element_type == BlockTypes::INLINE_CODE || element_type == BlockTypes::INLINE_MATH) {
-		open = Sgr(STYLE_CODE_INLINE);
+		open = Sgr(theme.code_inline);
 		close = Sgr("39");
 	} else {
 		open.clear();
@@ -683,7 +748,7 @@ static void InlineStyleCodes(const string &element_type, string &open, string &c
 // Consume the run of kind='inline' elements starting at `i` (advancing it past
 // them) and return the styled string. Nesting is reconstructed from `level`: a
 // container element has empty content and styles its deeper-level children.
-static string RenderInlineRun(const vector<Value> &list, idx_t &i) {
+static string RenderInlineRun(const vector<Value> &list, idx_t &i, const ThemePalette &theme) {
 	string out;
 	vector<std::pair<int, string>> stack; // (level, deferred close string)
 	while (i < list.size()) {
@@ -705,11 +770,11 @@ static string RenderInlineRun(const vector<Value> &list, idx_t &i) {
 
 		if (etype == BlockTypes::INLINE_LINK) {
 			string href = GetAttribute(el, "href");
-			string suffix = href.empty() ? "" : Sgr(STYLE_DIM) + " (" + href + ")" + RESET;
+			string suffix = href.empty() ? "" : Sgr(theme.dim) + " (" + href + ")" + RESET;
 			if (!content.empty()) {
-				out += Sgr(STYLE_LINK) + content + RESET + suffix;
+				out += Sgr(theme.link) + content + RESET + suffix;
 			} else {
-				out += Sgr(STYLE_LINK);
+				out += Sgr(theme.link);
 				stack.push_back({level, string(RESET) + suffix});
 			}
 			i++;
@@ -717,13 +782,13 @@ static string RenderInlineRun(const vector<Value> &list, idx_t &i) {
 		}
 		if (etype == BlockTypes::INLINE_IMAGE) {
 			string alt = content.empty() ? GetAttribute(el, "alt") : content;
-			out += Sgr(STYLE_DIM) + "[image: " + alt + "]" + RESET;
+			out += Sgr(theme.dim) + "[image: " + alt + "]" + RESET;
 			i++;
 			continue;
 		}
 
 		string open, close;
-		InlineStyleCodes(etype, open, close);
+		InlineStyleCodes(etype, theme, open, close);
 		if (!content.empty()) {
 			out += open + content + close; // leaf
 		} else {
@@ -742,12 +807,13 @@ static string RenderInlineRun(const vector<Value> &list, idx_t &i) {
 // ---------------------------------------------------------------------------
 // Block renderers: each appends fully assembled lines
 // ---------------------------------------------------------------------------
-static void RenderHeading(const string &content, const string &level_attr, size_t width, vector<string> &lines) {
-	string style = STYLE_H3;
+static void RenderHeading(const string &content, const string &level_attr, size_t width, const ThemePalette &theme,
+                          vector<string> &lines) {
+	string style = theme.h3;
 	if (level_attr == "1") {
-		style = STYLE_H1;
+		style = theme.h1;
 	} else if (level_attr == "2" || level_attr.empty()) {
-		style = STYLE_H2;
+		style = theme.h2;
 	}
 	// Whole heading (prefix + text) shares one style; wrap with the bar on
 	// every line.
@@ -768,9 +834,9 @@ static void RenderParagraph(const string &content, size_t width, vector<string> 
 	}
 }
 
-static void RenderCode(const string &content, const string &lang, vector<string> &lines) {
-	string gutter = Sgr(STYLE_DIM) + "┃ " + RESET;
-	lines.push_back(gutter + Sgr(STYLE_CODE_LANG) + lang + RESET);
+static void RenderCode(const string &content, const string &lang, const ThemePalette &theme, vector<string> &lines) {
+	string gutter = Sgr(theme.dim) + "┃ " + RESET;
+	lines.push_back(gutter + Sgr(theme.code_lang) + lang + RESET);
 	string body = content;
 	while (!body.empty() && body.back() == '\n') {
 		body.pop_back();
@@ -780,7 +846,7 @@ static void RenderCode(const string &content, const string &lang, vector<string>
 		size_t nl = body.find('\n', start);
 		string code_line = body.substr(start, nl == string::npos ? string::npos : nl - start);
 		// Code is not word-wrapped (would corrupt meaning); long lines overflow.
-		lines.push_back(gutter + Sgr(STYLE_CODE_TEXT) + code_line + RESET);
+		lines.push_back(gutter + Sgr(theme.code_text) + code_line + RESET);
 		if (nl == string::npos) {
 			break;
 		}
@@ -788,12 +854,13 @@ static void RenderCode(const string &content, const string &lang, vector<string>
 	}
 }
 
-static void RenderListItems(const JVal &items, bool ordered, int depth, size_t width, vector<string> &lines) {
+static void RenderListItems(const JVal &items, bool ordered, int depth, size_t width, const ThemePalette &theme,
+                            vector<string> &lines) {
 	int number = 1;
 	for (auto &item : items.arr) {
 		if (item.type == JVal::Type::ARRAY) {
 			// nested list
-			RenderListItems(item, ordered, depth + 1, width, lines);
+			RenderListItems(item, ordered, depth + 1, width, theme, lines);
 			continue;
 		}
 		string indent((size_t)depth * 2, ' ');
@@ -806,7 +873,7 @@ static void RenderListItems(const JVal &items, bool ordered, int depth, size_t w
 		}
 		// display width of the bullet marker: "  • " = 4 columns
 		WrapPrefix prefix;
-		prefix.first = indent + Sgr(STYLE_BULLET) + marker + RESET;
+		prefix.first = indent + Sgr(theme.bullet) + marker + RESET;
 		prefix.first_width = indent.size() + (ordered ? marker.size() : 4);
 		prefix.cont = indent + string(ordered ? marker.size() : 4, ' ');
 		prefix.cont_width = prefix.first_width;
@@ -825,22 +892,22 @@ static void RenderListItems(const JVal &items, bool ordered, int depth, size_t w
 			auto *sub = item.Find("items");
 			if (sub && sub->type == JVal::Type::ARRAY) {
 				auto *ord = item.Find("ordered");
-				RenderListItems(*sub, ord && ord->str == "true", depth + 1, width, lines);
+				RenderListItems(*sub, ord && ord->str == "true", depth + 1, width, theme, lines);
 			}
 		}
 	}
 }
 
-static void RenderBlockquote(const string &content, size_t width, vector<string> &lines) {
+static void RenderBlockquote(const string &content, size_t width, const ThemePalette &theme, vector<string> &lines) {
 	WrapPrefix prefix;
-	prefix.first = Sgr(STYLE_QUOTE) + "▌ " + RESET;
+	prefix.first = Sgr(theme.quote) + "▌ " + RESET;
 	prefix.cont = prefix.first;
 	prefix.first_width = prefix.cont_width = 2;
 	size_t start = 0;
 	while (start <= content.size()) {
 		size_t nl = content.find('\n', start);
 		string logical = content.substr(start, nl == string::npos ? string::npos : nl - start);
-		string styled = Sgr(STYLE_QUOTE) + logical + RESET;
+		string styled = Sgr(theme.quote) + logical + RESET;
 		for (auto &l : WrapStyled(styled, width, prefix)) {
 			lines.push_back(l);
 		}
@@ -851,7 +918,7 @@ static void RenderBlockquote(const string &content, size_t width, vector<string>
 	}
 }
 
-static void RenderTable(const JVal &table, size_t width, vector<string> &lines) {
+static void RenderTable(const JVal &table, size_t width, const ThemePalette &theme, vector<string> &lines) {
 	auto *headers_v = table.Find("headers");
 	auto *rows_v = table.Find("rows");
 	if (!headers_v || headers_v->type != JVal::Type::ARRAY || headers_v->arr.empty()) {
@@ -863,7 +930,7 @@ static void RenderTable(const JVal &table, size_t width, vector<string> &lines) 
 	vector<string> header_cells;
 	vector<size_t> natural(ncols, 0);
 	for (idx_t c = 0; c < ncols; c++) {
-		header_cells.push_back(Sgr(STYLE_BOLD_HDR) + JValToText(headers_v->arr[c]) + RESET);
+		header_cells.push_back(Sgr(theme.bold_hdr) + JValToText(headers_v->arr[c]) + RESET);
 		natural[c] = DisplayWidth(header_cells[c]);
 	}
 	vector<vector<string>> row_cells;
@@ -923,7 +990,7 @@ static void RenderTable(const JVal &table, size_t width, vector<string> &lines) 
 		}
 	}
 
-	string sep = Sgr(STYLE_DIM) + " │ " + RESET;
+	string sep = Sgr(theme.dim) + " │ " + RESET;
 
 	// Emit one logical row as (possibly) multiple physical lines
 	auto emit_row = [&](const vector<string> &cells) {
@@ -954,7 +1021,7 @@ static void RenderTable(const JVal &table, size_t width, vector<string> &lines) 
 
 	emit_row(header_cells);
 	{
-		string rule = Sgr(STYLE_DIM);
+		string rule = Sgr(theme.dim);
 		for (idx_t c = 0; c < ncols; c++) {
 			if (c > 0) {
 				rule += "─┼─";
@@ -971,9 +1038,9 @@ static void RenderTable(const JVal &table, size_t width, vector<string> &lines) 
 	}
 }
 
-static void RenderHr(size_t width, vector<string> &lines) {
+static void RenderHr(size_t width, const ThemePalette &theme, vector<string> &lines) {
 	size_t n = MinValue<size_t>(width, 64);
-	string rule = Sgr(STYLE_DIM);
+	string rule = Sgr(theme.dim);
 	for (size_t i = 0; i < n; i++) {
 		rule += "─";
 	}
@@ -981,17 +1048,17 @@ static void RenderHr(size_t width, vector<string> &lines) {
 	lines.push_back(rule);
 }
 
-static void RenderImage(const Value &block, const string &content, vector<string> &lines) {
+static void RenderImage(const Value &block, const string &content, const ThemePalette &theme, vector<string> &lines) {
 	string alt = GetAttribute(block, "alt");
 	string src = GetAttribute(block, "src");
 	if (alt.empty()) {
 		alt = content;
 	}
-	lines.push_back(Sgr(STYLE_DIM) + "[image: " + alt + "]" + (src.empty() ? "" : " (" + src + ")") + RESET);
+	lines.push_back(Sgr(theme.dim) + "[image: " + alt + "]" + (src.empty() ? "" : " (" + src + ")") + RESET);
 }
 
 // Render one document; returns empty string for empty/inline-only input
-static string RenderDocument(const Value &blocks_val, size_t width) {
+static string RenderDocument(const Value &blocks_val, size_t width, const ThemePalette &theme) {
 	if (width < MIN_WIDTH) {
 		width = MIN_WIDTH;
 	}
@@ -1019,36 +1086,36 @@ static string RenderDocument(const Value &blocks_val, size_t width) {
 		// non-empty content is the literal simple case; otherwise the styled run
 		// of inline children is the text.
 		idx_t j = bi + 1;
-		string inline_text = RenderInlineRun(blocks_list, j);
+		string inline_text = RenderInlineRun(blocks_list, j, theme);
 		string text = content.empty() ? inline_text : content;
 
 		vector<string> lines;
 		if (element_type == BlockTypes::TYPE_HEADING) {
-			RenderHeading(text, GetAttribute(block, "heading_level"), width, lines);
+			RenderHeading(text, GetAttribute(block, "heading_level"), width, theme, lines);
 		} else if (element_type == BlockTypes::TYPE_PARAGRAPH) {
 			RenderParagraph(text, width, lines);
 		} else if (element_type == BlockTypes::TYPE_CODE) {
-			RenderCode(content, GetAttribute(block, "language"), lines);
+			RenderCode(content, GetAttribute(block, "language"), theme, lines);
 		} else if (element_type == BlockTypes::TYPE_LIST) {
 			JsonParser parser(content);
 			auto items = parser.Parse();
 			if (items.type == JVal::Type::ARRAY) {
-				RenderListItems(items, GetAttribute(block, "ordered") == "true", 0, width, lines);
+				RenderListItems(items, GetAttribute(block, "ordered") == "true", 0, width, theme, lines);
 			}
 		} else if (element_type == BlockTypes::TYPE_TABLE) {
 			JsonParser parser(content);
 			auto table = parser.Parse();
 			if (table.type == JVal::Type::OBJECT) {
-				RenderTable(table, width, lines);
+				RenderTable(table, width, theme, lines);
 			}
 		} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE) {
-			RenderBlockquote(text, width, lines);
+			RenderBlockquote(text, width, theme, lines);
 		} else if (element_type == BlockTypes::TYPE_HR) {
-			RenderHr(width, lines);
+			RenderHr(width, theme, lines);
 		} else if (element_type == BlockTypes::TYPE_METADATA) {
 			// suppressed
 		} else if (element_type == BlockTypes::TYPE_IMAGE) {
-			RenderImage(block, content, lines);
+			RenderImage(block, content, theme, lines);
 		} else if (!text.empty()) {
 			RenderParagraph(text, width, lines);
 		}
@@ -1078,7 +1145,8 @@ static string RenderDocument(const Value &blocks_val, size_t width) {
 static void RenderAnsiFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &blocks_vec = args.data[0];
 	auto count = args.size();
-	bool has_width = args.ColumnCount() > 1;
+	bool has_arg1 = args.ColumnCount() > 1;
+	bool has_arg2 = args.ColumnCount() > 2;
 
 	for (idx_t i = 0; i < count; i++) {
 		auto blocks_val = blocks_vec.GetValue(i);
@@ -1087,14 +1155,31 @@ static void RenderAnsiFun(DataChunk &args, ExpressionState &state, Vector &resul
 			continue;
 		}
 		int64_t width = 0;
-		if (has_width) {
-			auto width_val = args.data[1].GetValue(i);
-			if (!width_val.IsNull()) {
-				width = width_val.GetValue<int64_t>();
+		string theme_name;
+
+		if (has_arg1) {
+			auto arg1_val = args.data[1].GetValue(i);
+			if (!arg1_val.IsNull()) {
+				if (arg1_val.type().id() == LogicalTypeId::VARCHAR) {
+					theme_name = StringValue::Get(arg1_val);
+				} else if (arg1_val.type().IsNumeric()) {
+					width = arg1_val.GetValue<int64_t>();
+				}
+			}
+		}
+		if (has_arg2) {
+			auto arg2_val = args.data[2].GetValue(i);
+			if (!arg2_val.IsNull()) {
+				if (arg2_val.type().id() == LogicalTypeId::VARCHAR) {
+					theme_name = StringValue::Get(arg2_val);
+				} else if (arg2_val.type().IsNumeric()) {
+					width = arg2_val.GetValue<int64_t>();
+				}
 			}
 		}
 		idx_t effective = width > 0 ? (idx_t)width : DetectTerminalWidth();
-		result.SetValue(i, Value(RenderDocument(blocks_val, effective)));
+		const auto &palette = ResolveTheme(theme_name);
+		result.SetValue(i, Value(RenderDocument(blocks_val, effective, palette)));
 	}
 }
 
@@ -1109,7 +1194,7 @@ static void TerminalWidthFun(DataChunk &args, ExpressionState &state, Vector &re
 void RenderAnsiFunctions::Register(ExtensionLoader &loader) {
 	auto duck_block_list_type = BlockTypes::DuckBlockListType();
 
-	// db_blocks_render_ansi(blocks) -> VARCHAR (auto-detected width)
+	// db_blocks_render_ansi(blocks) -> VARCHAR (auto-detected width and theme)
 	auto render_auto =
 	    ScalarFunction("db_blocks_render_ansi", {duck_block_list_type}, LogicalType::VARCHAR, RenderAnsiFun);
 	loader.RegisterFunction(render_auto);
@@ -1118,6 +1203,23 @@ void RenderAnsiFunctions::Register(ExtensionLoader &loader) {
 	auto render_width = ScalarFunction("db_blocks_render_ansi", {duck_block_list_type, LogicalType::INTEGER},
 	                                   LogicalType::VARCHAR, RenderAnsiFun);
 	loader.RegisterFunction(render_width);
+
+	// db_blocks_render_ansi(blocks, theme) -> VARCHAR
+	auto render_theme = ScalarFunction("db_blocks_render_ansi", {duck_block_list_type, LogicalType::VARCHAR},
+	                                   LogicalType::VARCHAR, RenderAnsiFun);
+	loader.RegisterFunction(render_theme);
+
+	// db_blocks_render_ansi(blocks, width, theme) -> VARCHAR
+	auto render_width_theme = ScalarFunction("db_blocks_render_ansi",
+	                                         {duck_block_list_type, LogicalType::INTEGER, LogicalType::VARCHAR},
+	                                         LogicalType::VARCHAR, RenderAnsiFun);
+	loader.RegisterFunction(render_width_theme);
+
+	// db_blocks_render_ansi(blocks, theme, width) -> VARCHAR
+	auto render_theme_width = ScalarFunction("db_blocks_render_ansi",
+	                                         {duck_block_list_type, LogicalType::VARCHAR, LogicalType::INTEGER},
+	                                         LogicalType::VARCHAR, RenderAnsiFun);
+	loader.RegisterFunction(render_theme_width);
 
 	// db_terminal_width() -> INTEGER
 	auto term_width = ScalarFunction("db_terminal_width", {}, LogicalType::INTEGER, TerminalWidthFun);

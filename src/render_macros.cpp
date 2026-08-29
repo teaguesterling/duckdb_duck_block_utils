@@ -99,10 +99,10 @@ CREATE OR REPLACE MACRO db_render_block(element_type, content, attributes) AS
     END;
 
 -- Render LIST(duck_block) to a full ANSI document (inline elements skipped).
--- Delegates to the C++ renderer, which adds width-aware word wrapping;
--- pass an explicit width with db_blocks_render_ansi(blocks, width).
-CREATE OR REPLACE MACRO db_render_blocks(blocks) AS
-    db_blocks_render_ansi(blocks);
+-- Delegates to the C++ renderer, which adds width-aware word wrapping and theme support;
+-- pass an explicit width and/or theme: db_render_blocks(blocks, 80, 'light')
+CREATE OR REPLACE MACRO db_render_blocks(blocks, width := 0, theme := 'auto') AS
+    db_blocks_render_ansi(blocks, width, theme);
 
 -- JSON array of objects -> table duck_block (headers from first object's keys)
 CREATE OR REPLACE MACRO db_json_to_table_block(j) AS (
