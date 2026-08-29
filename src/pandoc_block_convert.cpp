@@ -360,6 +360,8 @@ void PandocBlockConvert::ConvertPandocAstToBlocks(const string &json, vector<Val
 		yyjson_arr_foreach(blocks_val, idx, max, block_val) {
 			ProcessPandocBlockVal(block_val, order, blocks, 1, 0);
 		}
+	} else if (yyjson_is_obj(blocks_val)) {
+		ProcessPandocBlockVal(blocks_val, order, blocks, 1, 0);
 	}
 
 	yyjson_doc_free(doc);
