@@ -495,7 +495,7 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 			yyjson_mut_arr_add_val(arr, obj);
 		} else if (inline_type == BlockTypes::INLINE_QUOTED) {
 			auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
-			string quote_type = "DoubleQuote";
+			const char *quote_type = "DoubleQuote";
 			if (!attrs.IsNull()) {
 				auto &map_entries = MapValue::GetChildren(attrs);
 				for (auto &entry : map_entries) {
@@ -517,7 +517,7 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 			yyjson_mut_obj_add_str(doc, obj, "t", "Quoted");
 			yyjson_mut_val *c_arr = yyjson_mut_arr(doc);
 			yyjson_mut_val *q_obj = yyjson_mut_obj(doc);
-			yyjson_mut_obj_add_str(doc, q_obj, "t", quote_type.c_str());
+			yyjson_mut_obj_add_str(doc, q_obj, "t", quote_type);
 			yyjson_mut_arr_add_val(c_arr, q_obj);
 			yyjson_mut_arr_add_val(c_arr, nested);
 			yyjson_mut_obj_add_val(doc, obj, "c", c_arr);

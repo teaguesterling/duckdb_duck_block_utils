@@ -1104,7 +1104,8 @@ static yyjson_mut_val *MapToMetaObj(yyjson_mut_doc *doc, const Value &meta_map) 
 		yyjson_mut_arr_add_val(c_arr, str_obj);
 		yyjson_mut_obj_add_val(doc, meta_val_obj, "c", c_arr);
 
-		yyjson_mut_obj_add_val(doc, meta_obj, key.c_str(), meta_val_obj);
+		yyjson_mut_val *key_val = yyjson_mut_strncpy(doc, key.data(), key.size());
+		yyjson_mut_obj_add(meta_obj, key_val, meta_val_obj);
 	}
 	return meta_obj;
 }
@@ -1177,11 +1178,12 @@ static string ConvertMetaMapToJson(const Value &meta_map) {
 		yyjson_mut_val *c_arr = yyjson_mut_arr(doc);
 		yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
 		yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
-		yyjson_mut_obj_add_strn(doc, str_obj, "c", value.data(), value.size());
+		yyjson_mut_obj_add_strncpy(doc, str_obj, "c", value.data(), value.size());
 		yyjson_mut_arr_add_val(c_arr, str_obj);
 		yyjson_mut_obj_add_val(doc, meta_obj, "c", c_arr);
 
-		yyjson_mut_obj_add_val(doc, root, key.c_str(), meta_obj);
+		yyjson_mut_val *key_val = yyjson_mut_strncpy(doc, key.data(), key.size());
+		yyjson_mut_obj_add(root, key_val, meta_obj);
 	}
 
 	size_t len = 0;
