@@ -8,13 +8,13 @@ This extension complements format-specific document extensions (markdown, HTML, 
 
 ## Features
 
-- **Unified duck_block type**: Single type for both block and inline elements with `kind` discriminator
+- **Unified duck_block type**: One type for block, inline and value elements, told apart by the `kind` discriminator
 - **Block builders**: Declarative document construction from SQL queries
 - **Inline builders**: Rich text formatting with links, bold, italic, code, and more
 - **Block manipulation**: Filter, transform, merge, and reorder elements
 - **Content extraction**: Extract plain text, headings, and generate TOCs
 - **Validation**: Check schema compliance and lint for common issues
-- **Pandoc AST conversion**: Bidirectional JSON AST ↔ duck_blocks (no Pandoc required)
+- **Pandoc AST conversion**: Bidirectional JSON AST ↔ duck_blocks (no Pandoc required) — complete coverage of pandoc-types 1.23, including document metadata, verified against a real pandoc by `test/pandoc/check_pandoc_alignment.py`
 - **Conversion helpers**: Normalize blocks and track provenance
 - **ANSI terminal rendering**: `PRAGMA duck_block_render` — render documents and query results as styled terminal output, glow-style ([docs](docs/rendering.md))
 - **Page composition & query tables**: `db_page`, `db_query_table`, `db_table` — assemble dashboards that embed live query results as rendered tables

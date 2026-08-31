@@ -29,6 +29,29 @@ STRUCT(
 |------|-------------|
 | `block` | Block-level elements (heading, paragraph, code, list, etc.) |
 | `inline` | Inline elements (text, bold, italic, link, etc.) |
+| `value` | Non-prose data attached to a document — currently its metadata |
+
+`kind` is the discriminator, so a `element_type` string may be reused across kinds:
+`code`, `image`, `raw` and `generic` all exist as both a block and an inline, and
+`list` exists as both a block and a value. Always test `kind` and `element_type`
+together.
+
+**Consumers must filter on `kind`, not index blindly.** A block list may carry
+`value` elements (document metadata, a version marker) after its content, so
+`blocks[1]` is not guaranteed to be the first content block. Walking with an
+**allowlist** — `kind = 'block'` — survives a future kind; a blocklist such as
+"skip inline, treat the rest as a block" does not.
+
+Introspect the live vocabulary rather than mirroring this table:
+
+```sql
+SELECT db_block_kinds();        -- ['block', 'inline', 'value']
+SELECT db_block_types();        -- every element_type name
+SELECT db_block_spec_version(); -- the spec version this build implements
+```
+
+Sibling extensions should **assert** against these rather than copying
+`block_types.hpp`; a copied header drifts silently.
 
 ## Block Types (kind='block')
 
@@ -38,12 +61,68 @@ STRUCT(
 | `paragraph` | Text paragraph | NULL | `text`, `markdown` | |
 | `code` | Code block | NULL | `text` | `language` |
 | `blockquote` | Quoted content | Nesting depth | `text`, `markdown` | |
-| `list` | List container | NULL | `json` (items array) | `ordered` |
+| `list` | List container | NULL | `json` (items array) | `ordered`, `list_type` |
+| `list_item` | List item | Nesting depth | `text` | |
+| `deflist` | Definition list | NULL | `json` | |
+| `lineblock` | Preserved line breaks | NULL | `text` (lines joined with `\n`) | |
 | `table` | Table | NULL | `json` | |
 | `hr` | Horizontal rule | NULL | `text` | |
 | `metadata` | YAML frontmatter | 0 | `yaml` | |
 | `image` | Block-level image | NULL | `text` | `src`, `alt`, `title` |
-| `raw` | Raw format content | NULL | format name | `format` |
+| `raw` | Raw content in a *named* format | NULL | format name | `format` |
+| `div` | Generic container | Nesting depth | `text` | `id`, `class` |
+| `section` | **Semantic** sectioning container | Nesting depth | `text` | `role`, `id`, `class` |
+| `figure` | Figure: content plus a caption | Nesting depth | `text` | `id`, `class` |
+| `caption` | Caption belonging to the container before it | Nesting depth | `text` | `short_caption` |
+| `generic` | Structurally valid, type not in this vocabulary | NULL | `json` | `source_type` |
+
+### Containers nest by `level`
+
+`div`, `section`, `figure` and `caption` carry no content of their own. Their
+children follow them in document order at `level + 1`, and the container ends at
+the first element back at its own level. This is the same mechanism throughout —
+there is no separate child-list field.
+
+### `section` versus `div` versus `generic`
+
+These are three different statements and should not be used interchangeably:
+
+- **`div`** — a container with no semantics. HTML's own spec calls `div` "an element
+  of last resort".
+- **`section`** — a container that *means* something structurally. Which kind lives in
+  `attributes['role']`: `section`, `article`, `aside`, `nav`, `header`, `footer`,
+  `main`. One type plus a role attribute, following `heading`+`heading_level` rather
+  than minting a type per variant.
+- **`generic`** — "this is structurally valid but its type is not in this vocabulary."
+  The original name is preserved in `attributes['source_type']` and the verbatim
+  source in `content`. It is a **backstop against silent loss**, not a mapping: a
+  reader should ledger its `generic` output so that "still generic" fails once the
+  construct is mapped properly, rather than becoming where things go to be forgotten.
+
+  `generic` suits a **closed** vocabulary where every constructor is semantic (Pandoc).
+  For an **open** one where most elements are presentational (HTML tags, RTF control
+  words), emitting `generic` for everything unrecognised floods the output and buries
+  real gaps — there, scope it to constructs that carry document meaning.
+
+### `figure` and `caption`
+
+```
+block  | figure    | level N     attrs from the source
+block  | paragraph | level N+1   <- content
+inline | image     | level N+2
+block  | caption   | level N+1   <- caption container, sibling of the content
+block  | paragraph | level N+2   <- caption's own blocks, fully structured
+inline | bold      | level N+3
+```
+
+**Caption position is the emitter's choice, not a property of `caption`.** A figure
+emits content-then-caption because an image's caption belongs below it; a
+`<details>`/`<summary>` label belongs above its body, and OOXML puts table captions
+above and figure captions below in the same document. The caption scope runs from the
+marker to the next element at its own level, so either order is well-defined.
+
+`caption` is deliberately general rather than figure-specific, so tables and
+disclosure widgets can use it without a new type.
 
 ### Heading Level Attribute
 
@@ -80,6 +159,7 @@ For heading elements, the semantic heading level (h1-h6) is stored in `attribute
 | `superscript` | Superscript | See below | - |
 | `subscript` | Subscript | See below | - |
 | `smallcaps` | Small capitals | See below | - |
+| `underline` | Underlined text | See below | - |
 | `underline` | Underlined | See below | - |
 | `link` | Hyperlink | See below | `href`, `title` |
 | `image` | Inline image | Alt text | `src`, `alt`, `title` |
@@ -87,6 +167,50 @@ For heading elements, the semantic heading level (h1-h6) is stored in `attribute
 | `span` | Generic container | See below | `id`, `class` |
 | `cite` | Citation | Key | `key`, `prefix`, `suffix` |
 | `note` | Footnote | Content | - |
+| `generic` | Type not in this vocabulary | Empty; children follow | `source_type` |
+
+
+## Value Types (kind='value')
+
+Non-prose data attached to a document. These model Pandoc's recursive `MetaValue`
+tree, which a flat list of blocks and inlines has nowhere else to put — before this
+existed, all document metadata (title, author, tags, draft flags) was silently
+dropped on conversion.
+
+| Type | Description | Carries | Key Attributes |
+|------|-------------|---------|----------------|
+| `string` | Scalar string | `content` | `key` |
+| `bool` | Boolean | `content` = `'true'`/`'false'` | `key` |
+| `list` | Ordered sequence | children at `level + 1` | `key` |
+| `map` | Key/value mapping | children at `level + 1`, each with its own `key` | `key` |
+| `inlines` | A run of formatted text | `kind='inline'` children | `key` |
+| `blocks` | Block content | `kind='block'` children | `key` |
+| `version` | duck_block spec marker | `content` = the version | *(none — see below)* |
+| `generic` | MetaValue not in this vocabulary | verbatim `json` | `key`, `source_type` |
+
+`attributes['key']` is the name under which a value sits in its parent map. Elements
+in a `list` have no key. Nesting uses `level`, exactly as block containers do.
+
+Metadata is appended **after** a document's blocks, so `blocks[1]` still points at the
+first content block — but see the `kind` filtering rule above; ordering is a
+convenience, not a contract.
+
+### Version marker
+
+`version` records which duck_block spec a persisted or exchanged list was written
+against. It is **optional** — requiring it would shift every index and break every
+consumer to protect a boundary most lists never cross.
+
+```sql
+SELECT db_blocks_stamp(blocks);   -- append a marker
+SELECT db_blocks_version(blocks); -- read it back; NULL when unstamped
+SELECT db_block_spec_version();   -- what this build implements
+```
+
+It deliberately carries **no** `attributes['key']`, which is what keeps it out of a
+document's own metadata on export. Use it when blocks are written to storage or
+crossing an extension boundary; a runtime check against `db_block_spec_version()` is
+enough within a single session.
 
 ## Content Rules for Container Types
 

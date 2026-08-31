@@ -98,6 +98,7 @@ SELECT [
 
 ## Documentation
 
+- [Duck Blocks Specification](duck_blocks_spec.md) - **the vocabulary**: kinds, element types, nesting, and the rules consumers must follow
 - [Getting Started](getting_started.md) - Installation and basic usage
 - [API Reference](api_reference.md) - Complete function reference
 - [Block Builder Functions](block_builders.md) - Creating document blocks
@@ -106,6 +107,7 @@ SELECT [
 - [ANSI Terminal Rendering](rendering.md) - Pretty-print documents and query results in the terminal
 - [Examples](examples.md) - Common patterns and use cases
 - [Integration Guide](integration.md) - Integrating with other extensions
+- [Pandoc AST Specification](pandoc_ast_spec.md) - Constructor-by-constructor mapping
 
 ## Installation
 
