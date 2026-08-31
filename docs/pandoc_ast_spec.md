@@ -207,6 +207,7 @@ Inline elements appear within blocks (paragraphs, headings, etc.):
 | `LineBreak` | (none) | `{"t": "LineBreak"}` |
 | `Emph` | inlines | `{"t": "Emph", "c": [/*inlines*/]}` |
 | `Strong` | inlines | `{"t": "Strong", "c": [/*inlines*/]}` |
+| `Underline` | inlines | `{"t": "Underline", "c": [/*inlines*/]}` |
 | `Strikeout` | inlines | `{"t": "Strikeout", "c": [/*inlines*/]}` |
 | `Superscript` | inlines | `{"t": "Superscript", "c": [/*inlines*/]}` |
 | `Subscript` | inlines | `{"t": "Subscript", "c": [/*inlines*/]}` |
@@ -418,10 +419,12 @@ SELECT pandoc_yaml_to_meta('title: My Doc\nauthor: Jane');
 | `Table` | `table` | NULL | json | Full structure preserved |
 | `HorizontalRule` | `hr` | NULL | text | |
 | `RawBlock` | `raw` | NULL | varies | format in attrs |
-| `Div` | `pandoc:div` | NULL | json | Preserves nested structure |
-| `LineBlock` | `pandoc:lineblock` | NULL | json | |
-| `DefinitionList` | `pandoc:deflist` | NULL | json | |
-| `Figure` | `pandoc:figure` | NULL | json | Pandoc 3.0+ |
+| `Div` | `div` | depth | text | Preserves nested structure via `level` |
+| `LineBlock` | `lineblock` | NULL | text | Lines joined with `\n` |
+| `DefinitionList` | `deflist` | NULL | json | Full structure preserved |
+| `Figure` | `figure` | depth | text | Pandoc 3.0+; content blocks then a `caption` container |
+| `Figure` caption | `caption` | depth | text | General container; `short_caption` in attrs |
+| *(unrecognised)* | `generic` | NULL | json | Verbatim constructor; `source_type` in attrs |
 | `Null` | (skipped) | - | - | Empty block |
 
 ### Inline Handling (Header, Para, Plain)
