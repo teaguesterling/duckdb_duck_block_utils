@@ -57,6 +57,14 @@ public:
 	static constexpr const char *VALUE_MAP = "map";
 	static constexpr const char *VALUE_INLINES = "inlines";
 	static constexpr const char *VALUE_BLOCKS = "blocks";
+	// Stream metadata, not document metadata: records which duck_block spec a
+	// persisted or exchanged block list was written against. Carries no
+	// attributes['key'], which is what keeps it out of a document's Pandoc `meta`.
+	static constexpr const char *VALUE_VERSION = "version";
+
+	// The duck_block spec version this build implements. Bump when the vocabulary
+	// changes in a way a consumer could observe.
+	static constexpr const char *SPEC_VERSION = "1.1";
 
 	// ========================================================================
 	// Block type names

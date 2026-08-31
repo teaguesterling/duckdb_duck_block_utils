@@ -136,6 +136,31 @@ static string BlocksToText(const vector<Value> &blocks_list, const string &separ
 			continue;
 		}
 
+		// Anything that is not document content is not body text. This is an
+		// ALLOWLIST on purpose: the previous form skipped `inline` and treated
+		// everything else as a block, so kind='value' fell through and a
+		// document's own metadata was appended to its extracted text.
+		//
+		// The value element's CHILDREN have to go with it. MetaInlines carries
+		// kind='inline' children, which would otherwise be picked up above as a
+		// stray inline run -- so skipping the marker alone still leaked the title.
+		if (kind != BlockTypes::KIND_BLOCK) {
+			i++;
+			while (i < blocks_list.size()) {
+				auto &child = blocks_list[i];
+				if (child.IsNull()) {
+					i++;
+					continue;
+				}
+				auto child_kind = GetElementStringField(child, BlockTypes::KIND_IDX);
+				if (child_kind == BlockTypes::KIND_BLOCK || child_kind == BlockTypes::KIND_VALUE) {
+					break; // back to document content, or the next value element
+				}
+				i++;
+			}
+			continue;
+		}
+
 		auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
 
 		// Skip blocks that don't have meaningful text content. Their inline

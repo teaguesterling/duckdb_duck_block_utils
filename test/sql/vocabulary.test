@@ -1,0 +1,92 @@
+# name: test/sql/vocabulary.test
+# description: vocabulary introspection and the duck_block spec version marker
+# group: [sql]
+
+require duck_block_utils
+
+# ============================================================================
+# Introspection -- so other extensions can ASSERT they match the vocabulary
+# instead of mirroring a header that silently drifts.
+# ============================================================================
+
+query I
+SELECT db_block_kinds();
+----
+[block, inline, value]
+
+query I
+SELECT list_contains(db_block_types(), 'figure') AND list_contains(db_block_types(), 'caption')
+   AND list_contains(db_block_types(), 'generic');
+----
+true
+
+query I
+SELECT length(db_block_spec_version()) > 0;
+----
+true
+
+# every kind a converter emits is in the declared set -- the assertion panduck
+# and webbed can run against this rather than a hardcoded list
+query I
+SELECT count(*) FROM (
+  SELECT unnest(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaBool","c":true}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"x"}]}]}')) AS b
+) WHERE NOT list_contains(db_block_kinds(), b.kind);
+----
+0
+
+# ============================================================================
+# Version marker
+# ============================================================================
+
+query I
+SELECT db_blocks_version(db_blocks_stamp(db_paragraph([db_text('x')]))) = db_block_spec_version();
+----
+true
+
+# unstamped blocks report NULL rather than guessing
+query I
+SELECT db_blocks_version(db_paragraph([db_text('x')])) IS NULL;
+----
+true
+
+# stamping is additive: the document body is untouched and still first
+query I
+SELECT db_blocks_stamp(db_paragraph([db_text('x')]))[1].element_type;
+----
+paragraph
+
+# the marker is a value element, so block-walking consumers ignore it
+query I
+SELECT db_blocks_to_text(db_blocks_stamp(db_paragraph([db_text('x')])));
+----
+x
+
+# and it does NOT leak into pandoc document metadata
+query I
+SELECT duck_blocks_to_pandoc_ast(db_blocks_stamp(db_paragraph([db_text('x')]))).meta::VARCHAR;
+----
+{}
+
+# ============================================================================
+# Regression: document metadata must not leak into extracted body text.
+# The first cut of kind='value' shipped this bug -- db_blocks_to_text skipped
+# `inline` and treated everything else as a block, so value elements fell
+# through, and MetaInlines children were then picked up as a stray inline run.
+# ============================================================================
+
+query I
+SELECT db_blocks_to_text(pandoc_ast_to_blocks(
+  '{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"LEAK"}]},
+            "tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"ALSO"}]}]}},
+    "blocks":[{"t":"Para","c":[{"t":"Str","c":"Body"}]}]}'));
+----
+Body
+
+# a heading TOC must not pick up metadata either
+query I
+SELECT count(*) FROM (SELECT unnest(db_blocks_toc(pandoc_ast_to_blocks(
+  '{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"LEAK"}]}},
+    "blocks":[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"Real"}]]}]}'))) AS t)
+WHERE (t).title = 'LEAK';
+----
+0
