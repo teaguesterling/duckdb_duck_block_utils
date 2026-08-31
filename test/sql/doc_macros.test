@@ -57,12 +57,19 @@ SELECT count(*) > 0 FROM doc_search(parse_markdown_to_duck_blocks(
 true
 
 # doc_search honours output_format now -- the old inlined CASE silently fell
-# back to text for md/html/blocks/pandoc
+# back to text for every format except text and ansi
 query I
-SELECT content LIKE '%<%' FROM doc_search(parse_markdown_to_duck_blocks(
-  '# A' || chr(10) || chr(10) || 'findme'), 'findme', output_format := 'html') LIMIT 1;
+SELECT content LIKE '%pandoc-api-version%' FROM doc_search(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'findme'), 'findme', output_format := 'pandoc') LIMIT 1;
 ----
 true
+
+# and an unsupported one raises rather than quietly returning text
+statement error
+SELECT content FROM doc_search(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'findme'), 'findme', output_format := 'md');
+----
+duck_blocks_to_md
 
 # ============================================================================
 # profile_table
@@ -84,19 +91,23 @@ SELECT doc_render(parse_markdown_to_duck_blocks('# T'), 'text') LIKE '%T%';
 ----
 true
 
-# md returns MARKDOWN, not pandoc AST JSON as it used to
-query I
-SELECT doc_render(parse_markdown_to_duck_blocks('# Title'), 'md') LIKE '#%Title%';
+# md and html are FORMATS, so they belong to the format extensions. Delegating
+# to them here would make duck_block_utils depend on markdown and webbed, which
+# it must not. ANSI stays because it is the one output that is not a format --
+# it knows only the vocabulary.
+statement error
+SELECT doc_render(parse_markdown_to_duck_blocks('# Title'), 'md');
 ----
-true
+duck_blocks_to_md
 
-query I
-SELECT doc_render(parse_markdown_to_duck_blocks('# Title'), 'md') LIKE '%pandoc-api-version%';
+statement error
+SELECT doc_render(parse_markdown_to_duck_blocks('# Title'), 'html');
 ----
-false
+duck_blocks_to_html
 
+# ...and the direct composition the error points at does work
 query I
-SELECT doc_render(parse_markdown_to_duck_blocks('# Title'), 'html') LIKE '%<h1%';
+SELECT duck_blocks_to_md(parse_markdown_to_duck_blocks('# Title')) LIKE '#%Title%';
 ----
 true
 

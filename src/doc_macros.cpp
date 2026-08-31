@@ -17,14 +17,11 @@ static void DbEnsureExtensionFun(DataChunk &args, ExpressionState &state, Vector
 
 static string DocMacrosQuery(ClientContext &context, const FunctionParameters &parameters) {
 	// Attempt initial companion extension auto-loads in background
-	// Loaded HERE, at registration, not inside the macros. A statement binds fully
-	// before it executes, so a macro body that calls duck_blocks_to_md() cannot make
-	// markdown appear in time -- db_ensure_extension would run too late and the
-	// statement fails to bind, uncatchably. Doing it in this earlier statement is
-	// what makes the delegation work at all.
+	// json only: it is a CORE DuckDB extension, and to_json() backs the `blocks`
+	// and `pandoc` output formats. markdown and webbed are deliberately NOT loaded
+	// -- doc_render no longer calls their writers, and auto-loading a sibling
+	// document-format extension is the dependency this extension does not take.
 	ExtensionHelper::TryAutoLoadExtension(context, "json");
-	ExtensionHelper::TryAutoLoadExtension(context, "markdown");
-	ExtensionHelper::TryAutoLoadExtension(context, "webbed");
 
 	string sql = R"DBSQL(
 -- ===========================================================================
@@ -36,20 +33,30 @@ static string DocMacrosQuery(ClientContext &context, const FunctionParameters &p
 -- were its main consumer now live in panduck.
 CREATE OR REPLACE MACRO db_quote(s) AS ('''' || replace(coalesce(s, ''), '''', '''''') || '''');
 
--- 0. Output rendering. Format-specific writers live in the format extensions:
--- duck_blocks_to_md is duckdb_markdown's, duck_blocks_to_html is webbed's. This
--- extension owns only text, ansi, blocks and pandoc, and never gains a markdown
--- or HTML writer of its own.
+-- 0. Output rendering. duck_block_utils DEPENDS ON NOTHING, so this does not
+-- delegate to duckdb_markdown or webbed -- calling their writers here would make
+-- this extension depend on them. Callers compose directly instead:
+--
+--     duck_blocks_to_md(blocks)     -- LOAD markdown
+--     duck_blocks_to_html(blocks)   -- LOAD webbed
+--
+-- ANSI stays because it is the one output that is not a FORMAT: it knows only
+-- the duck_block vocabulary, which makes it a utility over the spec rather than
+-- a converter. md and html are formats, so the same test sends them out.
+-- `json` is a core DuckDB extension rather than a sibling document-format one,
+-- so to_json() is not the same kind of dependency.
 CREATE OR REPLACE MACRO doc_render(blocks, output_format := 'text') AS (
     CASE lower(output_format)
         WHEN 'text'   THEN db_blocks_to_text(blocks)
         WHEN 'ansi'   THEN db_blocks_render_ansi(blocks)
         WHEN 'blocks' THEN to_json(blocks)::VARCHAR
         WHEN 'pandoc' THEN to_json(duck_blocks_to_pandoc_ast(blocks))::VARCHAR
-        WHEN 'md'     THEN duck_blocks_to_md(blocks)
-        WHEN 'html'   THEN duck_blocks_to_html(blocks)
+        WHEN 'md'     THEN error('doc_render: md is duckdb_markdown''s job -- ' ||
+                                 'call duck_blocks_to_md(blocks) directly')
+        WHEN 'html'   THEN error('doc_render: html is webbed''s job -- ' ||
+                                 'call duck_blocks_to_html(blocks) directly')
         ELSE error('doc_render: unsupported output_format ' || coalesce(output_format, 'NULL') ||
-                   '; expected one of text, ansi, blocks, pandoc, md, html')
+                   '; expected one of text, ansi, blocks, pandoc')
     END
 );
 

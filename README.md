@@ -27,6 +27,10 @@ This extension defines the `duck_block` vocabulary, owns it through validation, 
 provides construction, query and rendering utilities over it. It does **not** read files
 and does **not** write format-specific output:
 
+**This extension depends on nothing.** Not on `markdown`, not on `webbed`, not on
+`panduck`. `json` is the one exception, and it is a *core* DuckDB extension rather than a
+sibling document-format one.
+
 | concern | lives in |
 |---|---|
 | path → blocks (any format) | `panduck` — `read_panduck_doc`, `panduck_read_blocks` |
@@ -34,8 +38,21 @@ and does **not** write format-specific output:
 | blocks → HTML | `duckdb_webbed` — `duck_blocks_to_html` |
 | blocks → text / ANSI / Pandoc AST | here |
 
-`doc_render` delegates `md` and `html` to those extensions at runtime, so this repo never
-gains a markdown or HTML writer of its own.
+`doc_render` does **not** delegate to the format extensions — calling their writers would
+make this extension depend on them. Compose directly instead:
+
+```sql
+LOAD markdown;  SELECT duck_blocks_to_md(blocks);
+LOAD webbed;    SELECT duck_blocks_to_html(blocks);
+```
+
+ANSI rendering stays because it is the one output that is not a *format*: it knows only the
+`duck_block` vocabulary, which makes it a utility over the spec rather than a converter.
+`md` and `html` are formats, so the same test sends them out.
+
+Each layer is useful alone. Converting HTML to markdown needs neither this extension nor
+panduck (`LOAD webbed; LOAD markdown;` and compose), and building blocks by hand needs only
+this one.
 
 ### Migration from the `doc_*` dispatch macros
 
