@@ -223,7 +223,7 @@ SELECT duck_blocks_to_pandoc_ast(db_heading(1, 'Test'))."pandoc-api-version" IS 
 ----
 true
 
-# Test API version is [1,20]
+# Test API version is [1,23,1] -- pandoc 3.x rejects anything below [1,23]
 query I
 SELECT duck_blocks_to_pandoc_ast(db_heading(1, 'Test'))."pandoc-api-version"[1];
 ----
@@ -232,7 +232,7 @@ SELECT duck_blocks_to_pandoc_ast(db_heading(1, 'Test'))."pandoc-api-version"[1];
 query I
 SELECT duck_blocks_to_pandoc_ast(db_heading(1, 'Test'))."pandoc-api-version"[2];
 ----
-20
+23
 
 # Test struct has meta field (empty object)
 query I
@@ -375,7 +375,7 @@ javascript
 query I
 SELECT "pandoc-api-version" FROM pandoc_ast(db_heading(1, 'Test'));
 ----
-[1, 20]
+[1, 23, 1]
 
 # Test custom api_version parameter
 query I
@@ -1186,3 +1186,26 @@ SELECT (SELECT b.level FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"Figure",
      = (SELECT b.level FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]')) AS b) WHERE b.element_type = 'paragraph' LIMIT 1);
 ----
 true
+
+# ============================================================================
+# pandoc-api-version
+# pandoc 3.x rejects anything below [1,23] outright ("Incompatible API
+# versions"), so the old [1,20] default made every export unreadable by the
+# installed pandoc.
+# ============================================================================
+
+query I
+SELECT duck_blocks_to_pandoc_ast(db_paragraph([db_text('hi')]))['pandoc-api-version'];
+----
+[1, 23, 1]
+
+query I
+SELECT (SELECT "pandoc-api-version" FROM pandoc_ast(db_paragraph([db_text('hi')])));
+----
+[1, 23, 1]
+
+# the table function's override still works
+query I
+SELECT (SELECT "pandoc-api-version" FROM pandoc_ast(db_paragraph([db_text('hi')]), api_version := [1,23]));
+----
+[1, 23]

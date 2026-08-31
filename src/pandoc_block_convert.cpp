@@ -1207,7 +1207,9 @@ static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Ve
 	for (idx_t i = 0; i < count; i++) {
 		auto blocks_val = blocks_vec.GetValue(i);
 
-		vector<Value> api_version_vals = {Value::INTEGER(1), Value::INTEGER(20)};
+		// pandoc 3.x rejects anything below [1,23] outright; [1,20] made every export
+		// unreadable by the installed pandoc.
+		vector<Value> api_version_vals = {Value::INTEGER(1), Value::INTEGER(23), Value::INTEGER(1)};
 		Value api_version = Value::LIST(LogicalType::INTEGER, api_version_vals);
 		Value meta = Value("{}");
 
@@ -1315,7 +1317,7 @@ void PandocBlockConvert::ReadPandocAstFun(DataChunk &args, ExpressionState &stat
 struct PandocAstBindData : public TableFunctionData {
 	vector<Value> blocks;
 	string meta_json = "{}";
-	vector<int32_t> api_version = {1, 20};
+	vector<int32_t> api_version = {1, 23, 1};
 	bool done = false;
 };
 
@@ -1436,7 +1438,7 @@ static void WritePandocAstFun(DataChunk &args, ExpressionState &state, Vector &r
 	auto &blocks_vec = args.data[1];
 	auto count = args.size();
 
-	string api_version = "[1,20]";
+	string api_version = "[1,23,1]";
 
 	for (idx_t i = 0; i < count; i++) {
 		auto path_val = path_vec.GetValue(i);
@@ -1499,7 +1501,7 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	                                            LogicalType::BOOLEAN, WritePandocAstFun);
 	loader.RegisterFunction(write_pandoc_ast_func);
 
-	// pandoc_ast(blocks, meta := {}, api_version := [1,20]) -> TABLE(pandoc-api-version, meta, blocks)
+	// pandoc_ast(blocks, meta := {}, api_version := [1,23,1]) -> TABLE(pandoc-api-version, meta, blocks)
 	// Table function for clean JSON output with COPY FORMAT JSON
 	// meta is MAP(VARCHAR, VARCHAR) - simple key-value pairs converted to Pandoc MetaInlines
 	TableFunction pandoc_ast_table_func("pandoc_ast", {duck_block_list_type}, PandocAstFunction, PandocAstBind);
