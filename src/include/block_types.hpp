@@ -81,6 +81,16 @@ public:
 	static constexpr const char *TYPE_IMAGE = "image";
 	static constexpr const char *TYPE_RAW = "raw";
 	static constexpr const char *TYPE_DIV = "div";
+	// A SEMANTIC sectioning container, distinct from `div`. HTML's own spec calls
+	// div "an element of last resort", so mapping <section>/<article>/<aside> onto
+	// it would make element_type say something false while the truth hid in an
+	// attribute. Which kind of section lives in attributes['role'] -- section,
+	// article, aside, nav, header, footer, main -- following the convention already
+	// set by heading+heading_level, list+list_type and quoted+quote_type rather
+	// than minting one type per variant.
+	// Pandoc has no Section constructor, so this exports as a Div whose class is
+	// the role; that is pandoc's nearest honest equivalent.
+	static constexpr const char *TYPE_SECTION = "section";
 	static constexpr const char *TYPE_LINEBLOCK = "lineblock";
 	static constexpr const char *TYPE_DEFLIST = "deflist";
 	static constexpr const char *TYPE_FIGURE = "figure";

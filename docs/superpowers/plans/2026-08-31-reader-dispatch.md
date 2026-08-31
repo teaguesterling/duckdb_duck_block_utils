@@ -275,6 +275,34 @@ the `autoload_known_extensions` setting — it loads an **installed** extension 
 it works in the default configuration. Second, the ensure genuinely completes before
 `query()` binds the SQL string; the pattern is not relying on undefined evaluation order.
 
+**CORRECTION 2026-08-31, found while building: the ensure-then-call idiom does NOT
+work for a directly-called function.** The verification table above is accurate but I
+drew the wrong general rule from it. Measured:
+
+| form | result |
+|---|---|
+| `SELECT CASE WHEN db_ensure_extension('markdown') THEN duck_blocks_to_md(...) END` | **Catalog Error** |
+| the same call inside `query(CASE WHEN db_ensure_extension(...) THEN '<sql>' END)` | works |
+| two statements, ensure first | works |
+
+The discriminator is **bind time, not function-versus-macro**: a statement is fully
+bound before it executes, so anything it names must already exist. `db_ensure_extension`
+runs during execution, which is too late. The earlier tests all passed because
+`doc_to_blocks` routes every branch through `query()`, whose inner SQL binds at execution
+— after the ensure has run. `duck_blocks_to_md` is a C++ scalar, not a macro, and still
+fails, so "works for functions, not macros" is not the rule either.
+
+**Consequence for Task B1:** `doc_render` calls `duck_blocks_to_md` / `duck_blocks_to_html`
+**directly**, so the `CASE WHEN db_ensure_extension(...)` guard cannot work there and the
+first call in a fresh session fails to bind. Nor can it be caught and reported — the bind
+error precedes any of our code.
+
+The fix is to ensure at **registration** time rather than call time: auto-load `markdown`
+and `webbed` when the macros are defined, as `DocMacrosQuery` already does for
+`json`/`markdown`/`sitting_duck`. That works precisely because it happens in an earlier
+statement. `doc_render`'s branches then call the delegates unguarded, and the `ELSE
+error(...)` arms are only reachable for genuinely-uninstalled extensions.
+
 **Remaining caveat, and why the `ELSE error(...)` branches matter:** this only covers
 extensions that are *installed*. If one is not, `panduck_ensure_extension` returns `false`
 rather than throwing, and the `ELSE error(...)` in each dispatch branch is what turns that

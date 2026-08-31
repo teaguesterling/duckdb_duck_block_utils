@@ -1201,6 +1201,22 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			int32_t div_level = GetElementLevel(block);
 			yyjson_mut_val *div_obj = ConvertDivToPandocVal(doc, blocks_list, block_idx, div_level, 1);
 			yyjson_mut_arr_add_val(blocks_arr, div_obj);
+		} else if (element_type == BlockTypes::TYPE_SECTION) {
+			// Pandoc has no Section constructor, so a section degrades to a Div whose
+			// class carries the role -- pandoc's nearest honest equivalent, and what
+			// its own HTML reader produces for <section>.
+			int32_t sec_level = GetElementLevel(block);
+			auto role = GetElementAttribute(block, "role");
+			yyjson_mut_val *sec_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, sec_obj, "t", "Div");
+			yyjson_mut_val *sec_c = yyjson_mut_arr(doc);
+			yyjson_mut_arr_add_val(sec_c, CreatePandocAttrVal(doc, block, role.empty() ? "section" : role));
+			yyjson_mut_val *sec_children = yyjson_mut_arr(doc);
+			yyjson_mut_arr_add_val(sec_c, sec_children);
+			yyjson_mut_obj_add_val(doc, sec_obj, "c", sec_c);
+			ConvertContainerChildrenToPandocVal(doc, blocks_list, block_idx, sec_level, 1, sec_children, nullptr,
+			                                    nullptr);
+			yyjson_mut_arr_add_val(blocks_arr, sec_obj);
 		} else if (element_type == BlockTypes::TYPE_FIGURE) {
 			// A top-level figure has NULL level; treat it as 1 so its children, which
 			// sit at 2, are correctly seen as deeper.

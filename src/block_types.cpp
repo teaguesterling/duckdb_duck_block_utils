@@ -102,6 +102,7 @@ static void BlockTypesFun(DataChunk &args, ExpressionState &state, Vector &resul
 	    BlockTypes::TYPE_IMAGE,
 	    BlockTypes::TYPE_RAW,
 	    BlockTypes::TYPE_DIV,
+	    BlockTypes::TYPE_SECTION,
 	    BlockTypes::TYPE_LINEBLOCK,
 	    BlockTypes::TYPE_DEFLIST,
 	    BlockTypes::TYPE_FIGURE,

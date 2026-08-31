@@ -90,3 +90,50 @@ SELECT count(*) FROM (SELECT unnest(db_blocks_toc(pandoc_ast_to_blocks(
 WHERE (t).title = 'LEAK';
 ----
 0
+
+# ============================================================================
+# section -- semantic sectioning container
+# One type plus attributes['role'], following the established convention:
+# heading+heading_level (not h1..h6), list+list_type (not bullet_list/
+# ordered_list), quoted+quote_type. NOT `div`: HTML's spec calls div "an
+# element of last resort", so mapping a semantic container onto it stashes the
+# truth in an attribute while the type says something false.
+# ============================================================================
+
+query I
+SELECT list_contains(db_block_types(), 'section');
+----
+true
+
+# a section round-trips to pandoc as a Div carrying its role as a class,
+# which is pandoc's nearest honest equivalent -- it has no Section constructor
+query I
+SELECT duck_blocks_to_pandoc_blocks([
+  {'kind':'block','element_type':'section','content':'','level':1,'encoding':'text',
+   'attributes':MAP{'role':'article','id':'a1'},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'Body','level':2,'encoding':'text',
+   'attributes':MAP{},'element_order':1}::duck_block
+]) LIKE '%"t":"Div"%';
+----
+true
+
+query I
+SELECT duck_blocks_to_pandoc_blocks([
+  {'kind':'block','element_type':'section','content':'','level':1,'encoding':'text',
+   'attributes':MAP{'role':'article','id':'a1'},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'Body','level':2,'encoding':'text',
+   'attributes':MAP{},'element_order':1}::duck_block
+]) LIKE '%article%';
+----
+true
+
+# children are preserved, not dropped
+query I
+SELECT duck_blocks_to_pandoc_blocks([
+  {'kind':'block','element_type':'section','content':'','level':1,'encoding':'text',
+   'attributes':MAP{'role':'section'},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'Body','level':2,'encoding':'text',
+   'attributes':MAP{},'element_order':1}::duck_block
+]) LIKE '%Body%';
+----
+true
