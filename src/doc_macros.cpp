@@ -211,22 +211,37 @@ CREATE OR REPLACE MACRO doc_default_extension_mappings() AS (
         'markdown': ['.md', '.markdown'],
         'webbed': ['.htm', '.html'],
         'pdf': ['.pdf'],
-        'sitting_duck': ['.py', '.rs', '.go', '.c', '.cpp', '.cc', '.js', '.ts', '.jsx', '.tsx', '.java', '.kt', '.cs', '.swift', '.rb', '.php', '.lua', '.sh', '.zig', '.dart', '.sql', '.gql', '.css'],
         'panduck': ['.docx', '.odt', '.epub', '.tex', '.latex', '.rst', '.org', '.wiki']
     }
 );
 
 CREATE OR REPLACE MACRO doc_supported_extensions() AS (
-    flatten([
-        entry.value
-        for entry in map_entries(
-            coalesce(
-                try_cast(getvariable('doc_extension_mappings') AS MAP(VARCHAR, VARCHAR[])),
-                doc_default_extension_mappings()
+    [
+        (
+            WITH sd_exts AS (
+                SELECT list(DISTINCT '.' || lower(ext)) AS exts
+                FROM query(
+                    CASE WHEN db_ensure_extension('sitting_duck')
+                        THEN 'SELECT unnest(extensions) AS ext FROM ast_supported_languages()'
+                        ELSE 'SELECT NULL AS ext WHERE false'
+                    END
+                ) WHERE ext IS NOT NULL AND ext <> ''
+            ),
+            static_exts AS (
+                SELECT flatten([
+                    entry.value
+                    for entry in map_entries(
+                        coalesce(
+                            try_cast(getvariable('doc_extension_mappings') AS MAP(VARCHAR, VARCHAR[])),
+                            doc_default_extension_mappings()
+                        )
+                    )
+                    if db_ensure_extension(entry.key)
+                ]) AS exts
             )
+            SELECT list_distinct(list_concat(coalesce((SELECT exts FROM sd_exts), []), coalesce((SELECT exts FROM static_exts), [])))
         )
-        if db_ensure_extension(entry.key)
-    ])
+    ][1]
 );
 
 CREATE OR REPLACE MACRO doc_is_supported(path) AS (
