@@ -304,7 +304,13 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 			return;
 		}
 	} else {
-		return;
+		// Never drop a constructor silently: preserve it verbatim so document length is
+		// stable and the gap stays visible instead of invisible. Serialises the whole
+		// constructor object (not just `c`) so export can reconstitute it including `t`.
+		block_type = BlockTypes::TYPE_GENERIC;
+		encoding = "json";
+		attrs["source_type"] = string(pandoc_type);
+		content = ValToJsonString(block_val);
 	}
 
 	if (block_type.empty()) {

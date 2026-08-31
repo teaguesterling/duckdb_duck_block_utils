@@ -102,6 +102,11 @@ static void FlattenPandocInlinesVal(yyjson_val *inlines_val, int32_t level, int3
 			result.push_back(CreateDocInline(inline_type, "", level, attrs, order++));
 			FlattenPandocInlinesVal(c_val, level + 1, order, result, depth + 1);
 			return;
+		} else if (strcmp(pandoc_type, "Underline") == 0) {
+			inline_type = BlockTypes::INLINE_UNDERLINE;
+			result.push_back(CreateDocInline(inline_type, "", level, attrs, order++));
+			FlattenPandocInlinesVal(c_val, level + 1, order, result, depth + 1);
+			return;
 		} else if (strcmp(pandoc_type, "Strikeout") == 0) {
 			inline_type = BlockTypes::INLINE_STRIKETHROUGH;
 			result.push_back(CreateDocInline(inline_type, "", level, attrs, order++));
@@ -237,8 +242,15 @@ static void FlattenPandocInlinesVal(yyjson_val *inlines_val, int32_t level, int3
 			}
 			return;
 		} else {
-			inline_type = BlockTypes::INLINE_TEXT;
-			content_str = "[" + string(pandoc_type) + "]";
+			// Preserve the words: emit a marker recording what this was, then recurse
+			// into the constructor's children rather than replacing them with a
+			// "[Type]" placeholder. Keeps the gap visible AND keeps the text.
+			attrs["source_type"] = string(pandoc_type);
+			result.push_back(CreateDocInline(BlockTypes::INLINE_GENERIC, "", level, attrs, order++));
+			if (c_val) {
+				FlattenPandocInlinesVal(c_val, level + 1, order, result, depth + 1);
+			}
+			return;
 		}
 
 		if (!inline_type.empty()) {
@@ -342,10 +354,13 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 			yyjson_mut_arr_add_val(arr, obj);
 		} else if (inline_type == BlockTypes::INLINE_BOLD || inline_type == BlockTypes::INLINE_ITALIC ||
 		           inline_type == BlockTypes::INLINE_STRIKETHROUGH || inline_type == BlockTypes::INLINE_SUPERSCRIPT ||
-		           inline_type == BlockTypes::INLINE_SUBSCRIPT || inline_type == BlockTypes::INLINE_SMALLCAPS) {
+		           inline_type == BlockTypes::INLINE_SUBSCRIPT || inline_type == BlockTypes::INLINE_SMALLCAPS ||
+		           inline_type == BlockTypes::INLINE_UNDERLINE) {
 			const char *p_type = "Strong";
 			if (inline_type == BlockTypes::INLINE_ITALIC) {
 				p_type = "Emph";
+			} else if (inline_type == BlockTypes::INLINE_UNDERLINE) {
+				p_type = "Underline";
 			} else if (inline_type == BlockTypes::INLINE_STRIKETHROUGH) {
 				p_type = "Strikeout";
 			} else if (inline_type == BlockTypes::INLINE_SUPERSCRIPT) {
@@ -650,6 +665,12 @@ static string RenderInlinesToTextVal(yyjson_val *inlines_val, const string &mode
 					out << link_text;
 				}
 			}
+		} else if (c_val && yyjson_is_arr(c_val)) {
+			// Unrecognised constructor (Underline, or anything a future pandoc adds):
+			// recurse into its children so the words survive instead of vanishing.
+			// A `c` that is not an inline list simply yields nothing, so this degrades
+			// gracefully rather than emitting structural noise.
+			out << RenderInlinesToTextVal(c_val, mode, depth + 1);
 		}
 	};
 

@@ -983,3 +983,104 @@ query I
 SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Div","c":[["d",[],[]],[{"t":"Para","c":[{"t":"Code","c":[["",[],[]],"x"]}]}]]}]'));
 ----
 [{"t":"Div","c":[["d",[],[]],[{"t":"Para","c":[{"t":"Code","c":[["",[],[]],"x"]}]}]]}]
+
+# ============================================================================
+# Underline (import + export)
+# spec: docs/superpowers/specs/2026-08-31-pandoc-gaps-and-reader-dispatch-design.md
+# ============================================================================
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Underline","c":[{"t":"Str","c":"under"}]},{"t":"Str","c":"!"}]}]')[2].element_type;
+----
+underline
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Underline","c":[{"t":"Str","c":"under"}]},{"t":"Str","c":"!"}]}]')[3].content;
+----
+under
+
+query I
+SELECT duck_blocks_to_pandoc_ast(db_paragraph([db_text('An '), db_underline('underlined'), db_text(' phrase.')])).blocks::VARCHAR LIKE '%"t":"Underline"%';
+----
+true
+
+query I
+SELECT duck_blocks_to_pandoc_ast(db_paragraph([db_text('An '), db_underline('underlined'), db_text(' phrase.')])).blocks::VARCHAR LIKE '%[underline]%';
+----
+false
+
+# ============================================================================
+# Unknown block constructors pass through as generic (no silent drops)
+# ============================================================================
+
+query I
+SELECT len(pandoc_ast_to_blocks('[{"t":"NotARealConstructor","c":[1,2]}]'));
+----
+1
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"NotARealConstructor","c":[1,2]}]')[1].element_type;
+----
+generic
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"NotARealConstructor","c":[1,2]}]')[1].kind;
+----
+block
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"NotARealConstructor","c":[1,2]}]')[1].attributes['source_type'];
+----
+NotARealConstructor
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"NotARealConstructor","c":[1,2]}]')[1].encoding;
+----
+json
+
+# document length is preserved: 3 blocks in, 3 blocks out
+query I
+SELECT len(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"Bogus"},{"t":"Para","c":[{"t":"Str","c":"b"}]}]'));
+----
+3
+
+# ============================================================================
+# Unknown inline constructors keep their text
+# ============================================================================
+
+# structured path: a generic marker is emitted AND the words survive as children
+query I
+SELECT list_contains(
+  list_transform(pandoc_ast_to_blocks(
+    '[{"t":"Para","c":[{"t":"Bogus","c":[{"t":"Str","c":"keepme"}]},{"t":"Code","c":[["",[],[]],"x"]}]}]'),
+    b -> b.content),
+  'keepme');
+----
+true
+
+query I
+SELECT list_contains(
+  list_transform(pandoc_ast_to_blocks(
+    '[{"t":"Para","c":[{"t":"Bogus","c":[{"t":"Str","c":"keepme"}]},{"t":"Code","c":[["",[],[]],"x"]}]}]'),
+    b -> b.element_type),
+  'generic');
+----
+true
+
+# no bracket placeholder is emitted anywhere
+query I
+SELECT pandoc_ast_to_blocks(
+  '[{"t":"Para","c":[{"t":"Bogus","c":[{"t":"Str","c":"keepme"}]},{"t":"Code","c":[["",[],[]],"x"]}]}]')::VARCHAR LIKE '%[Bogus]%';
+----
+false
+
+# pandoc_inlines_to_text must not drop text it cannot classify
+query I
+SELECT pandoc_inlines_to_text('[{"t":"Str","c":"An"},{"t":"Space"},{"t":"Underline","c":[{"t":"Str","c":"underlined"}]},{"t":"Space"},{"t":"Str","c":"here."}]');
+----
+An underlined here.
+
+query I
+SELECT pandoc_inlines_to_text('[{"t":"Str","c":"An"},{"t":"Space"},{"t":"Bogus","c":[{"t":"Str","c":"kept"}]},{"t":"Space"},{"t":"Str","c":"here."}]');
+----
+An kept here.

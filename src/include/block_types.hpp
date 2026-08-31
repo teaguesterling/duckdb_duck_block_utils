@@ -55,6 +55,13 @@ public:
 	static constexpr const char *TYPE_IMAGE = "image";
 	static constexpr const char *TYPE_RAW = "raw";
 	static constexpr const char *TYPE_DIV = "div";
+	// A structurally-valid element whose type is not in the standard vocabulary.
+	// Distinct from TYPE_RAW, which is literal content in a *named* format; this is a
+	// structured element we cannot name. Format-neutral on purpose: any reader
+	// (pandoc, html, sitting_duck) can use it. The originating type name is preserved
+	// in attributes['source_type']. Shares its string with INLINE_GENERIC; `kind`
+	// disambiguates, as it already does for code/image/raw.
+	static constexpr const char *TYPE_GENERIC = "generic";
 
 	// ========================================================================
 	// Inline type names
@@ -84,6 +91,8 @@ public:
 	static constexpr const char *INLINE_NOTE = "note";
 	static constexpr const char *INLINE_SPAN = "span";
 	static constexpr const char *INLINE_RAW = "raw";
+	// Inline counterpart of TYPE_GENERIC -- same string, distinguished by kind.
+	static constexpr const char *INLINE_GENERIC = "generic";
 
 	// ========================================================================
 	// Encoding values
