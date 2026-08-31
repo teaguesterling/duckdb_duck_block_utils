@@ -50,8 +50,25 @@ SELECT db_block_types();        -- every element_type name
 SELECT db_block_spec_version(); -- the spec version this build implements
 ```
 
-Sibling extensions should **assert** against these rather than copying
-`block_types.hpp`; a copied header drifts silently.
+Sibling extensions should consume the vocabulary as a **submodule**, not a copy:
+
+```cpp
+#include "duck_block_vocabulary.hpp"   // link-free; constants only
+duckdb::DuckBlockVocabulary::TYPE_FIGURE;
+```
+
+`src/include/duck_block_vocabulary.hpp` is a **published interface**. It is header-only
+and deliberately declares nothing it does not define, so including it costs no linking —
+`block_types.hpp` holds the type constructors and `Register()`, which do need
+`block_types.cpp`. `test/check_vocabulary_header.py` fails if that property is ever lost,
+because the breakage would appear at a *consumer's* link step and nothing in this repo
+would otherwise notice.
+
+Renaming or removing a constant is **breaking** for every consumer: bump
+`SPEC_VERSION` and say so.
+
+Even with a submodule, **assert agreement at test time** — the introspection functions
+above catch a submodule that was never synced, which a compile cannot.
 
 ## Block Types (kind='block')
 
