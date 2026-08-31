@@ -1,7 +1,7 @@
 # Phase 3: relocating the Pandoc converters — analysis and prerequisite
 
 **Date:** 2026-08-31
-**Status:** analysis; **not ready to plan as tasks** — one decision blocks it
+**Status:** analysis complete; **recommendation is not to proceed**. panduck concurs; Teague's call.
 **Follows:** `2026-08-31-pandoc-gaps-and-reader-dispatch-design.md`
 
 ## What Phase 3 was going to be
@@ -33,26 +33,47 @@ file relocation plus a registration change.
 ## The blocker: there is no shared vocabulary header
 
 The converters are built almost entirely out of `BlockTypes::` constants. panduck cannot
-host them without the vocabulary — and panduck's `src/include/duck_block_types.hpp` is a
-**copy**, already **missing 19 of 44** names:
+host them without the vocabulary — and panduck has no usable one. Its
+`src/include/duck_block_types.hpp` is a struct-shape helper (field indices, `CreateBlock`
+/`CreateInline`) that also carries some vocabulary constants, of which **18 of the
+canonical 41 are absent**:
 
 ```
 blocks  bool  caption  cite  deflist  div  figure  generic  inlines  lineblock
-list_item  map  math  note  quoted  section  string  value  version
+list_item  map  math  note  quoted  section  string  version
 ```
 
-Note what is in that list: `cite`, `math`, `note`, `quoted`, `div`, `list_item` all predate
-today's work. **The copy was already stale before any of this started.** webbed has a third
-copy; that is where panduck's came from.
+`cite`, `math`, `note`, `quoted`, `div` and `list_item` predate today's work, so the copy
+was drifting before any of it. webbed has a third copy of the same shape.
 
-**This is a live latent bug independent of Phase 3.** panduck's roundtrip canonicalizer
-cannot recognise `figure`, `caption` or `generic`, so it will mis-handle documents
-containing them without any test noticing — the copied header does not fail, it silently
-disagrees.
+**CORRECTION, 2026-08-31.** An earlier version of this document said the drift caused a
+live bug — that panduck's roundtrip canonicalizer "cannot recognise `figure`, `caption` or
+`generic`". **That is false, and panduck disproved it by running the canonicalizer**: it
+passes block `element_type` through verbatim (`CBlock(etype, ...)`), so it has no fixed
+block vocabulary to be stale against and handles all three today.
 
-Moving 2,120 lines of vocabulary-dependent code into a repo whose vocabulary header is 43%
-stale would bake that drift in permanently. **Fixing the header sharing is a prerequisite,
-not a follow-up.**
+Two errors are worth recording, because they were different:
+
+- The consequence was **inferred from the header's contents rather than tested**. The
+  header being stale does not imply anything is broken; that required reading the consumer,
+  which I did not do.
+- The *number* was produced by an **invalid comparison** — canonical `TYPE_`/`INLINE_`
+  constants against *every quoted lowercase string* in panduck's file, which is a different
+  set. It happened to land near the true figure, which is worse than being plainly wrong:
+  an approximately-right number arrived at by a broken method reads as confirmed.
+
+The staleness is real but **inert**. It is worth fixing so it cannot become live, not
+because it is live.
+
+The genuine gaps sit elsewhere, and panduck found both while checking:
+
+1. The canonicalizer's **inline** wrapper is a fixed list of nine (bold, italic,
+   strikethrough, underline, superscript, subscript, smallcaps, code, math). An inline
+   outside it loses its marker. panduck's readers emit five, all covered — latent, not live,
+   until a reader emits `generic` or `note`.
+2. On the Pandoc side, panduck emits `figure` then recurses caption blocks, flattening a
+   caption to `paragraph`, where a duck_block `caption` stays `caption`. The two sides
+   disagree the moment a reader emits one — which DOCX table captions will.
 
 `db_block_kinds()` / `db_block_types()` do not solve this. They are runtime introspection,
 usable for *assertions*; C++ code needs compile-time constants.
@@ -98,16 +119,23 @@ The practical case is stronger still:
 - It costs another `LOAD panduck`: duckeye routes thirteen formats through
   `pandoc_ast_to_blocks`, and that would join reading by path in requiring panduck.
 - The alignment harness lives here and tests the converters against a real pandoc. It would
-  have to move too, or test across a repo boundary.
+  have to move too, or test across a repo boundary. **panduck weighs this heaviest**: it is
+  the only thing standing between those converters and silent drift, and it works because it
+  sits next to them.
+- panduck's own argument, which is stronger than mine: **panduck has no vocabulary header at
+  all** — only a struct-shape helper. 2,120 lines of vocabulary-dependent code would arrive
+  with nothing local to define the vocabulary against. That is an argument against the move,
+  not for fixing the header first.
 
-**Recommendation: D, and fix the header drift anyway.** The stale copies are a real bug
-today. Phase 3 is a tidiness argument whose prerequisite is that bug's fix — so do the fix,
-and then judge whether the move still looks worth a build dependency. It probably will not.
+**Recommendation: D.** panduck agrees. Fix the header drift too, but on its own merits — it
+is inert today, not a bug. Phase 3 is a tidiness argument whose prerequisite is a build
+dependency between two extensions, to relocate code that is not causing a problem.
 
 ## What to do regardless of the decision
 
-1. **Tell panduck and webbed their vocabulary copies are stale**, with the missing list.
-   panduck's roundtrip canonicalizer is mis-handling `figure`/`caption`/`generic` now.
+1. **Told panduck and webbed their vocabulary copies are stale**, with the missing list.
+   Inert today — no consumer indexes off those constants — but worth closing so it cannot
+   become live.
 2. **Add a copy-drift assertion** in each consumer: compare the local header's constants
    against `db_block_types()` and fail when they disagree. This is the same
    self-describe-and-assert shape used for the reader registry, and it makes a stale copy
