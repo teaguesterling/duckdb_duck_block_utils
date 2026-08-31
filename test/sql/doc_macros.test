@@ -1,0 +1,75 @@
+# name: test/sql/doc_macros.test
+# description: test duck_block_utils unified document and data profiling macros
+# group: [sql]
+
+require duck_block_utils
+
+statement ok
+INSTALL markdown;
+
+statement ok
+LOAD markdown;
+
+statement ok
+INSTALL json;
+
+statement ok
+LOAD json;
+
+statement ok
+PRAGMA duck_block_doc_macros;
+
+# ============================================================================
+# doc_toc
+# ============================================================================
+
+query I
+SELECT count(*) > 0 FROM doc_toc('README.md');
+----
+true
+
+query T
+SELECT title FROM doc_toc('README.md') WHERE title = 'Overview';
+----
+Overview
+
+# ============================================================================
+# doc_section
+# ============================================================================
+
+query T
+SELECT doc_section('README.md', 'Installation') LIKE '%INSTALL duck_block_utils%';
+----
+true
+
+# ============================================================================
+# doc_search
+# ============================================================================
+
+query I
+SELECT count(*) > 0 FROM doc_search('README.md', 'Installation');
+----
+true
+
+# ============================================================================
+# doc_read
+# ============================================================================
+
+query I
+SELECT length(doc_read('README.md', output_format := 'text')) > 0;
+----
+true
+
+query I
+SELECT length(doc_read('README.md', output_format := 'ansi')) > 0;
+----
+true
+
+# ============================================================================
+# profile_table
+# ============================================================================
+
+query I
+SELECT count(*) FROM profile_table('SELECT 100 AS num, ''val'' AS str');
+----
+2

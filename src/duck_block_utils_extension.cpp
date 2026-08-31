@@ -14,6 +14,7 @@
 #include "pragma_aliases.hpp"
 #include "render_macros.hpp"
 #include "render_ansi.hpp"
+#include "doc_macros.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/function/scalar_function.hpp"
@@ -55,6 +56,9 @@ static void LoadInternal(ExtensionLoader &loader) {
 
 	// Phase 9: C++ ANSI renderer (width-aware, wrapping)
 	RenderAnsiFunctions::Register(loader);
+
+	// Phase 10: Unified Document & AST Query Pipeline Macros
+	DocMacros::Register(loader);
 }
 
 void DuckBlockUtilsExtension::Load(ExtensionLoader &loader) {
