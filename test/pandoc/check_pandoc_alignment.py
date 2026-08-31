@@ -47,14 +47,43 @@ UNREACHABLE = {"Null": "no pandoc reader emits it; intentionally yields no eleme
 # pandoc-types 1.23. Sub-enums (Alignment, ColWidth, QuoteType, ListNumberStyle,
 # ListNumberDelim) share the `t` key but are not Block/Inline constructors.
 BLOCKS = {
-    "Plain", "Para", "LineBlock", "CodeBlock", "RawBlock", "BlockQuote",
-    "OrderedList", "BulletList", "DefinitionList", "Header", "HorizontalRule",
-    "Table", "Figure", "Div", "Null",
+    "Plain",
+    "Para",
+    "LineBlock",
+    "CodeBlock",
+    "RawBlock",
+    "BlockQuote",
+    "OrderedList",
+    "BulletList",
+    "DefinitionList",
+    "Header",
+    "HorizontalRule",
+    "Table",
+    "Figure",
+    "Div",
+    "Null",
 }
 INLINES = {
-    "Str", "Emph", "Underline", "Strong", "Strikeout", "Superscript",
-    "Subscript", "SmallCaps", "Quoted", "Cite", "Code", "Space", "SoftBreak",
-    "LineBreak", "Math", "RawInline", "Link", "Image", "Note", "Span",
+    "Str",
+    "Emph",
+    "Underline",
+    "Strong",
+    "Strikeout",
+    "Superscript",
+    "Subscript",
+    "SmallCaps",
+    "Quoted",
+    "Cite",
+    "Code",
+    "Space",
+    "SoftBreak",
+    "LineBreak",
+    "Math",
+    "RawInline",
+    "Link",
+    "Image",
+    "Note",
+    "Span",
 }
 CONSTRUCTORS = BLOCKS | INLINES
 
@@ -88,21 +117,23 @@ def main() -> int:
         print("SKIP: no built duckdb binary (run `make` first)")
         return 0
 
-    version = subprocess.run(
-        ["pandoc", "--version"], capture_output=True, text=True
-    ).stdout.splitlines()[0]
+    version = subprocess.run(["pandoc", "--version"], capture_output=True, text=True).stdout.splitlines()[0]
     print(f"Checking duck_block_utils' AST mapping against {version}")
 
     ast_json = subprocess.run(
         ["pandoc", "-f", "markdown+citations", "-t", "json", str(FIXTURE)],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout
     emitted: set = set()
     collect_constructors(json.loads(ast_json)["blocks"], emitted)
     reachable = CONSTRUCTORS - UNREACHABLE.keys()
     missing = sorted(reachable - emitted)
-    print(f"  fixture exercises {len(emitted)} of {len(reachable)} reachable "
-          f"constructors ({len(UNREACHABLE)} unreachable by any reader)")
+    print(
+        f"  fixture exercises {len(emitted)} of {len(reachable)} reachable "
+        f"constructors ({len(UNREACHABLE)} unreachable by any reader)"
+    )
     if missing:
         print("  NOT exercised, so not checked: " + ", ".join(missing))
 
@@ -114,9 +145,10 @@ def main() -> int:
         "WHERE b.element_type = 'generic' AND b.attributes['source_type'] IS NOT NULL;"
     )
     proc = subprocess.run(
-        [str(duckdb), "-noheader", "-list", "-c",
-         sql.replace("?", "(SELECT content FROM read_text('/dev/stdin'))")],
-        input=ast_json, capture_output=True, text=True,
+        [str(duckdb), "-noheader", "-list", "-c", sql.replace("?", "(SELECT content FROM read_text('/dev/stdin'))")],
+        input=ast_json,
+        capture_output=True,
+        text=True,
     )
     if proc.returncode != 0:
         print("FAIL: conversion errored\n" + proc.stderr.strip())
@@ -146,8 +178,7 @@ def main() -> int:
 
     if failed:
         return 1
-    print(f"OK: all {len(emitted)} emitted constructors are mapped; "
-          f"ledger is empty and accurate.")
+    print(f"OK: all {len(emitted)} emitted constructors are mapped; " f"ledger is empty and accurate.")
     return 0
 
 

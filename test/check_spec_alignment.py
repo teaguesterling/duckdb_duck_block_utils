@@ -53,7 +53,8 @@ def main() -> int:
 
     proc = subprocess.run(
         [str(duckdb), "-noheader", "-list", "-c", "SELECT unnest(db_block_types());"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if proc.returncode != 0:
         print("FAIL: could not read db_block_types()\n" + proc.stderr.strip())
