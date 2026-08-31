@@ -55,6 +55,8 @@ public:
 	static constexpr const char *TYPE_IMAGE = "image";
 	static constexpr const char *TYPE_RAW = "raw";
 	static constexpr const char *TYPE_DIV = "div";
+	static constexpr const char *TYPE_LINEBLOCK = "lineblock";
+	static constexpr const char *TYPE_DEFLIST = "deflist";
 	// A structurally-valid element whose type is not in the standard vocabulary.
 	// Distinct from TYPE_RAW, which is literal content in a *named* format; this is a
 	// structured element we cannot name. Format-neutral on purpose: any reader

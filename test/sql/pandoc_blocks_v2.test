@@ -1084,3 +1084,50 @@ query I
 SELECT pandoc_inlines_to_text('[{"t":"Str","c":"An"},{"t":"Space"},{"t":"Bogus","c":[{"t":"Str","c":"kept"}]},{"t":"Space"},{"t":"Str","c":"here."}]');
 ----
 An kept here.
+
+# ============================================================================
+# LineBlock
+# ============================================================================
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"LineBlock","c":[[{"t":"Str","c":"one"}],[{"t":"Str","c":"two"}]]}]')[1].element_type;
+----
+lineblock
+
+# lines are joined with a newline in content
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"LineBlock","c":[[{"t":"Str","c":"one"}],[{"t":"Str","c":"two"}]]}]')[1].content
+       = 'one' || chr(10) || 'two';
+----
+true
+
+# a single-line LineBlock has no trailing newline
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"LineBlock","c":[[{"t":"Str","c":"solo"}]]}]')[1].content;
+----
+solo
+
+# ============================================================================
+# DefinitionList -- follows the BulletList/OrderedList precedent (json encoding),
+# because [([Inline],[[Block]])] has no flat text rendering.
+# ============================================================================
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')[1].element_type;
+----
+deflist
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')[1].encoding;
+----
+json
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')[1].content LIKE '%term%';
+----
+true
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')[1].content LIKE '%def%';
+----
+true

@@ -263,10 +263,34 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 		attrs["list_type"] = (strcmp(pandoc_type, "BulletList") == 0) ? "bullet" : "ordered";
 		encoding = "json";
 		content = ValToJsonString(c_val);
+	} else if (strcmp(pandoc_type, "DefinitionList") == 0) {
+		// DefinitionList c = [([Inline], [[Block]])] -- term/definitions pairs. Kept as
+		// JSON like BulletList and OrderedList: the shape has no flat text rendering.
+		block_type = BlockTypes::TYPE_DEFLIST;
+		encoding = "json";
+		content = ValToJsonString(c_val);
 	} else if (strcmp(pandoc_type, "Table") == 0) {
 		block_type = BlockTypes::TYPE_TABLE;
 		encoding = "json";
 		content = ValToJsonString(c_val);
+	} else if (strcmp(pandoc_type, "LineBlock") == 0) {
+		// LineBlock c = [[Inline]] -- an array OF ARRAYS, one per line. Deliberately
+		// does not set inlines_val_p: handing an array-of-arrays to the inline
+		// converter would misparse it. Line structure lives in content as
+		// newline-separated text.
+		block_type = BlockTypes::TYPE_LINEBLOCK;
+		if (c_val && yyjson_is_arr(c_val)) {
+			string joined;
+			size_t idx, max;
+			yyjson_val *line;
+			yyjson_arr_foreach(c_val, idx, max, line) {
+				if (idx > 0) {
+					joined += "\n";
+				}
+				joined += ExtractInlinesTextVal(line);
+			}
+			content = joined;
+		}
 	} else if (strcmp(pandoc_type, "HorizontalRule") == 0) {
 		block_type = BlockTypes::TYPE_HR;
 		content = "";
