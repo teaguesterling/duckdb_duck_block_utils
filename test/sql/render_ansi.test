@@ -299,3 +299,32 @@ query I
 SELECT db_blocks_render_ansi(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]')) LIKE '%' || chr(27) || '[2m%bodyword%';
 ----
 false
+
+# A caption may precede its content as well as follow it. `figure` emits
+# content-then-caption because an image's caption belongs below it; a
+# <details>/<summary> label belongs above the body. The caption scope opens at
+# the marker and closes at the first block back at its own level, so position
+# is the emitter's choice and not a property of `caption`.
+query I
+SELECT db_blocks_render_ansi([
+  {'kind':'block','element_type':'section','content':'','level':1,'encoding':'text','attributes':MAP{'role':'group'},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'caption','content':'','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'SUMMARY','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'BODY','level':2,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block
+]) LIKE '%' || chr(27) || '[2m%SUMMARY%';
+----
+true
+
+# ...and the content that follows the caption scope is NOT dimmed.
+# NOTE the assertion shape: '%<dim>%BODY%' would MATCH here, because the dim
+# code appears earlier in the string before SUMMARY. It has to test for dim
+# ADJACENT to BODY, which is what a dimmed line would actually look like.
+query I
+SELECT db_blocks_render_ansi([
+  {'kind':'block','element_type':'section','content':'','level':1,'encoding':'text','attributes':MAP{'role':'group'},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'caption','content':'','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'SUMMARY','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'BODY','level':2,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block
+]) LIKE '%' || chr(27) || '[2mBODY%';
+----
+false

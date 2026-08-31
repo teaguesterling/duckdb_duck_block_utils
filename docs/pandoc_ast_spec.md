@@ -423,7 +423,7 @@ SELECT pandoc_yaml_to_meta('title: My Doc\nauthor: Jane');
 | `LineBlock` | `lineblock` | NULL | text | Lines joined with `\n` |
 | `DefinitionList` | `deflist` | NULL | json | Full structure preserved |
 | `Figure` | `figure` | depth | text | Pandoc 3.0+; content blocks then a `caption` container |
-| `Figure` caption | `caption` | depth | text | General container; `short_caption` in attrs |
+| `Figure` caption | `caption` | depth | text | General container; `short_caption` in attrs. Position is the EMITTER's choice: `figure` emits content-then-caption because an image's caption belongs below it, but a `<details>`/`<summary>` label belongs above its body. The caption scope runs from the marker to the next block at its own level, so either order renders correctly. |
 | *(unrecognised)* | `generic` | NULL | json | Verbatim constructor; `source_type` in attrs |
 | `Null` | (skipped) | - | - | Empty block |
 
