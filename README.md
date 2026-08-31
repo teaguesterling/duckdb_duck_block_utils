@@ -18,6 +18,46 @@ This extension complements format-specific document extensions (markdown, HTML, 
 - **Conversion helpers**: Normalize blocks and track provenance
 - **ANSI terminal rendering**: `PRAGMA duck_block_render` — render documents and query results as styled terminal output, glow-style ([docs](docs/rendering.md))
 - **Page composition & query tables**: `db_page`, `db_query_table`, `db_table` — assemble dashboards that embed live query results as rendered tables
+- **Vocabulary introspection**: `db_block_kinds`, `db_block_types`, `db_block_spec_version` — so sibling extensions can *assert* they agree with the vocabulary rather than mirroring a header
+- **Document queries over blocks**: `doc_toc`, `doc_section`, `doc_search`, `doc_render` — these take `LIST(duck_block)`, not file paths
+
+## Scope
+
+This extension defines the `duck_block` vocabulary, owns it through validation, and
+provides construction, query and rendering utilities over it. It does **not** read files
+and does **not** write format-specific output:
+
+| concern | lives in |
+|---|---|
+| path → blocks (any format) | `panduck` — `read_panduck_doc`, `panduck_read_blocks` |
+| blocks → markdown | `duckdb_markdown` — `duck_blocks_to_md` |
+| blocks → HTML | `duckdb_webbed` — `duck_blocks_to_html` |
+| blocks → text / ANSI / Pandoc AST | here |
+
+`doc_render` delegates `md` and `html` to those extensions at runtime, so this repo never
+gains a markdown or HTML writer of its own.
+
+### Migration from the `doc_*` dispatch macros
+
+Reader dispatch moved to `panduck`. Replacements:
+
+| removed | replacement |
+|---|---|
+| `doc_to_blocks(path)` | `panduck_read_blocks(path)`, or `FROM read_panduck_doc(path)` to stream |
+| `doc_read(path, output_format := X)` | `doc_render(panduck_read_blocks(path), X)` |
+| `doc_is_supported(path)` | `panduck_can_read(path)` |
+| `doc_supported_extensions()` | `panduck_supported_paths()` |
+| `doc_select_blocks(path, sel)` | `panduck_select_blocks(path, sel)` |
+| `doc_toc(path)` | `doc_toc(panduck_read_blocks(path))` |
+
+Three behaviour changes came with it:
+
+1. **Reading a file by path requires `LOAD panduck`**, `.md` included. Accepted so the
+   extension→reader mapping lives in exactly one place instead of two during a transition.
+2. **`output_format := 'md'` returns markdown**, where it previously returned Pandoc AST
+   JSON under a misleading name.
+3. **Unroutable extensions and data formats raise** instead of silently falling through to
+   the markdown reader.
 
 ## Installation
 

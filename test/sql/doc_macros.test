@@ -20,48 +20,47 @@ statement ok
 PRAGMA duck_block_doc_macros;
 
 # ============================================================================
-# doc_toc
+# doc_toc / doc_section / doc_search -- these take BLOCKS now, not paths.
+# Path->blocks routing moved to panduck (read_panduck_doc / panduck_read_blocks);
+# this extension is utilities over the vocabulary and no longer reads files.
 # ============================================================================
 
 query I
-SELECT count(*) > 0 FROM doc_toc('README.md');
+SELECT count(*) > 0 FROM doc_toc(parse_markdown_to_duck_blocks('# A' || chr(10) || chr(10) || '## B'));
 ----
 true
 
 query T
-SELECT title FROM doc_toc('README.md') WHERE title = 'Overview';
+SELECT title FROM doc_toc(parse_markdown_to_duck_blocks('# Overview' || chr(10) || chr(10) || 'body')) WHERE title = 'Overview';
 ----
 Overview
 
-# ============================================================================
-# doc_section
-# ============================================================================
-
-query T
-SELECT doc_section('README.md', 'Installation') LIKE '%INSTALL duck_block_utils%';
+query I
+SELECT doc_section(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'body a' || chr(10) || chr(10) || '# B' || chr(10) || chr(10) || 'body b'), 'A')
+  LIKE '%body a%';
 ----
 true
 
-# ============================================================================
-# doc_search
-# ============================================================================
+# the slice stops at the next same-level heading
+query I
+SELECT doc_section(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'body a' || chr(10) || chr(10) || '# B' || chr(10) || chr(10) || 'body b'), 'A')
+  LIKE '%body b%';
+----
+false
 
 query I
-SELECT count(*) > 0 FROM doc_search('README.md', 'Installation');
+SELECT count(*) > 0 FROM doc_search(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'findme'), 'findme');
 ----
 true
 
-# ============================================================================
-# doc_read
-# ============================================================================
-
+# doc_search honours output_format now -- the old inlined CASE silently fell
+# back to text for md/html/blocks/pandoc
 query I
-SELECT length(doc_read('README.md', output_format := 'text')) > 0;
-----
-true
-
-query I
-SELECT length(doc_read('README.md', output_format := 'ansi')) > 0;
+SELECT content LIKE '%<%' FROM doc_search(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'findme'), 'findme', output_format := 'html') LIMIT 1;
 ----
 true
 
@@ -75,20 +74,86 @@ SELECT count(*) FROM profile_table('SELECT 100 AS num, ''val'' AS str');
 2
 
 # ============================================================================
-# doc_supported_extensions & doc_is_supported
+# doc_render -- one output path, format-specific writers delegated
+# md lives in duckdb_markdown, html in webbed. This extension owns only text,
+# ansi, blocks and pandoc.
 # ============================================================================
 
 query I
-SELECT list_contains(doc_supported_extensions(), '.md');
+SELECT doc_render(parse_markdown_to_duck_blocks('# T'), 'text') LIKE '%T%';
+----
+true
+
+# md returns MARKDOWN, not pandoc AST JSON as it used to
+query I
+SELECT doc_render(parse_markdown_to_duck_blocks('# Title'), 'md') LIKE '#%Title%';
 ----
 true
 
 query I
-SELECT doc_is_supported('README.md');
-----
-true
-
-query I
-SELECT doc_is_supported('file.unsupported_unknown_extension_xyz');
+SELECT doc_render(parse_markdown_to_duck_blocks('# Title'), 'md') LIKE '%pandoc-api-version%';
 ----
 false
+
+query I
+SELECT doc_render(parse_markdown_to_duck_blocks('# Title'), 'html') LIKE '%<h1%';
+----
+true
+
+query I
+SELECT doc_render(parse_markdown_to_duck_blocks('# Title'), 'pandoc') LIKE '%pandoc-api-version%';
+----
+true
+
+query I
+SELECT doc_render(parse_markdown_to_duck_blocks('# T'), 'ansi') LIKE '%T%';
+----
+true
+
+statement error
+SELECT doc_render(parse_markdown_to_duck_blocks('# T'), 'nonsense');
+----
+unsupported output_format
+
+# ============================================================================
+# Reader dispatch has MOVED TO PANDUCK. These must no longer exist here: this
+# extension is utilities over the duck_block vocabulary and does not read files.
+# Replacements: read_panduck_doc / panduck_read_blocks / panduck_can_read /
+# panduck_supported_paths / panduck_select_blocks.
+# ============================================================================
+
+statement error
+SELECT doc_to_blocks('README.md');
+----
+Catalog Error
+
+statement error
+SELECT doc_read('README.md');
+----
+Catalog Error
+
+statement error
+SELECT doc_is_supported('a.md');
+----
+Catalog Error
+
+statement error
+SELECT doc_supported_extensions();
+----
+Catalog Error
+
+statement error
+SELECT doc_select('README.md', 'x');
+----
+Catalog Error
+
+# ...the utilities remain
+query I
+SELECT count(*) FROM profile_table('SELECT 1 AS a');
+----
+1
+
+query I
+SELECT db_ensure_extension('json');
+----
+true
