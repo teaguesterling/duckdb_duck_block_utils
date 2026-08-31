@@ -1131,3 +1131,58 @@ query I
 SELECT pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')[1].content LIKE '%def%';
 ----
 true
+
+# ============================================================================
+# Figure -- structural, with a general-purpose caption container block
+# ============================================================================
+
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]')[1].element_type;
+----
+figure
+
+# the image survives as a real inline, not opaque JSON
+query I
+SELECT list_contains(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]'), b -> b.element_type), 'image');
+----
+true
+
+# a caption container is emitted
+query I
+SELECT list_contains(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]'), b -> b.element_type), 'caption');
+----
+true
+
+# CONTENT COMES BEFORE CAPTION, so a renderer walking the flat list emits the
+# image before the words describing it
+query I
+SELECT list_position(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]'), b -> b.element_type), 'image')
+     < list_position(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]'), b -> b.element_type), 'caption');
+----
+true
+
+# caption FORMATTING survives -- the regression test for structured captions
+query I
+SELECT list_contains(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]}]],[{"t":"Plain","c":[{"t":"Str","c":"body"}]}]]}]'), b -> b.element_type), 'bold');
+----
+true
+
+# a figure with an empty caption emits no caption container
+query I
+SELECT list_contains(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[]],[{"t":"Plain","c":[{"t":"Str","c":"body"}]}]]}]'), b -> b.element_type), 'caption');
+----
+false
+
+# nested inside a Div, the figure is no longer dropped
+query I
+SELECT list_contains(list_transform(pandoc_ast_to_blocks('[{"t":"Div","c":[["",["note"],[]],[{"t":"Figure","c":[["",[],[]],[null,[]],[{"t":"Plain","c":[{"t":"Str","c":"inner"}]}]]}]]}]'), b -> b.element_type), 'figure');
+----
+true
+
+# the caption container is a SIBLING of the content blocks -- both are children
+# of the figure -- so they sit at the same level. The export walk depends on this.
+query I
+SELECT (SELECT b.level FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]')) AS b) WHERE b.element_type = 'caption')
+     = (SELECT b.level FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]')) AS b) WHERE b.element_type = 'paragraph' LIMIT 1);
+----
+true

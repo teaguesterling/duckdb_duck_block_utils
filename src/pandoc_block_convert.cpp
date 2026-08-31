@@ -306,6 +306,61 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 				content = string(yyjson_get_str(str), yyjson_get_len(str));
 			}
 		}
+	} else if (strcmp(pandoc_type, "Figure") == 0) {
+		// Figure c = [Attr, Caption, [Block]] where Caption = [ShortCaption?, [Block]].
+		// A figure carries TWO block lists, so the flat duck_block list must keep them
+		// distinguishable: content blocks are emitted first at level+1, then a
+		// `caption` container at level+1 whose own children are the caption blocks.
+		// Content-before-caption so a renderer walking the list in order emits the
+		// image before the words describing it.
+		block_type = BlockTypes::TYPE_FIGURE;
+		if (c_val && yyjson_is_arr(c_val) && yyjson_arr_size(c_val) >= 3) {
+			yyjson_val *attr_val = yyjson_arr_get(c_val, 0);
+			yyjson_val *caption_val = yyjson_arr_get(c_val, 1);
+			yyjson_val *blocks_arr = yyjson_arr_get(c_val, 2);
+
+			PandocAttr pattr;
+			ParsePandocAttrVal(attr_val, pattr);
+			StorePandocAttr(pattr, attrs);
+
+			result.push_back(CreateDocBlock(block_type, "", attrs, order++, encoding, block_level));
+
+			if (blocks_arr && yyjson_is_arr(blocks_arr)) {
+				size_t idx, max;
+				yyjson_val *child_block;
+				yyjson_arr_foreach(blocks_arr, idx, max, child_block) {
+					ProcessPandocBlockVal(child_block, order, result, depth + 1, effective_level);
+				}
+			}
+
+			// Emit the caption container only when the caption actually has blocks,
+			// then recurse so caption formatting (bold, links) survives as real
+			// inline children rather than being flattened to text.
+			if (caption_val && yyjson_is_arr(caption_val) && yyjson_arr_size(caption_val) >= 2) {
+				yyjson_val *short_val = yyjson_arr_get(caption_val, 0);
+				yyjson_val *cap_blocks = yyjson_arr_get(caption_val, 1);
+				if (cap_blocks && yyjson_is_arr(cap_blocks) && yyjson_arr_size(cap_blocks) > 0) {
+					map<string, string> cap_attrs;
+					if (short_val && yyjson_is_arr(short_val)) {
+						string short_text = ExtractInlinesTextVal(short_val);
+						if (!short_text.empty()) {
+							cap_attrs["short_caption"] = short_text;
+						}
+					}
+					// The caption container is a SIBLING of the content blocks -- both
+					// are children of the figure -- so it sits at effective_level + 1,
+					// and its own children are recursed one deeper again.
+					result.push_back(CreateDocBlock(BlockTypes::TYPE_CAPTION, "", cap_attrs, order++, "text",
+					                                Value(effective_level + 1)));
+					size_t idx, max;
+					yyjson_val *cap_block;
+					yyjson_arr_foreach(cap_blocks, idx, max, cap_block) {
+						ProcessPandocBlockVal(cap_block, order, result, depth + 1, effective_level + 1);
+					}
+				}
+			}
+			return;
+		}
 	} else if (strcmp(pandoc_type, "Div") == 0) {
 		block_type = BlockTypes::TYPE_DIV;
 		if (c_val && yyjson_is_arr(c_val) && yyjson_arr_size(c_val) >= 2) {
@@ -634,22 +689,16 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 	return root_obj;
 }
 
-static yyjson_mut_val *ConvertDivToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list, idx_t &start_idx,
-                                             int32_t div_level, idx_t depth) {
-	CheckPandocDepth(depth);
-	auto &div_block = blocks_list[start_idx];
+static yyjson_mut_val *ConvertFigureToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list, idx_t &start_idx,
+                                                int32_t fig_level, idx_t depth);
 
-	yyjson_mut_val *div_obj = yyjson_mut_obj(doc);
-	yyjson_mut_obj_add_str(doc, div_obj, "t", "Div");
-
-	yyjson_mut_val *c_arr = yyjson_mut_arr(doc);
-	yyjson_mut_val *attr_val = CreatePandocAttrVal(doc, div_block, "");
-	yyjson_mut_arr_add_val(c_arr, attr_val);
-
-	yyjson_mut_val *child_blocks_arr = yyjson_mut_arr(doc);
-	yyjson_mut_arr_add_val(c_arr, child_blocks_arr);
-	yyjson_mut_obj_add_val(doc, div_obj, "c", c_arr);
-
+// Walks a container's children -- everything at a level deeper than the container --
+// converting each into `target_arr`. Shared by Div and Figure so the eight child block
+// types are handled in one place rather than duplicated per container.
+static void ConvertContainerChildrenToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list, idx_t &start_idx,
+                                                int32_t parent_level, idx_t depth, yyjson_mut_val *target_arr,
+                                                yyjson_mut_val *switch_arr, const char *switch_type) {
+	yyjson_mut_val *child_blocks_arr = target_arr;
 	idx_t j = start_idx + 1;
 	while (j < blocks_list.size()) {
 		auto &child = blocks_list[j];
@@ -662,7 +711,17 @@ static yyjson_mut_val *ConvertDivToPandocVal(yyjson_mut_doc *doc, const vector<V
 		auto child_type = GetElementStringField(child, BlockTypes::ELEMENT_TYPE_IDX);
 		int32_t child_level = GetElementLevel(child);
 
-		if (child_level <= div_level && child_kind == BlockTypes::KIND_BLOCK) {
+		// Figure separates content blocks from caption blocks in a single walk: on
+		// meeting the switch block at parent_level + 1, output redirects and the
+		// switching block itself is not emitted. Div passes nullptr and is unaffected.
+		if (switch_type && switch_arr && child_kind == BlockTypes::KIND_BLOCK && child_type == switch_type &&
+		    child_level == parent_level + 1) {
+			child_blocks_arr = switch_arr;
+			j++;
+			continue;
+		}
+
+		if (child_level <= parent_level && child_kind == BlockTypes::KIND_BLOCK) {
 			break;
 		}
 		if (child_kind == BlockTypes::KIND_INLINE || child_type == BlockTypes::TYPE_LIST_ITEM) {
@@ -805,7 +864,81 @@ static yyjson_mut_val *ConvertDivToPandocVal(yyjson_mut_doc *doc, const vector<V
 	}
 
 	start_idx = j;
+}
+
+static yyjson_mut_val *ConvertDivToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list, idx_t &start_idx,
+                                             int32_t div_level, idx_t depth) {
+	CheckPandocDepth(depth);
+	auto &div_block = blocks_list[start_idx];
+
+	yyjson_mut_val *div_obj = yyjson_mut_obj(doc);
+	yyjson_mut_obj_add_str(doc, div_obj, "t", "Div");
+
+	yyjson_mut_val *c_arr = yyjson_mut_arr(doc);
+	yyjson_mut_arr_add_val(c_arr, CreatePandocAttrVal(doc, div_block, ""));
+
+	yyjson_mut_val *child_blocks_arr = yyjson_mut_arr(doc);
+	yyjson_mut_arr_add_val(c_arr, child_blocks_arr);
+	yyjson_mut_obj_add_val(doc, div_obj, "c", c_arr);
+
+	ConvertContainerChildrenToPandocVal(doc, blocks_list, start_idx, div_level, depth, child_blocks_arr, nullptr,
+	                                    nullptr);
 	return div_obj;
+}
+
+// Figure c = [Attr, Caption, [Block]] where Caption = [ShortCaption?, [Block]].
+// Children were emitted as content blocks followed by a `caption` container, so one
+// walk with a switch at that container reconstitutes both lists.
+static yyjson_mut_val *ConvertFigureToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list, idx_t &start_idx,
+                                                int32_t fig_level, idx_t depth) {
+	CheckPandocDepth(depth);
+	auto &fig_block = blocks_list[start_idx];
+
+	// short_caption is stored on the caption child, so read it before the walk consumes it.
+	string short_text;
+	for (idx_t k = start_idx + 1; k < blocks_list.size(); k++) {
+		auto &c = blocks_list[k];
+		if (c.IsNull()) {
+			continue;
+		}
+		if (GetElementStringField(c, BlockTypes::KIND_IDX) == BlockTypes::KIND_BLOCK &&
+		    GetElementLevel(c) <= fig_level) {
+			break;
+		}
+		if (GetElementStringField(c, BlockTypes::ELEMENT_TYPE_IDX) == BlockTypes::TYPE_CAPTION) {
+			short_text = GetElementAttribute(c, "short_caption");
+			break;
+		}
+	}
+
+	yyjson_mut_val *content_arr = yyjson_mut_arr(doc);
+	yyjson_mut_val *caption_arr = yyjson_mut_arr(doc);
+	ConvertContainerChildrenToPandocVal(doc, blocks_list, start_idx, fig_level, depth, content_arr, caption_arr,
+	                                    BlockTypes::TYPE_CAPTION);
+
+	yyjson_mut_val *fig_obj = yyjson_mut_obj(doc);
+	yyjson_mut_obj_add_str(doc, fig_obj, "t", "Figure");
+	yyjson_mut_val *c_arr = yyjson_mut_arr(doc);
+	yyjson_mut_arr_add_val(c_arr, CreatePandocAttrVal(doc, fig_block, ""));
+
+	yyjson_mut_val *cap_arr = yyjson_mut_arr(doc);
+	if (short_text.empty()) {
+		yyjson_mut_arr_add_val(cap_arr, yyjson_mut_null(doc));
+	} else {
+		// ShortCaption is Maybe [Inline], so wrap the stored text in a single Str.
+		yyjson_mut_val *short_arr = yyjson_mut_arr(doc);
+		yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+		yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+		yyjson_mut_obj_add_strncpy(doc, str_obj, "c", short_text.data(), short_text.size());
+		yyjson_mut_arr_add_val(short_arr, str_obj);
+		yyjson_mut_arr_add_val(cap_arr, short_arr);
+	}
+	yyjson_mut_arr_add_val(cap_arr, caption_arr);
+
+	yyjson_mut_arr_add_val(c_arr, cap_arr);
+	yyjson_mut_arr_add_val(c_arr, content_arr);
+	yyjson_mut_obj_add_val(doc, fig_obj, "c", c_arr);
+	return fig_obj;
 }
 
 static string BuildBlocksJson(const vector<Value> &blocks_list) {
@@ -967,6 +1100,15 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			int32_t div_level = GetElementLevel(block);
 			yyjson_mut_val *div_obj = ConvertDivToPandocVal(doc, blocks_list, block_idx, div_level, 1);
 			yyjson_mut_arr_add_val(blocks_arr, div_obj);
+		} else if (element_type == BlockTypes::TYPE_FIGURE) {
+			// A top-level figure has NULL level; treat it as 1 so its children, which
+			// sit at 2, are correctly seen as deeper.
+			int32_t fig_level = GetElementLevel(block);
+			if (fig_level == 0) {
+				fig_level = 1;
+			}
+			yyjson_mut_val *fig_obj = ConvertFigureToPandocVal(doc, blocks_list, block_idx, fig_level, 1);
+			yyjson_mut_arr_add_val(blocks_arr, fig_obj);
 		} else if (element_type == BlockTypes::TYPE_TABLE) {
 			yyjson_mut_val *tbl_obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, tbl_obj, "t", "Table");

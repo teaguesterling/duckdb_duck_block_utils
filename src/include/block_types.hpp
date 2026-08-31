@@ -57,6 +57,11 @@ public:
 	static constexpr const char *TYPE_DIV = "div";
 	static constexpr const char *TYPE_LINEBLOCK = "lineblock";
 	static constexpr const char *TYPE_DEFLIST = "deflist";
+	static constexpr const char *TYPE_FIGURE = "figure";
+	// A caption belonging to the container that precedes it. Deliberately general
+	// rather than figure-specific: Pandoc's Table also carries a Caption, and can
+	// adopt this later without another vocabulary change.
+	static constexpr const char *TYPE_CAPTION = "caption";
 	// A structurally-valid element whose type is not in the standard vocabulary.
 	// Distinct from TYPE_RAW, which is literal content in a *named* format; this is a
 	// structured element we cannot name. Format-neutral on purpose: any reader
