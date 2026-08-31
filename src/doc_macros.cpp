@@ -1,10 +1,26 @@
 #include "doc_macros.hpp"
 #include "duckdb/function/pragma_function.hpp"
+#include "duckdb/function/scalar_function.hpp"
 #include "duckdb/main/client_context.hpp"
+#include "duckdb/main/extension_helper.hpp"
 
 namespace duckdb {
 
+// C++ Scalar function: db_ensure_extension(VARCHAR) -> BOOLEAN
+static void DbEnsureExtensionFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &context = state.GetContext();
+	UnaryExecutor::Execute<string_t, bool>(args.data[0], result, args.size(), [&](string_t ext_name) {
+		string name = ext_name.GetString();
+		return ExtensionHelper::TryAutoLoadExtension(context, name);
+	});
+}
+
 static string DocMacrosQuery(ClientContext &context, const FunctionParameters &parameters) {
+	// Attempt initial companion extension auto-loads in background
+	ExtensionHelper::TryAutoLoadExtension(context, "json");
+	ExtensionHelper::TryAutoLoadExtension(context, "markdown");
+	ExtensionHelper::TryAutoLoadExtension(context, "sitting_duck");
+
 	string sql = R"DBSQL(
 -- ===========================================================================
 -- UNIFIED DOCUMENT & AST QUERY PIPELINE MACROS (duck_block_utils)
@@ -21,11 +37,20 @@ CREATE OR REPLACE MACRO doc_to_blocks(src, format := 'auto', pages := '') AS (
             FROM query(
                 CASE
                     WHEN format = 'html' OR format = 'htm' OR (format = 'auto' AND (lower(src) LIKE '%.html' OR lower(src) LIKE '%.htm'))
-                        THEN 'SELECT unnest(html_to_duck_blocks(html)) AS b FROM read_html_objects(' || db_quote(src) || ')'
+                        THEN (
+                            CASE WHEN db_ensure_extension('webbed') OR db_ensure_extension('html') THEN '' ELSE '' END ||
+                            'SELECT unnest(html_to_duck_blocks(html)) AS b FROM read_html_objects(' || db_quote(src) || ')'
+                        )
                     WHEN format = 'pdf' OR (format = 'auto' AND lower(src) LIKE '%.pdf')
-                        THEN 'SELECT unnest(parse_markdown_to_duck_blocks(pdf_to_markdown(' || db_quote(src) || '))) AS b'
+                        THEN (
+                            CASE WHEN db_ensure_extension('pdf') THEN '' ELSE '' END ||
+                            'SELECT unnest(parse_markdown_to_duck_blocks(pdf_to_markdown(' || db_quote(src) || '))) AS b'
+                        )
                     WHEN format = 'json' OR (format = 'auto' AND lower(src) LIKE '%.json')
-                        THEN 'SELECT unnest(read_pandoc_ast(' || db_quote(src) || ')) AS b'
+                        THEN (
+                            CASE WHEN db_ensure_extension('json') THEN '' ELSE '' END ||
+                            'SELECT unnest(read_pandoc_ast(' || db_quote(src) || ')) AS b'
+                        )
                     WHEN format = 'ast' OR format = 'code' OR (format = 'auto' AND (
                          lower(src) LIKE '%.py' OR lower(src) LIKE '%.rs' OR lower(src) LIKE '%.go' OR
                          lower(src) LIKE '%.c' OR lower(src) LIKE '%.cpp' OR lower(src) LIKE '%.cc' OR
@@ -35,8 +60,14 @@ CREATE OR REPLACE MACRO doc_to_blocks(src, format := 'auto', pages := '') AS (
                          lower(src) LIKE '%.php' OR lower(src) LIKE '%.lua' OR lower(src) LIKE '%.sh' OR
                          lower(src) LIKE '%.zig' OR lower(src) LIKE '%.dart' OR lower(src) LIKE '%.sql' OR
                          lower(src) LIKE '%.gql' OR lower(src) LIKE '%.css'))
-                        THEN 'SELECT unnest(blocks) AS b FROM ast_to_blocks_list(' || db_quote(src) || ')'
-                    ELSE 'SELECT b FROM read_markdown_blocks(' || db_quote(src) || ') b'
+                        THEN (
+                            CASE WHEN db_ensure_extension('sitting_duck') THEN '' ELSE '' END ||
+                            'SELECT unnest(blocks) AS b FROM ast_to_blocks_list(' || db_quote(src) || ')'
+                        )
+                    ELSE (
+                        CASE WHEN db_ensure_extension('markdown') THEN '' ELSE '' END ||
+                        'SELECT b FROM read_markdown_blocks(' || db_quote(src) || ') b'
+                    )
                 END
             ) r(b)
         )
@@ -48,9 +79,18 @@ CREATE OR REPLACE MACRO doc_read(src, format := 'auto', pages := '', output_form
     CASE lower(output_format)
         WHEN 'ansi'   THEN db_blocks_render_ansi(doc_to_blocks(src, format, pages))
         WHEN 'text'   THEN db_blocks_to_text(doc_to_blocks(src, format, pages))
-        WHEN 'blocks' THEN to_json(doc_to_blocks(src, format, pages))::VARCHAR
-        WHEN 'md'     THEN to_json(duck_blocks_to_pandoc_ast(doc_to_blocks(src, format, pages)))::VARCHAR
-        WHEN 'pandoc' THEN to_json(duck_blocks_to_pandoc_ast(doc_to_blocks(src, format, pages)))::VARCHAR
+        WHEN 'blocks' THEN (
+            CASE WHEN db_ensure_extension('json') THEN '' ELSE '' END ||
+            to_json(doc_to_blocks(src, format, pages))::VARCHAR
+        )
+        WHEN 'md'     THEN (
+            CASE WHEN db_ensure_extension('json') THEN '' ELSE '' END ||
+            to_json(duck_blocks_to_pandoc_ast(doc_to_blocks(src, format, pages)))::VARCHAR
+        )
+        WHEN 'pandoc' THEN (
+            CASE WHEN db_ensure_extension('json') THEN '' ELSE '' END ||
+            to_json(duck_blocks_to_pandoc_ast(doc_to_blocks(src, format, pages)))::VARCHAR
+        )
         ELSE db_blocks_to_text(doc_to_blocks(src, format, pages))
     END
 );
@@ -75,8 +115,14 @@ CREATE OR REPLACE MACRO doc_section(src, section_pattern, format := 'auto', outp
                 CASE lower(output_format)
                     WHEN 'ansi'   THEN db_blocks_render_ansi(sliced_blocks)
                     WHEN 'text'   THEN db_blocks_to_text(sliced_blocks)
-                    WHEN 'blocks' THEN to_json(sliced_blocks)::VARCHAR
-                    WHEN 'md'     THEN to_json(duck_blocks_to_pandoc_ast(sliced_blocks))::VARCHAR
+                    WHEN 'blocks' THEN (
+                        CASE WHEN db_ensure_extension('json') THEN '' ELSE '' END ||
+                        to_json(sliced_blocks)::VARCHAR
+                    )
+                    WHEN 'md'     THEN (
+                        CASE WHEN db_ensure_extension('json') THEN '' ELSE '' END ||
+                        to_json(duck_blocks_to_pandoc_ast(sliced_blocks))::VARCHAR
+                    )
                     ELSE db_blocks_to_text(sliced_blocks)
                 END
             FROM (
@@ -127,6 +173,7 @@ CREATE OR REPLACE MACRO doc_select_blocks(src, css_selector) AS (
         (
             SELECT list(b::duck_block)
             FROM query(
+                (CASE WHEN db_ensure_extension('sitting_duck') THEN '' ELSE '' END) ||
                 'WITH ast_table AS (SELECT * FROM read_ast(' || db_quote(src) || ', peek := ''full'')), ' ||
                 '     sel_table AS (SELECT * FROM ast_select_from(''ast_table'', ' || db_quote(css_selector) || ')) ' ||
                 'SELECT unnest(blocks) AS b FROM (SELECT list(block) AS blocks FROM ast_to_blocks_from(''sel_table''))'
@@ -139,8 +186,14 @@ CREATE OR REPLACE MACRO doc_select(src, css_selector, output_format := 'text') A
     CASE lower(output_format)
         WHEN 'ansi'   THEN db_blocks_render_ansi(doc_select_blocks(src, css_selector))
         WHEN 'text'   THEN db_blocks_to_text(doc_select_blocks(src, css_selector))
-        WHEN 'md'     THEN to_json(duck_blocks_to_pandoc_ast(doc_select_blocks(src, css_selector)))::VARCHAR
-        WHEN 'blocks' THEN to_json(doc_select_blocks(src, css_selector))::VARCHAR
+        WHEN 'md'     THEN (
+            CASE WHEN db_ensure_extension('json') THEN '' ELSE '' END ||
+            to_json(duck_blocks_to_pandoc_ast(doc_select_blocks(src, css_selector)))::VARCHAR
+        )
+        WHEN 'blocks' THEN (
+            CASE WHEN db_ensure_extension('json') THEN '' ELSE '' END ||
+            to_json(doc_select_blocks(src, css_selector))::VARCHAR
+        )
         ELSE db_blocks_to_text(doc_select_blocks(src, css_selector))
     END
 );
@@ -156,7 +209,12 @@ CREATE OR REPLACE MACRO profile_file(path) AS TABLE
 }
 
 void DocMacros::Register(ExtensionLoader &loader) {
-	// Register pragma duck_block_doc_macros
+	// 1. Register C++ scalar function db_ensure_extension
+	auto ensure_ext_func =
+	    ScalarFunction("db_ensure_extension", {LogicalType::VARCHAR}, LogicalType::BOOLEAN, DbEnsureExtensionFun);
+	loader.RegisterFunction(ensure_ext_func);
+
+	// 2. Register pragma duck_block_doc_macros
 	auto pragma = PragmaFunction::PragmaStatement("duck_block_doc_macros", DocMacrosQuery);
 	loader.RegisterFunction(pragma);
 }
