@@ -137,3 +137,79 @@ SELECT duck_blocks_to_pandoc_blocks([
 ]) LIKE '%Body%';
 ----
 true
+
+# ============================================================================
+# Validation is where this extension owns the spec, so it must know the whole
+# vocabulary -- and must check FIELD SEMANTICS, not just field presence.
+# Names alone are not a specification: `level` was read three different ways by
+# three implementations while every one of them used the documented name.
+# ============================================================================
+
+# REGRESSION: kind='value' was added without updating the validator, so every
+# document carrying metadata validated as invalid.
+query I
+SELECT (db_blocks_validate(pandoc_ast_to_blocks(
+  '{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"T"}]}},
+    "blocks":[{"t":"Para","c":[{"t":"Str","c":"B"}]}]}'))).valid;
+----
+true
+
+# the kind set comes from the vocabulary, so a new kind cannot orphan it again
+query I
+SELECT (db_blocks_validate([
+  {'kind':'nonsense','element_type':'paragraph','content':'x','level':NULL,'encoding':'text',
+   'attributes':MAP{},'element_order':0}::duck_block])).valid;
+----
+false
+
+# SEMANTIC: a heading's semantic level belongs in attributes['heading_level'],
+# never in `level`, which is structural depth. Confusing the two is the oldest
+# trap in this vocabulary and the spec calls it out explicitly.
+query I
+SELECT (db_blocks_validate([
+  {'kind':'block','element_type':'heading','content':'H','level':NULL,'encoding':'text',
+   'attributes':MAP{'heading_level':'2'},'element_order':0}::duck_block])).valid;
+----
+true
+
+# lint, not validate: this extension's own db_heading() sets level on headings
+# while pandoc_ast_to_blocks() leaves it NULL, so failing validation would
+# reject documents built with the builders. Recorded as a real divergence.
+query I
+SELECT len(db_blocks_lint([
+  {'kind':'block','element_type':'heading','content':'H','level':3,'encoding':'text',
+   'attributes':MAP{'heading_level':'1'},'element_order':0}::duck_block])) > 0;
+----
+true
+
+# a spec-conformant heading -- level NULL -- warns about nothing
+query I
+SELECT len(db_blocks_lint([
+  {'kind':'block','element_type':'heading','content':'H','level':NULL,'encoding':'text',
+   'attributes':MAP{'heading_level':'1'},'element_order':0}::duck_block]));
+----
+0
+
+# SEMANTIC: `generic` exists to make a gap visible, so it must say what it was.
+query I
+SELECT len(db_blocks_lint([
+  {'kind':'block','element_type':'generic','content':'{}','level':NULL,'encoding':'json',
+   'attributes':MAP{},'element_order':0}::duck_block])) > 0;
+----
+true
+
+# ...and a generic that names what it stood in for is fine
+query I
+SELECT len(db_blocks_lint([
+  {'kind':'block','element_type':'generic','content':'{}','level':NULL,'encoding':'json',
+   'attributes':MAP{'source_type':'FutureThing'},'element_order':0}::duck_block]));
+----
+0
+
+# SEMANTIC: a value element inside a map must carry its key.
+query I
+SELECT (db_blocks_validate([
+  {'kind':'value','element_type':'string','content':'v','level':1,'encoding':'text',
+   'attributes':MAP{'key':'k'},'element_order':0}::duck_block])).valid;
+----
+true

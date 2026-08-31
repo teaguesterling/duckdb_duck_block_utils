@@ -53,7 +53,11 @@ static string GetElementAttribute(const Value &element, const string &key) {
 static const std::set<string> VALID_ENCODINGS = {"text", "json", "yaml", "html", "xml", "latex", "markdown"};
 
 // Valid kinds
-static const std::set<string> VALID_KINDS = {"block", "inline"};
+// Built from the vocabulary, not written out. kind='value' was added without
+// updating a hardcoded pair here, and every document carrying metadata then
+// validated as invalid -- validation is where this extension owns the spec, so
+// it must not hold a second, private copy of what the spec says.
+static const std::set<string> VALID_KINDS = {BlockTypes::KIND_BLOCK, BlockTypes::KIND_INLINE, BlockTypes::KIND_VALUE};
 
 void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &blocks_vec = args.data[0];
@@ -105,7 +109,7 @@ void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &
 				error_values.push_back(make_pair("element_order", Value(element_order)));
 				error_values.push_back(make_pair("field", Value("kind")));
 				error_values.push_back(
-				    make_pair("message", Value("Invalid kind '" + kind + "', must be 'block' or 'inline'")));
+				    make_pair("message", Value("Invalid kind '" + kind + "'; see db_block_kinds()")));
 				errors.push_back(Value::STRUCT(std::move(error_values)));
 			}
 
@@ -211,6 +215,41 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 					warnings.push_back(Value::STRUCT(std::move(warning_values)));
 				}
 				last_heading_level = heading_level;
+
+				// FIELD SEMANTICS. `level` is structural nesting depth; a heading's
+				// h1-h6 belongs in attributes['heading_level']. The spec calls this
+				// out by name because it is the oldest trap here -- and `level` has
+				// since been read three different ways by three implementations,
+				// every one of them using the documented field name. Names alone are
+				// not a specification.
+				//
+				// This is a WARNING rather than a validation error because this
+				// extension's own db_heading() sets level on headings while
+				// pandoc_ast_to_blocks() leaves it NULL, so the two disagree today.
+				// Failing validation would reject documents built with the builders.
+				auto &heading_children = StructValue::GetChildren(block);
+				if (!heading_children[BlockTypes::LEVEL_IDX].IsNull() && !heading_level_str.empty()) {
+					child_list_t<Value> warning_values;
+					warning_values.push_back(make_pair("severity", Value("warning")));
+					warning_values.push_back(make_pair(
+					    "message", Value("heading sets both `level` and attributes['heading_level']; `level` is "
+					                     "structural nesting depth and should be NULL on headings")));
+					warning_values.push_back(make_pair("element_order", Value(element_order)));
+					warnings.push_back(Value::STRUCT(std::move(warning_values)));
+				}
+			}
+
+			// `generic` exists to make an unmapped construct VISIBLE. Without
+			// source_type it records that something was lost but not what, which
+			// defeats the point of the backstop.
+			if (element_type == BlockTypes::TYPE_GENERIC && GetElementAttribute(block, "source_type").empty()) {
+				child_list_t<Value> warning_values;
+				warning_values.push_back(make_pair("severity", Value("warning")));
+				warning_values.push_back(
+				    make_pair("message", Value("generic without attributes['source_type']: the gap is recorded but not "
+				                               "identifiable")));
+				warning_values.push_back(make_pair("element_order", Value(element_order)));
+				warnings.push_back(Value::STRUCT(std::move(warning_values)));
 			}
 
 			// Check for empty content (except hr/image/raw)
