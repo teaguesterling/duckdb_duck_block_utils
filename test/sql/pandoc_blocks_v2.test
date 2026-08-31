@@ -1209,3 +1209,49 @@ query I
 SELECT (SELECT "pandoc-api-version" FROM pandoc_ast(db_paragraph([db_text('hi')]), api_version := [1,23]));
 ----
 [1, 23]
+
+# ============================================================================
+# kind='value' -- document metadata
+# Pandoc's Meta is a recursive MetaValue tree (MetaMap/MetaList/MetaInlines/
+# MetaBool/MetaString). Before this it was dropped entirely: title, tags,
+# author and draft all round-tripped to {}.
+# ============================================================================
+
+# metadata arrives as kind='value' elements
+query I
+SELECT list_contains(list_transform(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"T"}]},"draft":{"t":"MetaBool","c":true},"tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"one"}]}]},"author":{"t":"MetaMap","c":{"name":{"t":"MetaInlines","c":[{"t":"Str","c":"Someone"}]}}}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"Body"}]}]}'), b -> b.kind), 'value');
+----
+true
+
+# the document body is unaffected
+query I
+SELECT pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"T"}]},"draft":{"t":"MetaBool","c":true},"tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"one"}]}]},"author":{"t":"MetaMap","c":{"name":{"t":"MetaInlines","c":[{"t":"Str","c":"Someone"}]}}}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"Body"}]}]}')[1].element_type;
+----
+paragraph
+
+# each MetaValue shape is represented
+query I
+SELECT list_has_all(
+  list_transform(list_filter(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"T"}]},"draft":{"t":"MetaBool","c":true},"tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"one"}]}]},"author":{"t":"MetaMap","c":{"name":{"t":"MetaInlines","c":[{"t":"Str","c":"Someone"}]}}}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"Body"}]}]}'), b -> b.kind = 'value'), b -> b.element_type),
+  ['inlines', 'bool', 'list', 'map']);
+----
+true
+
+# keys are preserved
+query I
+SELECT list_has_all(
+  list_transform(list_filter(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"T"}]},"draft":{"t":"MetaBool","c":true},"tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"one"}]}]},"author":{"t":"MetaMap","c":{"name":{"t":"MetaInlines","c":[{"t":"Str","c":"Someone"}]}}}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"Body"}]}]}'), b -> b.kind = 'value'), b -> b.attributes['key']),
+  ['title', 'draft', 'tags', 'author']);
+----
+true
+
+# ROUND TRIP: meta is no longer destroyed
+query I
+SELECT duck_blocks_to_pandoc_ast(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"T"}]},"draft":{"t":"MetaBool","c":true},"tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"one"}]}]},"author":{"t":"MetaMap","c":{"name":{"t":"MetaInlines","c":[{"t":"Str","c":"Someone"}]}}}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"Body"}]}]}')).meta::VARCHAR LIKE '%title%';
+----
+true
+
+query I
+SELECT duck_blocks_to_pandoc_ast(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"T"}]},"draft":{"t":"MetaBool","c":true},"tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"one"}]}]},"author":{"t":"MetaMap","c":{"name":{"t":"MetaInlines","c":[{"t":"Str","c":"Someone"}]}}}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"Body"}]}]}')).meta::VARCHAR LIKE '%MetaBool%';
+----
+true

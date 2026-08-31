@@ -44,6 +44,23 @@ static Value CreateDocBlock(const string &block_type, const string &content, con
 	return Value::STRUCT(std::move(struct_values));
 }
 
+// kind='value' elements model Pandoc's recursive MetaValue tree. They are appended
+// AFTER the document's blocks so that blocks[1] keeps pointing at the first content
+// block; consumers must filter on `kind` rather than index blindly, which is already
+// true for inlines and merely less obvious.
+static Value CreateDocValue(const string &value_type, const string &content, const map<string, string> &attrs,
+                            int32_t order, const Value &level) {
+	child_list_t<Value> struct_values;
+	struct_values.push_back(make_pair("kind", Value(BlockTypes::KIND_VALUE)));
+	struct_values.push_back(make_pair("element_type", Value(value_type)));
+	struct_values.push_back(make_pair("content", Value(content)));
+	struct_values.push_back(make_pair("level", level));
+	struct_values.push_back(make_pair("encoding", Value("text")));
+	struct_values.push_back(make_pair("attributes", CreateAttrsMap(attrs)));
+	struct_values.push_back(make_pair("element_order", Value(order)));
+	return Value::STRUCT(std::move(struct_values));
+}
+
 using namespace duckdb_yyjson;
 
 static string ValToJsonString(yyjson_val *val) {
@@ -416,6 +433,76 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 	}
 }
 
+// Walk one MetaValue into kind='value' elements. `list` and `map` nest their children
+// via `level`, exactly as `div` and `figure` do. Recursive, so it honours the depth cap.
+static void ProcessPandocMetaVal(const string &key, yyjson_val *val, int32_t &order, vector<Value> &result,
+                                 int32_t level, idx_t depth) {
+	CheckPandocDepth(depth);
+	if (!val || !yyjson_is_obj(val)) {
+		return;
+	}
+	yyjson_val *t_val = yyjson_obj_get(val, "t");
+	if (!t_val || !yyjson_is_str(t_val)) {
+		return;
+	}
+	const char *mt = yyjson_get_str(t_val);
+	yyjson_val *c_val = yyjson_obj_get(val, "c");
+
+	map<string, string> attrs;
+	if (!key.empty()) {
+		attrs["key"] = key;
+	}
+
+	if (strcmp(mt, "MetaString") == 0) {
+		string s;
+		if (c_val && yyjson_is_str(c_val)) {
+			s = string(yyjson_get_str(c_val), yyjson_get_len(c_val));
+		}
+		result.push_back(CreateDocValue(BlockTypes::VALUE_STRING, s, attrs, order++, Value(level)));
+	} else if (strcmp(mt, "MetaBool") == 0) {
+		const bool b = c_val && yyjson_is_true(c_val);
+		result.push_back(CreateDocValue(BlockTypes::VALUE_BOOL, b ? "true" : "false", attrs, order++, Value(level)));
+	} else if (strcmp(mt, "MetaInlines") == 0) {
+		result.push_back(CreateDocValue(BlockTypes::VALUE_INLINES, "", attrs, order++, Value(level)));
+		if (c_val) {
+			PandocInlineConvert::ConvertPandocInlinesValToDbInlines(c_val, level + 1, order, result, depth);
+		}
+	} else if (strcmp(mt, "MetaBlocks") == 0) {
+		result.push_back(CreateDocValue(BlockTypes::VALUE_BLOCKS, "", attrs, order++, Value(level)));
+		if (c_val && yyjson_is_arr(c_val)) {
+			size_t i, n;
+			yyjson_val *b;
+			yyjson_arr_foreach(c_val, i, n, b) {
+				ProcessPandocBlockVal(b, order, result, depth + 1, level);
+			}
+		}
+	} else if (strcmp(mt, "MetaList") == 0) {
+		result.push_back(CreateDocValue(BlockTypes::VALUE_LIST, "", attrs, order++, Value(level)));
+		if (c_val && yyjson_is_arr(c_val)) {
+			size_t i, n;
+			yyjson_val *e;
+			yyjson_arr_foreach(c_val, i, n, e) {
+				ProcessPandocMetaVal("", e, order, result, level + 1, depth + 1);
+			}
+		}
+	} else if (strcmp(mt, "MetaMap") == 0) {
+		result.push_back(CreateDocValue(BlockTypes::VALUE_MAP, "", attrs, order++, Value(level)));
+		if (c_val && yyjson_is_obj(c_val)) {
+			size_t i, n;
+			yyjson_val *k, *v;
+			yyjson_obj_foreach(c_val, i, n, k, v) {
+				ProcessPandocMetaVal(string(yyjson_get_str(k), yyjson_get_len(k)), v, order, result, level + 1,
+				                     depth + 1);
+			}
+		}
+	} else {
+		// Same no-silent-drops rule as blocks and inlines: an unrecognised MetaValue is
+		// preserved verbatim rather than discarded.
+		attrs["source_type"] = string(mt);
+		result.push_back(CreateDocValue(BlockTypes::TYPE_GENERIC, ValToJsonString(val), attrs, order++, Value(level)));
+	}
+}
+
 void PandocBlockConvert::ConvertPandocAstToBlocks(const string &json, vector<Value> &blocks) {
 	if (json.empty()) {
 		return;
@@ -447,6 +534,20 @@ void PandocBlockConvert::ConvertPandocAstToBlocks(const string &json, vector<Val
 		}
 	} else if (yyjson_is_obj(blocks_val)) {
 		ProcessPandocBlockVal(blocks_val, order, blocks, 1, 0);
+	}
+
+	// Document metadata, AFTER the blocks so blocks[1] still points at the first
+	// content block. Previously dropped entirely: title, tags, author and draft all
+	// round-tripped to {}.
+	if (yyjson_is_obj(root)) {
+		yyjson_val *meta = yyjson_obj_get(root, "meta");
+		if (meta && yyjson_is_obj(meta)) {
+			size_t i, n;
+			yyjson_val *k, *v;
+			yyjson_obj_foreach(meta, i, n, k, v) {
+				ProcessPandocMetaVal(string(yyjson_get_str(k), yyjson_get_len(k)), v, order, blocks, 1, 1);
+			}
+		}
 	}
 
 	yyjson_doc_free(doc);
@@ -1200,6 +1301,138 @@ static LogicalType GetPandocAstType() {
 	return LogicalType::STRUCT(std::move(struct_children));
 }
 
+// Rebuild one MetaValue from the kind='value' element at `i`, advancing `i` past it
+// and everything nested beneath it.
+static yyjson_mut_val *BuildMetaValueJson(yyjson_mut_doc *doc, const vector<Value> &blocks_list, idx_t &i,
+                                          int32_t my_level, idx_t depth) {
+	CheckPandocDepth(depth);
+	auto &el = blocks_list[i];
+	auto vtype = GetElementStringField(el, BlockTypes::ELEMENT_TYPE_IDX);
+	auto content = GetElementStringField(el, BlockTypes::CONTENT_IDX);
+	i++; // consume the value element itself
+
+	yyjson_mut_val *obj = yyjson_mut_obj(doc);
+
+	if (vtype == BlockTypes::VALUE_STRING) {
+		yyjson_mut_obj_add_str(doc, obj, "t", "MetaString");
+		yyjson_mut_obj_add_strncpy(doc, obj, "c", content.data(), content.size());
+		return obj;
+	}
+	if (vtype == BlockTypes::VALUE_BOOL) {
+		yyjson_mut_obj_add_str(doc, obj, "t", "MetaBool");
+		yyjson_mut_obj_add_bool(doc, obj, "c", content == "true");
+		return obj;
+	}
+	if (vtype == BlockTypes::TYPE_GENERIC) {
+		// Preserved verbatim on the way in; hand it back unchanged.
+		yyjson_doc *parsed = yyjson_read(content.c_str(), content.size(), 0);
+		if (parsed) {
+			yyjson_mut_val *copied = yyjson_val_mut_copy(doc, yyjson_doc_get_root(parsed));
+			yyjson_doc_free(parsed);
+			if (copied) {
+				return copied;
+			}
+		}
+		return nullptr;
+	}
+	if (vtype == BlockTypes::VALUE_INLINES) {
+		yyjson_mut_obj_add_str(doc, obj, "t", "MetaInlines");
+		vector<Value> inls;
+		while (i < blocks_list.size()) {
+			auto &child = blocks_list[i];
+			if (child.IsNull()) {
+				i++;
+				continue;
+			}
+			if (GetElementStringField(child, BlockTypes::KIND_IDX) != BlockTypes::KIND_INLINE) {
+				break;
+			}
+			inls.push_back(child);
+			i++;
+		}
+		idx_t end_idx = 0;
+		yyjson_mut_val *arr =
+		    inls.empty()
+		        ? yyjson_mut_arr(doc)
+		        : PandocInlineConvert::ConvertDbInlinesToPandocVal(doc, inls, 0, my_level + 1, end_idx, depth + 1);
+		yyjson_mut_obj_add_val(doc, obj, "c", arr);
+		return obj;
+	}
+
+	// Container shapes: consume every element nested deeper than this one.
+	const bool is_map = (vtype == BlockTypes::VALUE_MAP);
+	const bool is_blocks = (vtype == BlockTypes::VALUE_BLOCKS);
+	yyjson_mut_obj_add_str(doc, obj, "t", is_map ? "MetaMap" : (is_blocks ? "MetaBlocks" : "MetaList"));
+	yyjson_mut_val *container = is_map ? yyjson_mut_obj(doc) : yyjson_mut_arr(doc);
+
+	while (i < blocks_list.size()) {
+		auto &child = blocks_list[i];
+		if (child.IsNull()) {
+			i++;
+			continue;
+		}
+		auto child_kind = GetElementStringField(child, BlockTypes::KIND_IDX);
+		int32_t child_level = GetElementLevel(child);
+		if (child_kind == BlockTypes::KIND_VALUE && child_level <= my_level) {
+			break;
+		}
+		if (child_kind != BlockTypes::KIND_VALUE) {
+			// MetaBlocks children are ordinary blocks; anything else here is not ours.
+			if (!is_blocks) {
+				break;
+			}
+			i++;
+			continue;
+		}
+		string key = GetElementAttribute(child, "key");
+		yyjson_mut_val *v = BuildMetaValueJson(doc, blocks_list, i, child_level, depth + 1);
+		if (!v) {
+			continue;
+		}
+		if (is_map) {
+			yyjson_mut_obj_add(container, yyjson_mut_strncpy(doc, key.data(), key.size()), v);
+		} else {
+			yyjson_mut_arr_add_val(container, v);
+		}
+	}
+	yyjson_mut_obj_add_val(doc, obj, "c", container);
+	return obj;
+}
+
+// Reconstitute the document's `meta` object from its kind='value' elements.
+static string BuildMetaJson(const vector<Value> &blocks_list) {
+	yyjson_mut_doc *doc = yyjson_mut_doc_new(nullptr);
+	yyjson_mut_val *root = yyjson_mut_obj(doc);
+
+	idx_t i = 0;
+	while (i < blocks_list.size()) {
+		auto &el = blocks_list[i];
+		if (el.IsNull()) {
+			i++;
+			continue;
+		}
+		if (GetElementStringField(el, BlockTypes::KIND_IDX) != BlockTypes::KIND_VALUE || GetElementLevel(el) != 1) {
+			i++;
+			continue;
+		}
+		string key = GetElementAttribute(el, "key");
+		yyjson_mut_val *v = BuildMetaValueJson(doc, blocks_list, i, 1, 1);
+		if (v && !key.empty()) {
+			yyjson_mut_obj_add(root, yyjson_mut_strncpy(doc, key.data(), key.size()), v);
+		}
+	}
+
+	yyjson_mut_doc_set_root(doc, root);
+	size_t len = 0;
+	char *json = yyjson_mut_write(doc, 0, &len);
+	string res(json ? json : "{}", json ? len : 2);
+	if (json) {
+		free(json);
+	}
+	yyjson_mut_doc_free(doc);
+	return res;
+}
+
 static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &blocks_vec = args.data[0];
 	auto count = args.size();
@@ -1224,6 +1457,7 @@ static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Ve
 
 		auto &blocks_list = ListValue::GetChildren(blocks_val);
 		string blocks_json = BuildBlocksJson(blocks_list);
+		meta = Value(BuildMetaJson(blocks_list));
 
 		child_list_t<Value> struct_values;
 		struct_values.push_back(make_pair("pandoc-api-version", api_version));

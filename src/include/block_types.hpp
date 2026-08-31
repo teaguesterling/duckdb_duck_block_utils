@@ -39,6 +39,24 @@ public:
 	// Kind values
 	static constexpr const char *KIND_BLOCK = "block";
 	static constexpr const char *KIND_INLINE = "inline";
+	// Non-prose data attached to a document -- currently its metadata. Consumers that
+	// walk document content filter on KIND_BLOCK and ignore these automatically, which
+	// is what makes the kind additive rather than breaking.
+	static constexpr const char *KIND_VALUE = "value";
+
+	// ========================================================================
+	// Value type names (kind = 'value')
+	// ========================================================================
+	// Model Pandoc's recursive MetaValue tree. `list` and `map` nest their children
+	// via `level`, exactly as `div` and `figure` do; `inlines` and `blocks` carry
+	// ordinary kind='inline'/'block' children. The map key, where there is one, is in
+	// attributes['key'].
+	static constexpr const char *VALUE_STRING = "string";
+	static constexpr const char *VALUE_BOOL = "bool";
+	static constexpr const char *VALUE_LIST = "list";
+	static constexpr const char *VALUE_MAP = "map";
+	static constexpr const char *VALUE_INLINES = "inlines";
+	static constexpr const char *VALUE_BLOCKS = "blocks";
 
 	// ========================================================================
 	// Block type names
