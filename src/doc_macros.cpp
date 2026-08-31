@@ -204,6 +204,37 @@ CREATE OR REPLACE MACRO profile_table(target_query) AS TABLE
 
 CREATE OR REPLACE MACRO profile_file(path) AS TABLE
     SELECT * FROM query('SUMMARIZE SELECT * FROM ' || db_quote(path));
+
+-- 8. Dynamic Format and Extension Introspection
+CREATE OR REPLACE MACRO doc_default_extension_mappings() AS (
+    MAP {
+        'markdown': ['.md', '.markdown'],
+        'webbed': ['.htm', '.html'],
+        'pdf': ['.pdf'],
+        'sitting_duck': ['.py', '.rs', '.go', '.c', '.cpp', '.cc', '.js', '.ts', '.jsx', '.tsx', '.java', '.kt', '.cs', '.swift', '.rb', '.php', '.lua', '.sh', '.zig', '.dart', '.sql', '.gql', '.css'],
+        'panduck': ['.docx', '.odt', '.epub', '.tex', '.latex', '.rst', '.org', '.wiki']
+    }
+);
+
+CREATE OR REPLACE MACRO doc_supported_extensions() AS (
+    flatten([
+        entry.value
+        for entry in map_entries(
+            coalesce(
+                try_cast(getvariable('doc_extension_mappings') AS MAP(VARCHAR, VARCHAR[])),
+                doc_default_extension_mappings()
+            )
+        )
+        if db_ensure_extension(entry.key)
+    ])
+);
+
+CREATE OR REPLACE MACRO doc_is_supported(path) AS (
+    list_contains(
+        doc_supported_extensions(),
+        '.' || split_part(lower(path), '.', -1)
+    )
+);
 )DBSQL";
 	return sql;
 }

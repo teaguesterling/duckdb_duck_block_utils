@@ -73,3 +73,22 @@ query I
 SELECT count(*) FROM profile_table('SELECT 100 AS num, ''val'' AS str');
 ----
 2
+
+# ============================================================================
+# doc_supported_extensions & doc_is_supported
+# ============================================================================
+
+query I
+SELECT list_contains(doc_supported_extensions(), '.md');
+----
+true
+
+query I
+SELECT doc_is_supported('README.md');
+----
+true
+
+query I
+SELECT doc_is_supported('file.unsupported_unknown_extension_xyz');
+----
+false
