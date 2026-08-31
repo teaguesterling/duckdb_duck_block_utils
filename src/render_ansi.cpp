@@ -1066,6 +1066,10 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 	string out;
 	bool first = true;
 	idx_t bi = 0;
+	// Depth of the `caption` container we are currently inside, or -1. Blocks deeper
+	// than this belong to the caption and are dimmed so a reader can tell a caption
+	// from the prose around it; without this they render as ordinary body text.
+	int caption_level = -1;
 	while (bi < blocks_list.size()) {
 		auto &block = blocks_list[bi];
 		if (block.IsNull()) {
@@ -1080,6 +1084,24 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 		}
 		auto element_type = GetStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
 		auto content = GetStringField(block, BlockTypes::CONTENT_IDX);
+		int block_level = GetIntField(block, BlockTypes::LEVEL_IDX);
+
+		// Leaving the caption: a block at or above the caption's own depth ends it.
+		if (caption_level >= 0 && block_level <= caption_level) {
+			caption_level = -1;
+		}
+		// `figure` and `caption` are transparent containers -- they carry no content of
+		// their own and their children render themselves. `caption` additionally opens
+		// a dimmed scope over the children that follow it.
+		if (element_type == BlockTypes::TYPE_CAPTION) {
+			caption_level = block_level;
+			bi++;
+			continue;
+		}
+		if (element_type == BlockTypes::TYPE_FIGURE) {
+			bi++;
+			continue;
+		}
 
 		// Gather this block's structured inline children (rich text). Per spec,
 		// `content` is populated iff the container has a single text child, so a
@@ -1124,6 +1146,11 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 
 		if (lines.empty()) {
 			continue;
+		}
+		if (caption_level >= 0) {
+			for (auto &line : lines) {
+				line = Sgr(theme.dim) + line + RESET;
+			}
 		}
 		if (!first) {
 			out += "\n\n";

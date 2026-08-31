@@ -272,3 +272,30 @@ FROM (SELECT db_render_blocks(db_heading(1, 'Title'), theme := 'light') AS r);
 ----
 true
 
+
+# ============================================================================
+# figure / caption rendering
+# figure is a transparent container; caption is styled so a reader can tell it
+# from the prose around it. Without this a caption renders as ordinary body text.
+# ============================================================================
+
+query I
+SELECT db_blocks_render_ansi(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]')) LIKE '%bodyword%';
+----
+true
+
+query I
+SELECT db_blocks_render_ansi(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]')) LIKE '%capword%';
+----
+true
+
+# the caption is dimmed (SGR 2); the body paragraph is not
+query I
+SELECT db_blocks_render_ansi(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]')) LIKE '%' || chr(27) || '[2m%capword%';
+----
+true
+
+query I
+SELECT db_blocks_render_ansi(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]')) LIKE '%' || chr(27) || '[2m%bodyword%';
+----
+false
