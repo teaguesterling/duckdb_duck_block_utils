@@ -49,6 +49,42 @@ produces two different shapes for one logical field, and neither is a bug.
   frontmatter into `meta`. A reader that can see its own raw source (markdown reading
   its frontmatter text, EPUB reading the OPF) may emit both homes for one document.
 
+## When an empty field is a field, and when it is boilerplate
+
+The two fixtures above say **present-and-empty is not absent**, and that stands for
+every format where pandoc has something to mirror. panduck departed from it for docx
+and odt, brought the departure here, and the departure is RIGHT — but its stated ground
+was too narrow and the refined rule is not per-format.
+
+Their argument was that the ruling rested on mirroring: pandoc extracts nothing from
+docx/odt, so there is no empty field of pandoc's to lose. True, and incomplete. The
+ruling had a second and independent ground — a consumer cannot recover "the author
+declared a title and left it blank" from silence — and that one has to be answered on
+its own terms.
+
+It is, and it points the same way: **present-and-empty carries information only when
+presence is a CHOICE.** LibreOffice writes `<dc:title/>`, `<dc:creator/>`,
+`<dc:subject/>` and `<dc:description/>` into every file it saves. Presence is then a
+constant, not an authorial act, and there is no fact to preserve — emitting four empty
+rows per document would invite a consumer to read a deliberate blanking that never
+happened.
+
+So the rule is:
+
+- **Emit an empty field when its presence is authorial.** YAML `author:` and Org
+  `#+AUTHOR:` are typed by a person; the blank is a statement.
+- **Skip it when the format's writer emits the element unconditionally.** Presence
+  carries nothing, so silence discards nothing.
+
+**The input class bounds this, and the bound has to be stated.** "LibreOffice writes
+them always" is measured through LibreOffice output. Whether Word- or Pages-produced
+docx does the same is a separate measurement, and if some producer writes `<dc:title/>`
+only when a title was set and then cleared, the element IS authorial there and the
+skip is wrong for those files. A reader cannot see which producer wrote a file, so the
+per-format approximation is the implementable one — but it is an approximation, and
+recording it as a measured claim about one producer is what lets someone revisit it
+rather than inherit it as a law.
+
 ## The NULL-versus-empty divergence
 
 Found while building these, unreported until now, and **the runner deliberately does
