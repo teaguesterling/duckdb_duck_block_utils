@@ -162,6 +162,28 @@ marker to the next element at its own level, so either order is well-defined.
 `caption` is deliberately general rather than figure-specific, so tables and
 disclosure widgets can use it without a new type.
 
+**A figure's content is ANY block sequence. Do not assume the paragraph wrapper.**
+The shape above is what the Pandoc reader emits, because pandoc's `Figure` holds
+`Plain[Image]` and the paragraph is that `Plain`. An HTML reader emits a block-level
+`image` at level N+1 directly, because `<figure><img>` has no intervening paragraph:
+
+```
+block  | figure    | level N
+block  | image     | level N+1   <- also legal: no paragraph wrapper
+block  | caption   | level N+1
+```
+
+Both are valid figure content and the validator accepts both, because the rule is
+about *nesting*, not about which block types may appear. A consumer walking figures
+must handle either — reaching for `children[0].content` on the assumption of a
+paragraph will find an image from one reader and a paragraph from another.
+
+Recorded so neither shape gets read as canonical: reported by the webbed session
+2026-08-31, comparing its HTML reader against this repo's Pandoc reader.
+
+**No caption means no `caption` block at all.** A figure whose caption is empty emits
+`figure` then its content and nothing else. Do not assume the container is present.
+
 ### Heading Level Attribute
 
 For heading elements, the semantic heading level (h1-h6) is stored in `attributes['heading_level']` as a string, NOT in the `level` field. This separates:
