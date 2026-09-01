@@ -104,7 +104,9 @@
 //
 //        SELECT duck_block_type_names();   -- every element_type
 //        SELECT duck_block_kind_names();   -- ['block','inline','value']
-//        SELECT duck_block_spec_version(); -- compare against SPEC_VERSION here
+//        SELECT duck_block_spec_version(); -- major equality + minor floor;
+//                                          see SPEC_VERSION below for why not
+//                                          plain equality
 //
 // (2) catches a stale copy; (3) catches a stale INSTALL. They fail differently
 // and neither subsumes the other.
@@ -166,8 +168,34 @@ struct DuckBlockVocabulary {
 	// attributes['key'], which is what keeps it out of a document's Pandoc `meta`.
 	static constexpr const char *VALUE_VERSION = "version";
 
-	// The duck_block spec version this build implements. Bump when the vocabulary
-	// changes in a way a consumer could observe.
+	// The duck_block spec version this build implements, as MAJOR.MINOR.
+	//
+	//   MAJOR bumps for a BREAKING change -- a shape or vocabulary change that a
+	//         conforming consumer must migrate for.
+	//   MINOR bumps for an ADDITIVE one -- new types or attributes that existing
+	//         consumers can ignore.
+	//
+	// ASSERT MAJOR EQUALITY AND A MINOR FLOOR, not equality on the whole string.
+	// Equality goes red on every release including ones that cannot affect you,
+	// and a check that cries wolf gets muted:
+	//
+	//     major(duck_block_spec_version()) == 2   AND   minor(...) >= <what you need>
+	//
+	// (Asked by panduck, who noticed the guidance said "compare against
+	// SPEC_VERSION" without saying compare HOW, and whose readers are untouched by
+	// 2.0 apart from lists.)
+	//
+	// HONEST HISTORY, because the numbers only mean something if they were applied
+	// consistently and one of these was not:
+	//
+	//   1.1 -> 1.2  list and blockquote became structural. BREAKING -- it broke
+	//               duckdb_markdown's writer in three places. It should have been
+	//               2.0 and the minor bump was wrong. A consumer pinning "major 1"
+	//               would have been broken by a release the numbering promised was
+	//               safe.
+	//   1.2 -> 2.0  one shape per BLOCK element_type. Breaking, numbered correctly.
+	//
+	// The rule above is what will be followed from here.
 	static constexpr const char *SPEC_VERSION = "2.0";
 
 	// ========================================================================
