@@ -537,6 +537,46 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				}
 			}
 
+			// SPEC 5.0's SHAPES, which nothing checked. Raised by the panduck session:
+			// "that is a breaking spec change with no instrument behind it, which is how
+			// it survived here unnoticed" -- they had measured 5.0 as OPTIONAL because
+			// the linter did not object, and correctly identified that as the wrong
+			// instrument for a spec-version question rather than as permission.
+			//
+			// A producer can emit the superseded table and deflist shapes today and
+			// every check in the portfolio passes: validate says valid, lint says
+			// nothing, the conformance file says nothing. Both are FIDELITY losses
+			// rather than discards -- the text survives, the structure does not -- which
+			// is precisely why nothing noticed.
+			//
+			// Lints rather than errors, for the same reason as the unknown-type rule: a
+			// consumer reading data written against an older spec must still read it.
+			if (element_type == BlockTypes::TYPE_TABLE && !content.empty() &&
+			    content.find("\"headers\"") == string::npos) {
+				child_list_t<Value> warning_values;
+				warning_values.push_back(make_pair("severity", Value("warning")));
+				warning_values.push_back(
+				    make_pair("message", Value("`table` content is not the spec 5.0 native schema. Emit "
+				                               "{\"headers\":[...],\"rows\":[[...]]} and keep the verbatim Pandoc "
+				                               "tuple in attributes['pandoc_ast'] -- the pre-5.0 raw tuple rendered "
+				                               "as NOTHING in every consumer and put its serialisation into search "
+				                               "results.")));
+				warning_values.push_back(make_pair("element_order", Value(element_order)));
+				warnings.push_back(Value::STRUCT(std::move(warning_values)));
+			}
+			if (element_type == BlockTypes::TYPE_DEFLIST) {
+				child_list_t<Value> warning_values;
+				warning_values.push_back(make_pair("severity", Value("warning")));
+				warning_values.push_back(
+				    make_pair("message", Value("`deflist` was superseded in spec 5.0 by `list` with "
+				                               "attributes['list_type']='definition' and role='term'/'definition' "
+				                               "on the items. Still accepted so stored data keeps converting, but "
+				                               "nothing emits it -- a consumer that walks lists handles the new "
+				                               "shape with no new code, which is what the change was for.")));
+				warning_values.push_back(make_pair("element_order", Value(element_order)));
+				warnings.push_back(Value::STRUCT(std::move(warning_values)));
+			}
+
 			// Check for code blocks without language
 			if (element_type == BlockTypes::TYPE_CODE || element_type == BlockTypes::INLINE_CODE) {
 				auto language = GetElementAttribute(block, "language");

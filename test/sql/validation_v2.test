@@ -592,12 +592,27 @@ SELECT list_bool_or(list_transform(duck_blocks_lint([
 ----
 true
 
-# SILENT on every declared type, driven from duck_block_type_names() rather than a
-# sample -- a lint that fired on a real type would be muted within a day.
+# SILENT on every declared type given CONFORMING content, driven from
+# duck_block_type_names() rather than a sample -- a lint that fired on a real type
+# would be muted within a day.
+#
+# `table` gets the 5.0 native schema rather than 'x', because 'x' is not a
+# conforming table and the lint is right to object to it. The assertion is "no
+# lint fires on a CONFORMING element", and feeding every type the same content
+# quietly made it "no lint fires ever", which is a weaker and wrong claim.
+#
+# `deflist` is EXCLUDED, and this is a real exclusion with a real reason: it is
+# accepted-but-superseded as of 5.0, so it warns BY DESIGN. Excluding it here is
+# the difference between "no lint fires on conforming data" and "no lint fires on
+# data we still accept" -- and a deprecation that stayed silent would not be a
+# deprecation. If `deflist` ever stops warning, this exclusion has expired and
+# should be deleted rather than reworded.
 query I
 SELECT sum(n) FROM (
-  SELECT len(duck_blocks_lint([{'kind':'block','element_type':t,'content':'x','level':1,'encoding':'text','attributes':MAP{'heading_level':'1','language':'sql','src':'i.png','format':'html','list_type':'bullet','source_type':'X'},'element_order':0}::duck_block])) AS n
-  FROM (SELECT unnest(duck_block_type_names()) AS t)
+  SELECT len(duck_blocks_lint([{'kind':'block','element_type':t,
+    'content': CASE WHEN t = 'table' THEN '{"headers":["h"],"rows":[["r"]]}' ELSE 'x' END,
+    'level':1,'encoding':'text','attributes':MAP{'heading_level':'1','language':'sql','src':'i.png','format':'html','list_type':'bullet','source_type':'X'},'element_order':0}::duck_block])) AS n
+  FROM (SELECT unnest(duck_block_type_names()) AS t) WHERE t <> 'deflist'
 );
 ----
 0
@@ -673,3 +688,32 @@ SELECT duck_blocks_normalize([
   {'kind':'block','element_type':'plain','content':'foo','level':4,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block]));
 ----
 foo	1
+
+# ============================================================================
+# SPEC 5.0's SHAPES, WHICH NOTHING CHECKED.
+#
+# A producer could emit the superseded `table` (raw Pandoc tuple as JSON) and
+# `deflist` shapes and every check in the portfolio passed: validate said valid,
+# lint said nothing, the conformance file said nothing.
+#
+# Raised by panduck: "that is a breaking spec change with no instrument behind it,
+# which is how it survived here unnoticed." They had measured 5.0 as OPTIONAL
+# because the linter did not object, then identified that as the WRONG INSTRUMENT
+# for a spec-version question rather than as permission. Both losses are fidelity
+# rather than discards -- the text survives, the structure does not -- which is
+# exactly why nothing noticed.
+# ============================================================================
+
+query IIII
+SELECT len(duck_blocks_lint([{'kind':'block','element_type':'table','content':'[["h"],["r"]]','level':1,'encoding':'json','attributes':MAP{},'element_order':0}::duck_block])),
+       len(duck_blocks_lint([{'kind':'block','element_type':'table','content':'{"headers":["h"],"rows":[["r"]]}','level':1,'encoding':'json','attributes':MAP{},'element_order':0}::duck_block])),
+       len(duck_blocks_lint([{'kind':'block','element_type':'deflist','content':'x','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block])),
+       len(duck_blocks_lint(pandoc_ast_to_blocks('[{"t":"Table","c":[["",[],[]],[null,[]],[],[["",[],[]],[]],[],[["",[],[]],[]]]}]')));
+----
+1	0	1	0
+
+# DISCRIMINATING: the native shape must be SILENT, not merely quieter. A rule that
+# warned on every table would be muted within a day, and the reader's own output is
+# the case that decides it -- that is the fourth column above, and it is the one
+# that would have caught a rule keyed on `encoding='json'` alone, since the native
+# schema is also JSON.
