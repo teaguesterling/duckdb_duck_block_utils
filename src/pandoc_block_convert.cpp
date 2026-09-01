@@ -1086,7 +1086,66 @@ static void ConvertContainerChildrenToPandocVal(yyjson_mut_doc *doc, const vecto
 			} else if (child_type == BlockTypes::TYPE_DIV) {
 				yyjson_mut_val *nested_div_obj = ConvertDivToPandocVal(doc, blocks_list, j, child_level, depth + 1);
 				yyjson_mut_arr_add_val(child_blocks_arr, nested_div_obj);
+			} else if ((child_type == BlockTypes::TYPE_TABLE || child_type == BlockTypes::TYPE_DEFLIST) &&
+			           GetElementStringField(child, BlockTypes::ENCODING_IDX) == BlockTypes::ENCODING_JSON &&
+			           !content.empty()) {
+				// These store their whole Pandoc tuple as JSON, so splice it back exactly
+				// as the top-level branches do. Without this a table or definition list
+				// inside a div, blockquote or figure vanished.
+				yyjson_mut_val *obj = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, obj, "t",
+				                       child_type == BlockTypes::TYPE_TABLE ? "Table" : "DefinitionList");
+				yyjson_doc *sub_doc = yyjson_read(content.c_str(), content.size(), 0);
+				if (sub_doc) {
+					yyjson_mut_obj_add_val(doc, obj, "c", yyjson_val_mut_copy(doc, yyjson_doc_get_root(sub_doc)));
+					yyjson_doc_free(sub_doc);
+				} else {
+					yyjson_mut_obj_add_val(doc, obj, "c", yyjson_mut_arr(doc));
+				}
+				yyjson_mut_arr_add_val(child_blocks_arr, obj);
+				j++;
 			} else {
+				// NEVER SILENTLY DROP. This was `j++` -- a bare skip -- so any block type
+				// this chain did not enumerate disappeared inside every container.
+				// lineblock, deflist and table were all being lost that way, and the next
+				// type added would have been too.
+				//
+				// That is the structural point webbed made: a type-keyed walk cannot pass
+				// through a type it does not know, so it needs a terminal arm that does
+				// not need to know. Their HTML writer never had this defect because its
+				// containment is LEVEL-driven -- it pops on depth and renders whatever
+				// arrives, so a new type is handled by construction rather than invisible
+				// by construction.
+				//
+				// Emitted as a Div classed with the element_type, matching how `generic`
+				// records an unmapped construct: visible, correctly nested, and honest
+				// about what it stood in for.
+				yyjson_mut_val *fallback = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, fallback, "t", "Div");
+				yyjson_mut_val *fc_arr = yyjson_mut_arr(doc);
+				yyjson_mut_arr_add_val(fc_arr, CreatePandocAttrVal(doc, child, child_type));
+				yyjson_mut_val *fb_blocks = yyjson_mut_arr(doc);
+				if (!content.empty() || !inline_children.empty()) {
+					yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
+					yyjson_mut_obj_add_str(doc, para_obj, "t", "Plain");
+					if (!inline_children.empty()) {
+						idx_t inl_end = 0;
+						yyjson_mut_obj_add_val(doc, para_obj, "c",
+						                       PandocInlineConvert::ConvertDbInlinesToPandocVal(
+						                           doc, inline_children, 0, child_level + 1, inl_end, 1));
+					} else {
+						yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
+						yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+						yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+						yyjson_mut_obj_add_strncpy(doc, str_obj, "c", content.data(), content.size());
+						yyjson_mut_arr_add_val(inl_arr, str_obj);
+						yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
+					}
+					yyjson_mut_arr_add_val(fb_blocks, para_obj);
+				}
+				yyjson_mut_arr_add_val(fc_arr, fb_blocks);
+				yyjson_mut_obj_add_val(doc, fallback, "c", fc_arr);
+				yyjson_mut_arr_add_val(child_blocks_arr, fallback);
 				j++;
 			}
 		} else {

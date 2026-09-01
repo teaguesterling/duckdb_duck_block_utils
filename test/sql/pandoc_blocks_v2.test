@@ -1672,3 +1672,47 @@ SELECT (SELECT b.attributes['list_type'] FROM (SELECT unnest(duck_block_list(tru
        (SELECT b.attributes['ordered'] FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"a"}]}]]}]}')) AS b) WHERE b.element_type='list');
 ----
 ordered	true	bullet	false
+
+# ============================================================================
+# A CONTAINER MUST NOT SILENTLY DROP A CHILD IT DOES NOT RECOGNISE.
+#
+# The container child walk ended in a bare `j++` -- any block type the chain did
+# not enumerate vanished inside every div, blockquote, figure and caption.
+# lineblock, deflist and table were all being lost that way, and the next type
+# added would have been too. Adding `plain` is what surfaced it: I fixed the
+# instance, and webbed pointed out the class.
+#
+# Their HTML writer never had this defect because its containment is LEVEL-driven
+# -- it pops on depth and renders whatever arrives -- so a new type is handled by
+# construction rather than invisible by construction. This is the type-keyed
+# equivalent: a terminal arm that does not need to know the type.
+# ============================================================================
+
+# deflist and table inside a container keep their own constructors.
+query II
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Div","c":[["",[],[]],[{"t":"DefinitionList","c":[[[{"t":"Str","c":"t"}],[[{"t":"Plain","c":[{"t":"Str","c":"d"}]}]]]]}]]}]}'))::VARCHAR LIKE '%"t":"DefinitionList"%',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Div","c":[["",[],[]],[{"t":"Table","c":[["",[],[]],[null,[]],[],[["",[],[]],[]],[],[["",[],[]],[]]]}]]}]}'))::VARCHAR LIKE '%"t":"Table"%';
+----
+true	true
+
+# DISCRIMINATING: the defect produced a well-formed Div, so asserting that a Div
+# comes out would have passed against it. The property is that the CHILD is in it.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Div","c":[["",[],[]],[{"t":"DefinitionList","c":[[[{"t":"Str","c":"t"}],[[{"t":"Plain","c":[{"t":"Str","c":"d"}]}]]]]}]]}]}'))::VARCHAR NOT LIKE '%"c":[["",[],[]],[]]%';
+----
+true
+
+# A type with no branch at all must still come through VISIBLY rather than
+# vanishing -- lineblock has no container branch and must not be silently eaten.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Div","c":[["",[],[]],[{"t":"LineBlock","c":[[{"t":"Str","c":"ln"}]]}]]}]}'))::VARCHAR LIKE '%ln%';
+----
+true
+
+# The types that already had branches must be unaffected.
+query III
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Div","c":[["",[],[]],[{"t":"CodeBlock","c":[["",[],[]],"code"]}]]}]}'))::VARCHAR LIKE '%"t":"CodeBlock"%',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Div","c":[["",[],[]],[{"t":"HorizontalRule"}]]}]}'))::VARCHAR LIKE '%HorizontalRule%',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Div","c":[["",[],[]],[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"i"}]}]]}]]}]}'))::VARCHAR LIKE '%"t":"BulletList"%';
+----
+true	true	true
