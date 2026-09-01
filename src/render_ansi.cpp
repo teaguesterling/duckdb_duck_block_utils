@@ -694,6 +694,19 @@ static int GetIntField(const Value &element, idx_t field_idx) {
 	return children[field_idx].GetValue<int32_t>();
 }
 
+// Structural depth, with NULL meaning depth 1 (a top-level element is not nested).
+//
+// GetIntField returns 0 for NULL, which CANNOT be told apart from a producer
+// writing an explicit 0 -- and `metadata` is documented at level 0, so the two
+// occur in real data. Reading the field's nullness directly keeps them distinct.
+static int GetDepth(const Value &element) {
+	auto &children = StructValue::GetChildren(element);
+	if (BlockTypes::LEVEL_IDX >= children.size() || children[BlockTypes::LEVEL_IDX].IsNull()) {
+		return 1;
+	}
+	return children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+}
+
 static string GetAttribute(const Value &element, const string &key) {
 	auto &children = StructValue::GetChildren(element);
 	auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
@@ -1085,8 +1098,7 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 			//
 			// GetIntField returns 0 for a NULL level; a top-level element has depth
 			// 1, so read it that way to keep the comparison meaningful.
-			const int lvl = GetIntField(block, BlockTypes::LEVEL_IDX);
-			const int scope = (lvl == 0) ? 1 : lvl;
+			const int scope = GetDepth(block);
 			bi++;
 			while (bi < blocks_list.size()) {
 				auto &child = blocks_list[bi];
@@ -1094,8 +1106,7 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 					bi++;
 					continue;
 				}
-				const int clvl = GetIntField(child, BlockTypes::LEVEL_IDX);
-				if (((clvl == 0) ? 1 : clvl) <= scope) {
+				if (GetDepth(child) <= scope) {
 					break;
 				}
 				bi++;

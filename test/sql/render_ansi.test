@@ -346,3 +346,18 @@ SELECT duck_blocks_render_ansi(pandoc_ast_to_blocks(
     "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}')) LIKE '%REALBODY%';
 ----
 true
+
+# An EXPLICIT level 0 must stay distinct from a NULL level. `metadata` is
+# documented at level 0, so a 0-as-NULL sentinel conflates two states that occur
+# in real data. Metadata beside a value scope is not swallowed by it.
+query I
+SELECT render_probe LIKE '%BODY%' AND render_probe NOT LIKE '%META0%'
+FROM (SELECT duck_blocks_render_ansi([
+  {'kind':'value','element_type':'string','content':'M','level':1,'encoding':'text',
+   'attributes':MAP{'key':'k'},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'metadata','content':'META0','level':0,'encoding':'yaml',
+   'attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'BODY','level':NULL,'encoding':'text',
+   'attributes':MAP{},'element_order':2}::duck_block]) AS render_probe);
+----
+true
