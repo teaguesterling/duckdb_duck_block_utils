@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Assert src/include/duck_block_vocabulary.hpp stays consumable by submodule.
+"""Assert src/include/duck_block_vocabulary.hpp stays consumable as a lone file.
 
 Sibling extensions (panduck, webbed, duckdb_markdown, sitting_duck) vendor this
-header rather than copying the vocabulary, because copies drift silently. That
-only works while the header is **link-free**: every declaration in it must have
-its definition inline, or a consumer that includes it gets undefined-symbol
-errors at link time for functions it never called.
+header as a single copied file -- see its "VENDORING THIS FILE" block. That only
+works while the header is **link-free**: every declaration in it must have its
+definition inline, or a consumer that includes it gets undefined-symbol errors
+at link time for functions it never called.
 
 Nothing in *this* repo would notice that regression -- we link block_types.cpp
 anyway. So this compiles a probe the way a consumer would: the vocabulary header
