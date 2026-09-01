@@ -1893,3 +1893,74 @@ SELECT (SELECT b.kind || ' ' || b.element_type FROM (SELECT unnest(pandoc_ast_to
        (SELECT b.attributes['src'] FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Para","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"alt"}],["i.png",""]]}]}]}')) AS b) WHERE b.kind='inline');
 ----
 block paragraph	i.png
+
+# ============================================================================
+# A STRAY BLOCK DIRECTLY UNDER A LIST -- reported by duckdb_markdown finding the
+# identical defect in their writer's list walk, and checked here rather than
+# assumed not to transfer.
+#
+# The list walk had a bare `j++` for a child at list_level+1 that was neither a
+# list_item nor a nested list, so a list with a stray paragraph exported as
+# `[{"t":"BulletList","c":[]}]` -- the text gone. The RENDERER showed it, so
+# renderer and exporter disagreed about whether the document contained the words.
+#
+# Wrapped as its own item: losing list structure costs formatting, dropping it
+# costs the text.
+# ============================================================================
+
+query III
+SELECT duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'list','content':NULL,'level':1,'encoding':'text','attributes':MAP{'list_type':'bullet'},'element_order':0}::duck_block,{'kind':'block','element_type':'paragraph','content':'STRAY','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block])::VARCHAR LIKE '%STRAY%',
+       duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'list','content':NULL,'level':1,'encoding':'text','attributes':MAP{'list_type':'bullet'},'element_order':0}::duck_block,{'kind':'block','element_type':'code','content':'STRAY','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block])::VARCHAR LIKE '%STRAY%',
+       duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'list','content':NULL,'level':1,'encoding':'text','attributes':MAP{'list_type':'bullet'},'element_order':0}::duck_block,{'kind':'block','element_type':'blockquote','content':'STRAY','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block])::VARCHAR LIKE '%STRAY%';
+----
+true	true	true
+
+# DISCRIMINATING: an ORDINARY list must be untouched. Wrapping every child as an
+# item would also make the assertions above pass while corrupting every real list.
+query I
+SELECT duck_blocks_to_pandoc_blocks(duck_block_list(['a','b']))::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"a"}]}],[{"t":"Plain","c":[{"t":"Str","c":"b"}]}]]}]';
+----
+true
+
+# ...and the stray-wrapped item must not lead with an empty Plain.
+query I
+SELECT duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'list','content':NULL,'level':1,'encoding':'text','attributes':MAP{'list_type':'bullet'},'element_order':0}::duck_block,{'kind':'block','element_type':'paragraph','content':'STRAY','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block])::VARCHAR NOT LIKE '%"Plain","c":[]%';
+----
+true
+
+# ============================================================================
+# AGREEMENT: the renderer and the text extractor must agree about whether a
+# document contains text.
+#
+# webbed's observation, and it is the guard that would have caught the
+# figure(CONTENT) bug: two correct-looking implementations gave OPPOSITE answers
+# about one document, and no single-path test can see that. Neither path is the
+# reference -- the property is that they agree.
+# ============================================================================
+
+# `raw` is EXCLUDED, and this is not a fix -- it is the one type where the two
+# SHOULD disagree. duck_blocks_to_text deliberately omits raw content so markup is
+# not indexed as prose: searching a document for "script" must not match
+# `<script>`, which is the same protection as the JSON-in-search defect fixed
+# earlier today. The renderer shows it literally, which is a faithful rendering of
+# "the document contained this raw block". Different questions, different answers.
+#
+# Recorded rather than fixed -- the guard flagged it on its first run and acting on
+# the flag would have reintroduced markup into search results.
+query I
+SELECT bool_and(rendered = extracted) FROM (
+  SELECT duck_blocks_render_ansi([{'kind':'block','element_type':ty,'content':'PROBE','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block], 60) LIKE '%PROBE%' AS rendered,
+         duck_blocks_to_text([{'kind':'block','element_type':ty,'content':'PROBE','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block]) LIKE '%PROBE%' AS extracted
+  FROM (SELECT unnest(['paragraph','plain','heading','code','blockquote','div','section','figure','caption','list','list_item','lineblock']) AS ty)
+);
+----
+true
+
+# DISCRIMINATING for the exclusion itself: `raw` must still be the ONLY type that
+# disagrees. Excluding it without pinning that would hide a future disagreement in
+# any of the others.
+query II
+SELECT duck_blocks_render_ansi([{'kind':'block','element_type':'raw','content':'<script>x</script>','level':1,'encoding':'html','attributes':MAP{'format':'html'},'element_order':0}::duck_block], 60) LIKE '%script%',
+       duck_blocks_to_text([{'kind':'block','element_type':'raw','content':'<script>x</script>','level':1,'encoding':'html','attributes':MAP{'format':'html'},'element_order':0}::duck_block]) LIKE '%script%';
+----
+true	false

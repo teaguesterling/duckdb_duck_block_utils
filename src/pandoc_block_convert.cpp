@@ -929,6 +929,40 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 				j++;
 			} else if (child_level <= list_level) {
 				break;
+			} else if (child_level == list_level + 1) {
+				// A block directly under the list that is not a list_item or a nested
+				// list. Malformed -- Pandoc's BulletList holds only items -- but the
+				// bare `j++` here dropped it and its whole subtree, so a list with a
+				// stray paragraph exported as `[{"t":"BulletList","c":[]}]` and the text
+				// was gone. The RENDERER showed it, so the two disagreed about whether
+				// the document contained the words at all.
+				//
+				// Wrapped as its own item: losing list structure costs formatting,
+				// dropping it costs the text. Found by duckdb_markdown reporting the
+				// identical defect in their writer's list walk, and checking here
+				// rather than assuming the shape did not transfer.
+				if (in_item) {
+					items.push_back(current_item);
+					current_item = ListItem();
+					in_item = false;
+				}
+				auto stray_content = GetElementStringField(child, BlockTypes::CONTENT_IDX);
+				vector<Value> stray_inlines;
+				for (idx_t k = j + 1; k < blocks_list.size(); k++) {
+					auto &inl = blocks_list[k];
+					if (inl.IsNull()) {
+						continue;
+					}
+					if (GetElementStringField(inl, BlockTypes::KIND_IDX) != BlockTypes::KIND_INLINE ||
+					    GetElementLevel(inl) <= child_level) {
+						break;
+					}
+					stray_inlines.push_back(inl);
+				}
+				ListItem stray_item;
+				stray_item.extra_blocks.push_back(ConvertUnhandledChildToPandocVal(
+				    doc, blocks_list, j, depth, child, child_type, stray_content, stray_inlines, child_level));
+				items.push_back(stray_item);
 			} else if (in_item && child_level == list_level + 2) {
 				// NEVER SILENTLY DROP -- this was a bare `j++`, so a code block,
 				// blockquote or horizontal rule inside a list item vanished. Same
@@ -1000,6 +1034,18 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 
 	for (auto &item : items) {
 		yyjson_mut_val *item_blocks = yyjson_mut_arr(doc);
+		// An item that carries nothing of its own but DOES hold blocks -- a stray child
+		// wrapped as an item -- must not lead with an empty Plain.
+		if (item.content.empty() && item.inlines.empty() && !item.extra_blocks.empty()) {
+			for (auto *extra : item.extra_blocks) {
+				yyjson_mut_arr_add_val(item_blocks, extra);
+			}
+			if (item.nested_list_val) {
+				yyjson_mut_arr_add_val(item_blocks, item.nested_list_val);
+			}
+			yyjson_mut_arr_add_val(items_arr, item_blocks);
+			continue;
+		}
 		yyjson_mut_val *plain_obj = yyjson_mut_obj(doc);
 		yyjson_mut_obj_add_str(doc, plain_obj, "t", item.tight ? "Plain" : "Para");
 
