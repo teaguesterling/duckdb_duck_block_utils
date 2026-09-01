@@ -2149,3 +2149,50 @@ SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Div","c":[["",[
        duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"T"}],[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"HorizontalRule"}]]]]}]'))::VARCHAR LIKE '%HorizontalRule%';
 ----
 true	true	true
+
+# ============================================================================
+# A LINE BLOCK MUST NOT FLATTEN ITS LINES TO TEXT.
+#
+# The reader joined every line with ExtractInlinesTextVal, so anything that was
+# not Str or Space was DESTROYED: `| plain **bold**` came back as `| plain`, and
+# a line whose only content was a link came back EMPTY. Every other block type has
+# carried rich inlines as children since 1.x; lineblock kept the text-only path it
+# was written with.
+#
+# THE ROUND TRIP COULD NOT SEE THIS. A line block of plain text -- the only case
+# anyone writes a test for -- flattens losslessly, so read-then-write agreed with
+# itself perfectly on every existing fixture.
+#
+# Surfaced by duckdb_markdown reporting a hard break degrading to a soft one on
+# their re-read. That was the visible half; this was underneath it.
+# ============================================================================
+
+# Plain text is UNCHANGED: newline-joined content, no children. The fix must not
+# migrate the common case -- a lineblock whose lines are text has a single text
+# run, and the content rule puts that in `content`.
+query II
+SELECT pandoc_ast_to_blocks('[{"t":"LineBlock","c":[[{"t":"Str","c":"one"}],[{"t":"Str","c":"two"}]]}]')[1].content
+     = 'one' || chr(10) || 'two',
+       len(pandoc_ast_to_blocks('[{"t":"LineBlock","c":[[{"t":"Str","c":"one"}],[{"t":"Str","c":"two"}]]}]'));
+----
+true	1
+
+# Rich content survives as inline children, delimited by `linebreak` rather than
+# by newlines -- because `content` cannot hold a link.
+query III
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"LineBlock","c":[[{"t":"Str","c":"plain "},{"t":"Strong","c":[{"t":"Str","c":"bold"}]}],[{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"anchor"}],["http://x",""]]}]]}]'))::VARCHAR
+     = '[{"t":"LineBlock","c":[[{"t":"Str","c":"plain "},{"t":"Strong","c":[{"t":"Str","c":"bold"}]}],[{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"anchor"}],["http://x",""]]}]]}]',
+       (SELECT count(*) FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"LineBlock","c":[[{"t":"Str","c":"a"}],[{"t":"Emph","c":[{"t":"Str","c":"b"}]}]]}]')) AS e) WHERE e.element_type = 'linebreak'),
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"LineBlock","c":[[{"t":"Emph","c":[{"t":"Str","c":"a"}]}],[],[{"t":"Str","c":"c"}]]}]'))::VARCHAR
+     = '[{"t":"LineBlock","c":[[{"t":"Emph","c":[{"t":"Str","c":"a"}]}],[],[{"t":"Str","c":"c"}]]}]';
+----
+true	1	true
+
+# DISCRIMINATING: the words alone are not the property. The old code kept "plain"
+# and lost "bold", so asserting that the output CONTAINS the line's text passes
+# against the defect. What must survive is the CONSTRUCTOR.
+query II
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"LineBlock","c":[[{"t":"Str","c":"plain "},{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]]}]'))::VARCHAR LIKE '%Strong%',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"LineBlock","c":[[{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"anchor"}],["http://x",""]]}]]}]'))::VARCHAR LIKE '%http://x%';
+----
+true	true

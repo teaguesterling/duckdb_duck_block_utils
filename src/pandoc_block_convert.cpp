@@ -350,6 +350,9 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 	string block_type;
 	string encoding = "text";
 	yyjson_val *inlines_val_p = nullptr;
+	// LineBlock's `c` is an array OF arrays, so it cannot go through inlines_val_p --
+	// the inline converter would misparse it. Kept aside and walked line by line below.
+	yyjson_val *lineblock_lines = nullptr;
 
 	if (strcmp(pandoc_type, "Header") == 0) {
 		block_type = BlockTypes::TYPE_HEADING;
@@ -561,10 +564,18 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 			attrs.erase("pandoc_ast");
 		}
 	} else if (strcmp(pandoc_type, "LineBlock") == 0) {
-		// LineBlock c = [[Inline]] -- an array OF ARRAYS, one per line. Deliberately
-		// does not set inlines_val_p: handing an array-of-arrays to the inline
-		// converter would misparse it. Line structure lives in content as
-		// newline-separated text.
+		// LineBlock c = [[Inline]] -- an array OF ARRAYS, one per line.
+		//
+		// Flattening every line to text was DESTRUCTIVE, not merely lossy: a line
+		// containing anything but Str and Space lost it, and a line whose only content
+		// was a Link came back EMPTY. `| plain **bold**` exported as `| plain`.
+		// Every other block type has carried rich inlines as children since 1.x; this
+		// one kept the text-only path it was written with, and the round trip could
+		// not see it because a LineBlock of plain text -- the only case anyone tests --
+		// is genuinely lossless.
+		//
+		// Reported by duckdb_markdown as a hard break degrading to a soft one. That was
+		// the visible half; this is what was underneath it.
 		block_type = BlockTypes::TYPE_LINEBLOCK;
 		if (c_val && yyjson_is_arr(c_val)) {
 			string joined;
@@ -577,6 +588,7 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 				joined += ExtractInlinesTextVal(line);
 			}
 			content = joined;
+			lineblock_lines = c_val;
 		}
 	} else if (strcmp(pandoc_type, "HorizontalRule") == 0) {
 		block_type = BlockTypes::TYPE_HR;
@@ -720,7 +732,38 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 
 	const int32_t block_order = order++;
 	vector<Value> inline_children;
-	if (inlines_val_p) {
+	if (lineblock_lines) {
+		// One line's inlines after another, with a `linebreak` between -- which is what
+		// a LineBlock MEANS, and it lets the same either/or rule below decide the shape:
+		// InlinesAreTextOnly already counts `linebreak` as text, so a plain-text line
+		// block still keeps its newline-joined `content` and emits no children, exactly
+		// as before. Only a line block that would have LOST something grows children.
+		const int32_t order_before_children = order;
+		size_t idx, max;
+		yyjson_val *line;
+		yyjson_arr_foreach(lineblock_lines, idx, max, line) {
+			if (idx > 0) {
+				map<string, string> no_attrs;
+				child_list_t<Value> br;
+				br.push_back(make_pair("kind", Value(BlockTypes::KIND_INLINE)));
+				br.push_back(make_pair("element_type", Value(BlockTypes::INLINE_LINEBREAK)));
+				br.push_back(make_pair("content", Value("")));
+				br.push_back(make_pair("level", Value(effective_level + 1)));
+				br.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_TEXT)));
+				br.push_back(make_pair("attributes", CreateAttrsMap(no_attrs)));
+				br.push_back(make_pair("element_order", Value(order++)));
+				inline_children.push_back(Value::STRUCT(std::move(br)));
+			}
+			PandocInlineConvert::ConvertPandocInlinesValToDbInlines(line, effective_level + 1, order, inline_children,
+			                                                        depth);
+		}
+		if (InlinesAreTextOnly(inline_children)) {
+			inline_children.clear();
+			order = order_before_children;
+		} else {
+			content.clear();
+		}
+	} else if (inlines_val_p) {
 		const int32_t order_before_children = order;
 		PandocInlineConvert::ConvertPandocInlinesValToDbInlines(inlines_val_p, effective_level + 1, order,
 		                                                        inline_children, depth);
@@ -2127,6 +2170,36 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			yyjson_mut_val *lb_obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, lb_obj, "t", "LineBlock");
 			yyjson_mut_val *lines_arr = yyjson_mut_arr(doc);
+
+			// A line block with INLINE CHILDREN carries rich content -- bold, a link --
+			// that `content` cannot hold, so the lines are delimited by `linebreak`
+			// children rather than by newlines. Splitting on '\n' here would have thrown
+			// all of it away a second time, on the way back out.
+			if (!inline_children.empty()) {
+				vector<Value> one_line;
+				auto flush_line = [&]() {
+					idx_t inl_end = 0;
+					yyjson_mut_arr_add_val(
+					    lines_arr, one_line.empty() ? yyjson_mut_arr(doc)
+					                                : PandocInlineConvert::ConvertDbInlinesToPandocVal(
+					                                      doc, one_line, 0, GetElementLevel(block) + 1, inl_end, 1));
+					one_line.clear();
+				};
+				for (auto &inl : inline_children) {
+					if (GetElementStringField(inl, BlockTypes::ELEMENT_TYPE_IDX) == BlockTypes::INLINE_LINEBREAK &&
+					    GetElementLevel(inl) == GetElementLevel(block) + 1) {
+						flush_line();
+						continue;
+					}
+					one_line.push_back(inl);
+				}
+				flush_line();
+				yyjson_mut_obj_add_val(doc, lb_obj, "c", lines_arr);
+				yyjson_mut_arr_add_val(blocks_arr, lb_obj);
+				block_idx++;
+				continue;
+			}
+
 			size_t line_start = 0;
 			while (line_start <= content.size()) {
 				size_t nl = content.find('\n', line_start);
