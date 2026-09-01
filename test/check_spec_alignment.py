@@ -82,6 +82,40 @@ def main() -> int:
         m = re.match(r"\|\s*`([a-z_]+)`\s*\|", line)
         if m:
             documented.add(m.group(1))
+    # KINDS and ENCODINGS are exclusions too, and they expire the same two ways as any
+    # other -- pointed out by duckdb_markdown finding both modes in their own allowlist.
+    #
+    #   stale       a name that is no longer a kind or an encoding subtracts nothing
+    #   superseded  a name that BECOMES an element_type is stripped here before the
+    #               comparison, so a genuinely undocumented type would be silently
+    #               excused. That is not hypothetical: `text` is both an encoding and
+    #               a real inline element_type, and the first version of this file
+    #               excluded it and reported a false failure.
+    #
+    # So check them against what the build actually declares rather than trusting the
+    # literals to have aged well.
+    kind_names = {
+        line.strip()
+        for line in subprocess.run(
+            [str(duckdb), "-noheader", "-list", "-c", "SELECT unnest(duck_block_kind_names());"],
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        if line.strip()
+    }
+    if kind_names and KINDS != kind_names:
+        print(f"\nFAIL: KINDS is {sorted(KINDS)}; the build declares {sorted(kind_names)}.")
+        print("      Update the literal. An exclusion naming something the build no longer")
+        print("      has excuses nothing and looks healthy.")
+        return 1
+    shadowed = sorted((KINDS | ENCODINGS) & actual)
+    if shadowed:
+        print(f"\nFAIL: {shadowed} are excluded here but ARE real element types in the build.")
+        print("      This strips them before the comparison, so their documentation is never")
+        print("      checked -- an exclusion suppressing the evidence that would retire it.")
+        print("      `text` is the known case: both an encoding and an inline element_type.")
+        return 1
+
     documented -= KINDS | ENCODINGS
 
     undocumented = sorted(actual - documented)

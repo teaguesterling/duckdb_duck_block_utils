@@ -142,6 +142,35 @@ def main() -> int:
     ).stdout
     emitted: set = set()
     collect_constructors(json.loads(ast_json)["blocks"], emitted)
+    # UNREACHABLE EXPIRES TWO WAYS, and neither was audited -- the same pair
+    # duckdb_markdown found in their fallthrough allowlist, in the check of mine I had
+    # not thought to apply my own finding to. Fixing the instance and not the class.
+    #
+    #   stale key   the constructor is renamed or removed in a later pandoc-types, so
+    #               the entry subtracts NOTHING from a set it is not in. It excuses
+    #               nothing and looks healthy, forever.
+    #   superseded  a reader starts emitting it. The entry removes it from `reachable`
+    #               BEFORE coverage is computed, so the fixture is never asked to
+    #               exercise it -- the exclusion silently outlives its own premise and
+    #               cannot be reported by the coverage check it is disabling.
+    #
+    # The second is the dangerous one: it is an exclusion that suppresses the very
+    # evidence that would retire it.
+    unreachable_stale = sorted(UNREACHABLE.keys() - CONSTRUCTORS)
+    unreachable_emitted = sorted(UNREACHABLE.keys() & emitted)
+    if unreachable_stale or unreachable_emitted:
+        for name in unreachable_stale:
+            print(f"\nFAIL: UNREACHABLE names `{name}`, which is not a constructor any more.")
+            print(f"      recorded reason: {UNREACHABLE[name]}")
+        for name in unreachable_emitted:
+            print(f"\nFAIL: UNREACHABLE says `{name}` is never emitted -- the fixture just emitted it.")
+            print(f"      recorded reason: {UNREACHABLE[name]}")
+            print("      While the entry stands, coverage for this constructor is DISABLED.")
+        print("      DELETE the entry rather than rewording it. If the reason still reads")
+        print("      as true, the property it describes has moved, and that is the thing")
+        print("      worth understanding before the entry goes.")
+        return 1
+
     reachable = CONSTRUCTORS - UNREACHABLE.keys()
     missing = sorted(reachable - emitted)
     print(
