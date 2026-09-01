@@ -135,6 +135,37 @@ CONTENT_EXEMPT = {
 }
 
 
+# FOURTH ARM. The same text, through the RENDER path rather than the export path.
+#
+# Added on a tip from duckdb_markdown, who ran the content arm above against their own
+# code and found FOUR instances -- div, section, figure, caption -- of a rule they had
+# already fixed for list_item that same evening. Given a rule and one symptom they
+# repaired the symptom and left the class intact in four more places, which is what a
+# sweep converts into a list of sites and re-reading the rule does not.
+#
+# Their `caption` is the case that argues for this arm specifically: a structural branch
+# consumed a childless caption and emitted nothing, which SHADOWED the leaf renderer --
+# so their first fix was live, correct, and unreachable. A fix that cannot be reached and
+# a fix that does not work produce identical output.
+#
+# The export arm above cannot see any of that: a type can export its text perfectly and
+# still render as nothing, and this repo shipped exactly that combination earlier the same
+# day (figure, caption and list carrying content rendered as nothing while to_text
+# returned it). Two paths, two arms.
+RENDER_EXEMPT = {
+    "hr": "A rule. No text position in either path -- same reason as the export arm.",
+    "page_break": "A marker. It renders as a break; text on it has no meaning.",
+    "table": "content is the native {headers,rows} JSON, so a bare word is not a table "
+    "and the renderer has nothing to project. Real tables are covered in "
+    "render_ansi.test.",
+    "metadata": "kind='value'. Document metadata is not body content, so the renderer "
+    "correctly declines to draw it; the probe builds it as a block.",
+    "raw": "DELIBERATE, and only in to_text: raw markup is omitted so that searching for "
+    "`script` does not match `<script>`. Investigated when the agreement guard "
+    "first flagged it; it renders fine, which is the half that matters on screen.",
+}
+
+
 def skip(reason: str) -> int:
     if os.environ.get("DUCK_BLOCK_CHECKS_STRICT") == "1":
         print(f"FAIL: {reason}")
@@ -157,6 +188,26 @@ def run(duckdb, sql: str) -> str:
     if proc.returncode != 0:
         return "<ERROR> " + proc.stderr.strip().splitlines()[0] if proc.stderr.strip() else "<ERROR>"
     return proc.stdout.strip().splitlines()[0] if proc.stdout.strip() else ""
+
+
+def run_all(duckdb, sql: str) -> str:
+    """Whole output, not the first line.
+
+    `run` above returns line ONE, which is right for a scalar and wrong for anything
+    rendered: a code block puts its language on line 1 and its text on line 2, so the
+    render arm reported `code` as dropping text that was plainly on screen. A harness
+    that truncates its own evidence produces a confident false result in whichever
+    direction the truncation happens to fall -- here a false positive; duckdb_markdown
+    hit the same class as a false NEGATIVE the same evening, when their lint bridge
+    swallowed stderr and a failing query came back as "no findings".
+
+    Same lesson either way: before trusting a new bridge, run something through it whose
+    answer you already know.
+    """
+    proc = subprocess.run([str(duckdb), "-noheader", "-list", "-c", sql], capture_output=True, text=True)
+    if proc.returncode != 0:
+        return "<ERROR> " + proc.stderr.strip()
+    return proc.stdout
 
 
 def main() -> int:
@@ -250,9 +301,39 @@ def main() -> int:
             f"  {checked} types keep their text; {len(CONTENT_EXEMPT)} exempt " f"({', '.join(sorted(CONTENT_EXEMPT))})"
         )
 
+    print("Render sweep: the same text, through render_ansi and to_text")
+    rendered = 0
+    for ty in sorted(set(types)):
+        if ty in RENDER_EXEMPT:
+            continue
+        attrs = CONTENT_ATTRS.get(ty, "MAP{}")
+        blk = (
+            f"[{{'kind':'block','element_type':'{ty}','content':'{CONTENT_PROBE}','level':1,"
+            f"'encoding':'text','attributes':{attrs},'element_order':0}}::{STRUCT}]"
+        )
+        rendered += 1
+        shown = run_all(
+            duckdb, "SELECT regexp_replace(duck_blocks_render_ansi(" + blk + ", 40), '\x1b\\[[0-9;]*m', '', 'g');"
+        )
+        text = run_all(duckdb, f"SELECT duck_blocks_to_text({blk});")
+        missing = [n for n, v in (("render_ansi", shown), ("to_text", text)) if CONTENT_PROBE not in v]
+        if not missing:
+            continue
+        failed = True
+        print(f"\nFAIL: `{ty}` carries text in `content` and {' and '.join(missing)} shows NOTHING.")
+        print("      A type can export its text perfectly and still render as nothing -- this repo")
+        print("      shipped exactly that for figure, caption and list. Check for a structural branch")
+        print("      that consumes the element and emits nothing, which SHADOWS the leaf renderer and")
+        print("      makes a correct fix unreachable. Or add it to RENDER_EXEMPT with the reason.")
+    if not failed:
+        print(
+            f"  {rendered} types show their text in both; {len(RENDER_EXEMPT)} exempt "
+            f"({', '.join(sorted(RENDER_EXEMPT))})"
+        )
+
     if failed:
         return 1
-    print("OK: no write-only types, nothing dropped in a container, no text lost from content.")
+    print("OK: no write-only types, nothing dropped in a container, no text lost on export or render.")
     return 0
 
 
