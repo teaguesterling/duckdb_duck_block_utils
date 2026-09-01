@@ -240,6 +240,16 @@ Semantics, because `page_number` was ambiguous until it was written down:
   "this document is one page", and inventing the second would be structure the source
   never carried.
 
+**`duck_blocks_get_pages` does NOT replace reader-level page selection, and a consumer
+that swaps one for the other has introduced a performance regression disguised as a
+simplification.** It slices blocks already materialised, so getting two pages of a
+400-page document this way reads all 400 and discards 398. A reader that can push a
+page range down — `read_pdf(src, first_page := 1, last_page := 2)` — must keep doing
+so. The two answer the same question by different mechanisms: pushdown is for *reading
+less*, `get_pages` is for addressing pages inside blocks you already hold. Both are
+real; neither is redundant. Raised by duckeye against exactly this mistake in my own
+description of the macro.
+
 ### `figure` and `caption`
 
 ```

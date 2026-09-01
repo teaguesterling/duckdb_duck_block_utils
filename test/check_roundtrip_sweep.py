@@ -344,8 +344,30 @@ def main() -> int:
     # over the same ListItem struct, and the definition walk read one field of it.
     #
     # `%s` is where the probe's constructor goes.
+    #
+    # EVERY shell carries a LEAD PARAGRAPH before the probe, so each container is
+    # exercised with TWO block children. A walk that stops after the first child
+    # passes a single-child probe, which is how a definition dropped everything after
+    # the first for as long as list_type='definition' had existed.
+    #
+    # BlockQuote and Figure were added 2026-09-01 after duckdb_markdown found a
+    # multi-block blockquote flattened into one run-together string in THEIR reader --
+    # `> quoted para\n>\n> second para` came back as "quoted parasecond para". Their
+    # diagnosis is the part worth copying: what hid it was not a weak assertion but a
+    # missing DIRECTION. Their check ran someone else's blocks through their writer,
+    # a path that was always correct; reader-through-writer for a multi-block
+    # container had no coverage at all. This arm is that direction, and it did not
+    # open a quote either. The behaviour here was correct -- verified before adding
+    # the shells -- which is exactly when a coverage gap is cheapest to close and
+    # least likely to be noticed.
     CONTAINERS = [
-        ("Div", '{"t":"Div","c":[["",[],[]],[%s]]}'),
+        ("Div", '{"t":"Div","c":[["",[],[]],[{"t":"Para","c":[{"t":"Str","c":"lead"}]},%s]]}'),
+        ("a blockquote", '{"t":"BlockQuote","c":[{"t":"Para","c":[{"t":"Str","c":"lead"}]},%s]}'),
+        (
+            "a figure",
+            '{"t":"Figure","c":[["",[],[]],[null,[]],'
+            '[{"t":"Para","c":[{"t":"Str","c":"lead"}]},%s]]}',
+        ),
         ("a list item", '{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"lead"}]},%s]]}'),
         (
             "a definition",
