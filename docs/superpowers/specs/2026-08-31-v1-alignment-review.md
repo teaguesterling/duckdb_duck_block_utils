@@ -102,9 +102,23 @@ ever declared which is canonical, so today both are emitted and consumers read e
 That is two names for one fact — the same class of defect as two shapes for one
 element_type, which 2.0 exists to remove.
 
-**Recommendation:** declare `ordered` canonical per v1, keep `list_type` as a documented
-alias that producers may emit and consumers must tolerate. Costs nothing, removes an
-unnecessary divergence from v1.
+~~**Recommendation:** declare `ordered` canonical per v1, keep `list_type` as a documented
+alias.~~
+
+**OVERRULED, and the reasoning here was wrong.** Teague ruled `list_type` canonical on
+extensibility grounds: *"list_type is better than ordered as it would also handle dl and
+navlist or future work."* A boolean cannot grow to say "definition" — and `dl` arrived
+the same day, as `list_type='definition'` in spec 5.0, needing zero new types.
+
+The recommendation above optimised for v1 fidelity and treated the two names purely as
+duplication to be collapsed. It never asked which name could still be right after the
+next type arrived. That is the whole difference, and it was settled by the next type
+arriving within hours.
+
+`ordered` remains a documented legacy alias that consumers must tolerate; producers emit
+both. Recorded rather than deleted because the ruling is the useful part: when
+collapsing two names for one fact, pick the one that can still express the fact when it
+grows.
 
 ### Over-broad: "a container carries no content of its own"
 
@@ -149,7 +163,33 @@ That is why the fix is not "be more careful" but "make the checker able to objec
 validator never inspected `level` at all, so no amount of care would have surfaced the
 disagreement.
 
-## Open: tight vs loose list items
+## RESOLVED: tight vs loose list items
+
+**The recommendation below was NOT adopted, and the record should say so rather than
+sit under a heading that reads "Open".** What shipped, the same day:
+
+1. A `plain` element_type was minted (spec 4.0) — Pandoc's `Plain` constructor, a
+   block-level text run with no paragraph semantics. A TYPE, not the attribute
+   recommended here.
+2. Spec 6.0 then NARROWED it: `plain` appears only where the text has nowhere else to
+   live — beside block siblings, or at top level. A tight item carries its text in
+   `content`; a loose item has a `paragraph` child.
+
+So the distinction now rides on **the content rule alone**, which is neither the
+attribute recommended here nor the type as first minted. It costs no new vocabulary in
+leaf position and it was measured on the exporter before the change: it already emitted
+`Plain` for a content-carrying item and `Para` for a paragraph child.
+
+The argument below for an attribute — that ignoring it should cost SPACING rather than
+content — is still the right test, and the shipped answer passes it differently: a
+consumer that reads only `content` gets the text of a tight item correctly and merely
+loses the tight/loose nuance, which is the same benign failure.
+
+Leaving this section headed "Open" with an unadopted recommendation is the stale-claim
+failure this repo spent 2026-09-01 cataloguing: a reason has no expiry unless you give
+it one, and a reader would have implemented the attribute.
+
+### Original analysis, superseded but kept for its reasoning
 
 Discovered while ruling on panduck's question. Pandoc encodes the tight/loose list
 distinction as `Plain` vs `Para` inside a list item; **this reader maps both to
@@ -168,8 +208,9 @@ for it, so a renderer ignoring it produces slightly wrong SPACING rather than wr
 That is the correct failure mode for this distinction specifically, and it would not be for
 one where ignoring it changes meaning.
 
-Not acted on — minting vocabulary immediately before an external release rename is Teague's
-call, not mine.
+~~Not acted on — minting vocabulary immediately before an external release rename is
+Teague's call, not mine.~~ Superseded: it WAS acted on, hours later, as a type rather
+than an attribute, and then narrowed in 6.0. See the resolution above.
 
 ## External release naming
 
