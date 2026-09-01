@@ -39,6 +39,15 @@ FIXTURE = HERE / "fixtures" / "constructors.md"
 
 # Constructors known to be unmapped. Empty is the goal; a non-empty entry must
 # say why it is acceptable.
+# EMPTY, and empty is the state in which you cannot tell an AUDITED registry from an
+# unaudited one -- duckdb_markdown's point, about a registry of their own. The staleness
+# branch below (`LEDGER.keys() - unhandled`) is unreachable while this dict is empty, so
+# it had never run once despite existing.
+#
+# Control-tested 2026-09-01 rather than reasoned about: planting {"Header": ...} makes it
+# report `ledger is stale -- recorded as gaps but now handled: Header`, and removing it
+# returns the run to green. So the branch works, and this comment is the only place that
+# fact is recorded, because nothing in a green run can show it.
 LEDGER: dict[str, str] = {}
 
 # Constructors no pandoc reader emits, so the fixture cannot exercise them and
