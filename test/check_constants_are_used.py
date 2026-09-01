@@ -43,16 +43,22 @@ EXEMPT = {
     "ROLE_HEADER": "'header' appears as a Pandoc/HTML construct name unrelated to the role.",
     "ROLE_PAGE": "'page' is the class written into exported Pandoc Divs for TYPE_PAGE, which "
     "is the marker's serialisation rather than a role attribute.",
-    "ROLE_DOCUMENT": "declared for producers; this repo's readers do not emit whole-file "
-    "metadata blobs, so it has no use site here yet.",
     "ROLE_ARTICLE": "part of the section role set, matched via a list rather than singly.",
     "ROLE_ASIDE": "as ROLE_ARTICLE.",
     "ROLE_NAV": "as ROLE_ARTICLE.",
     "ROLE_FOOTER": "as ROLE_ARTICLE.",
     "ROLE_MAIN": "as ROLE_ARTICLE.",
-    "ROLE_FRONTMATTER": "declared for producers; this repo's Pandoc reader has no frontmatter "
-    "concept -- Pandoc parses frontmatter into Meta, not into a blob.",
 }
+
+
+# ROLE_DOCUMENT and ROLE_FRONTMATTER were EXEMPT here and are not any more. Both
+# reasons still read as TRUE -- they are declared for producers, and this repo's Pandoc
+# reader has no frontmatter concept because Pandoc parses frontmatter into Meta rather
+# than leaving a blob. But neither was excusing anything: their literals appear nowhere
+# in src/, so the shadowing scan never flagged them and the entries only looked like
+# considered decisions. That is a GAP -- published upstream, nothing here branches on
+# it -- and this check does not track gaps. Recording it here rather than as a
+# suppression that would also swallow the real instance.
 
 
 def skip(reason: str) -> int:
@@ -87,7 +93,22 @@ def main() -> int:
     if not consts:
         return skip("no string constants found in the vocabulary header")
 
-    sources = {f: f.read_text() for f in sorted(SRC.glob("*.cpp"))}
+    # COMMENTS STRIPPED BEFORE THE SCAN. This file's comments quote vocabulary values
+    # constantly -- explaining what `attributes['role']` means, or why "ordered" is a
+    # legacy alias -- and a literal inside one of them would read as a bare literal in
+    # code and report a shadowing that does not exist.
+    #
+    # duckdb_markdown found the same loose-pattern hazard in their usage scanner and
+    # sharpened the framing: for a ONE-OFF measurement the manufacturing direction is
+    # the recoverable one, because a phantom finding is loud and gets chased down. For
+    # a STANDING CHECK it is not, because the way a phantom gets silenced is an EXEMPT
+    # entry with a plausible reason -- and that entry then excuses the real instance
+    # when it arrives. Loud is only self-correcting until someone quiets it.
+    def strip_comments(text):
+        text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+        return re.sub(r"//[^\n]*", "", text)
+
+    sources = {f: strip_comments(f.read_text()) for f in sorted(SRC.glob("*.cpp"))}
 
     shadowed = []
     for name, value in sorted(consts.items()):
@@ -98,6 +119,20 @@ def main() -> int:
             shadowed.append((name, value, hits))
 
     stale = sorted(n for n in EXEMPT if n not in all_consts)
+
+    # AN EXEMPTION EXPIRES TWO WAYS and this check only had one. `stale` above catches
+    # a key naming a constant that no longer exists. It never caught the other mode: an
+    # entry that would PASS without it, and so excuses nothing while still reading as a
+    # considered decision. check_roundtrip_sweep.py has audited its three registries
+    # this way since yesterday -- an audit lands on whichever list you were thinking
+    # about, and I was not thinking about this one.
+    excuses_nothing = sorted(
+        n
+        for n in EXEMPT
+        if n in all_consts
+        and all_consts[n]
+        and not any(f'"{all_consts[n]}"' in t for t in sources.values())
+    )
 
     print(f"Checking {len(consts)} attribute/role/list_type constants are used, not shadowed")
     failed = False
@@ -111,6 +146,13 @@ def main() -> int:
         print("      which is the wrong way round for the repo that owns the value.")
         print("      Use the constant, or add it to EXEMPT with the reason the literal is")
         print("      legitimately something else.")
+    if excuses_nothing:
+        failed = True
+        print("\nFAIL: these EXEMPT entries excuse nothing -- the check passes without them:")
+        for n in excuses_nothing:
+            print(f'        {n} = "{all_consts[n]}" -- recorded reason: {EXEMPT[n]}')
+        print("      DELETE them. An exemption that no longer applies goes on excusing a case")
+        print("      that does not need excusing, and hides the real instance when it arrives.")
     if stale:
         failed = True
         print("\nFAIL: EXEMPT names constants that no longer exist:")
