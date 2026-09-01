@@ -202,6 +202,11 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 		string open_container_type;
 		int32_t open_container_order = 0;
 
+		// A held "empty content" candidate, cancelled if the next element is deeper.
+		string pending_empty_type;
+		int32_t pending_empty_order = 0;
+		int32_t pending_empty_depth = 0;
+
 		for (auto &block : blocks_list) {
 			if (block.IsNull()) {
 				continue;
@@ -211,6 +216,22 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 			auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
 			auto element_order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
 			auto block_kind = GetElementStringField(block, BlockTypes::KIND_IDX);
+
+			if (!pending_empty_type.empty()) {
+				auto &cur_children = StructValue::GetChildren(block);
+				const bool cur_null =
+				    BlockTypes::LEVEL_IDX >= cur_children.size() || cur_children[BlockTypes::LEVEL_IDX].IsNull();
+				const int32_t cur_depth = cur_null ? 1 : GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
+				if (cur_depth <= pending_empty_depth) {
+					child_list_t<Value> warning_values;
+					warning_values.push_back(make_pair("severity", Value("info")));
+					warning_values.push_back(make_pair(
+					    "message", Value("Empty " + pending_empty_type + " element: no content and no children")));
+					warning_values.push_back(make_pair("element_order", Value(pending_empty_order)));
+					warnings.push_back(Value::STRUCT(std::move(warning_values)));
+				}
+				pending_empty_type.clear();
+			}
 
 			if (block_kind == BlockTypes::KIND_BLOCK) {
 				// NULL level means depth 1 -- a top-level element is not nested.
@@ -303,16 +324,31 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				warnings.push_back(Value::STRUCT(std::move(warning_values)));
 			}
 
-			// Check for empty content (except hr/image/raw)
+			// Empty content is only worth reporting when the element carries NOTHING --
+			// no content AND no children. As written it fired on every conforming
+			// container, because spec 2.0 says a container carries no content of its
+			// own, and on every rich paragraph, whose text is in inline children. So
+			// the rule reported correct code as suspicious.
+			//
+			// That is not merely noise. panduck measured a real defect whose only
+			// nearby lint line was one of FOUR identical-looking "empty content" infos,
+			// three of them benign -- it made the genuine problem look like the fourth
+			// instance of a harmless pattern. A rule that fires on correct code does
+			// not just add lines, it camouflages the lines that matter.
+			//
+			// Deferred rather than emitted: whether an element has children is only
+			// knowable from what follows it, so the candidate is held and cancelled if
+			// the next element is deeper.
 			if (content.empty() && element_type != BlockTypes::TYPE_HR && element_type != BlockTypes::TYPE_IMAGE &&
 			    element_type != BlockTypes::INLINE_IMAGE && element_type != BlockTypes::TYPE_RAW &&
 			    element_type != BlockTypes::INLINE_SPACE && element_type != BlockTypes::INLINE_SOFTBREAK &&
 			    element_type != BlockTypes::INLINE_LINEBREAK) {
-				child_list_t<Value> warning_values;
-				warning_values.push_back(make_pair("severity", Value("info")));
-				warning_values.push_back(make_pair("message", Value("Empty content in " + element_type + " element")));
-				warning_values.push_back(make_pair("element_order", Value(element_order)));
-				warnings.push_back(Value::STRUCT(std::move(warning_values)));
+				auto &pe_children = StructValue::GetChildren(block);
+				const bool pe_null =
+				    BlockTypes::LEVEL_IDX >= pe_children.size() || pe_children[BlockTypes::LEVEL_IDX].IsNull();
+				pending_empty_type = element_type;
+				pending_empty_order = element_order;
+				pending_empty_depth = pe_null ? 1 : GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
 			}
 
 			// Check for code blocks without language
@@ -338,6 +374,16 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				warnings.push_back(Value::STRUCT(std::move(warning_values)));
 			}
 			last_order = element_order;
+		}
+
+		// A candidate held when the list ended has nothing after it, so nothing deeper.
+		if (!pending_empty_type.empty()) {
+			child_list_t<Value> warning_values;
+			warning_values.push_back(make_pair("severity", Value("info")));
+			warning_values.push_back(
+			    make_pair("message", Value("Empty " + pending_empty_type + " element: no content and no children")));
+			warning_values.push_back(make_pair("element_order", Value(pending_empty_order)));
+			warnings.push_back(Value::STRUCT(std::move(warning_values)));
 		}
 
 		result.SetValue(i, Value::LIST(warning_struct_type, std::move(warnings)));

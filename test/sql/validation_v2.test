@@ -290,3 +290,43 @@ SELECT (SELECT count(*) FROM (SELECT unnest(duck_blocks_lint(duck_block_blockquo
        (SELECT count(*) FROM (SELECT unnest(duck_blocks_lint(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[],["i.png",""]]}]}]]}]}'))) AS w) WHERE w.message LIKE '%owns no children%');
 ----
 0	0	0	0
+
+# ============================================================================
+# "Empty content" must mean NOTHING AT ALL, not "content field is empty".
+#
+# Spec 2.0 says a container carries no content of its own, so the old rule fired
+# on EVERY conforming container -- and on every rich paragraph, whose text lives
+# in inline children. A rule that fires on correct code does not merely add
+# lines; panduck measured a real defect whose only nearby lint was one of FOUR
+# identical "empty content" infos, three benign, which made the genuine problem
+# look like the fourth instance of a harmless pattern. Noise camouflages signal.
+# ============================================================================
+
+# Conforming containers produce NO lint at all.
+query IIII
+SELECT (SELECT count(*) FROM (SELECT unnest(duck_blocks_lint(duck_block_blockquote('x'))) AS w)),
+       (SELECT count(*) FROM (SELECT unnest(duck_blocks_lint(duck_block_list(['a']))) AS w)),
+       (SELECT count(*) FROM (SELECT unnest(duck_blocks_lint(duck_block_list_block([duck_block_list_item('a')]))) AS w)),
+       (SELECT count(*) FROM (SELECT unnest(duck_blocks_lint(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[],["i.png",""]]}]}]]}]}'))) AS w));
+----
+0	0	0	0
+
+# DISCRIMINATING: suppressing the rule entirely would also produce those zeros.
+# An element with neither content nor children must still be reported.
+query I
+SELECT count(*) FROM (SELECT unnest(duck_blocks_lint([
+  {'kind':'block','element_type':'paragraph','content':NULL,'level':NULL,'encoding':'text','attributes':MAP{},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])) AS w)
+WHERE w.message LIKE '%no content and no children%';
+----
+1
+
+# On panduck's real epub rows the structural warnings must outnumber the infos --
+# the signal has to dominate, which is the whole point of removing the noise.
+query II
+SELECT count(*) FILTER (WHERE w.severity = 'warning'), count(*) FILTER (WHERE w.severity = 'info')
+FROM (SELECT unnest(duck_blocks_lint([
+  {'kind':'block','element_type':'list_item','content':'bullet one','level':NULL,'encoding':'text','attributes':MAP{},'element_order':12}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER),
+  {'kind':'block','element_type':'blockquote','content':NULL,'level':NULL,'encoding':'text','attributes':MAP{},'element_order':14}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER),
+  {'kind':'block','element_type':'paragraph','content':'A block quote.','level':NULL,'encoding':'text','attributes':MAP{},'element_order':15}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])) AS w);
+----
+2	1
