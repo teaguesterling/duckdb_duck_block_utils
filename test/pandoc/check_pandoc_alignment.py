@@ -52,6 +52,10 @@ LEDGER: dict[str, str] = {}
 
 # Constructors no pandoc reader emits, so the fixture cannot exercise them and
 # their absence is not a coverage gap.
+# Both expiry branches below control-tested 2026-09-01, since neither entry has ever
+# expired and an audit nobody has watched run is the same evidence as no audit:
+#   {"NotAConstructor": ...} -> "names X, which is not a constructor any more"
+#   {"Header": ...}          -> "says X is never emitted -- the fixture just emitted it"
 UNREACHABLE = {"Null": "no pandoc reader emits it; intentionally yields no element"}
 
 # pandoc-types 1.23. Sub-enums (Alignment, ColWidth, QuoteType, ListNumberStyle,
