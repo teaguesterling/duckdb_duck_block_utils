@@ -55,8 +55,27 @@
 //      Fetch upstream and compare BY NAME AND VALUE -- parse both sides, do
 //      not diff the text:
 //
+//      DO NOT fetch the /main/ raw url directly. raw.githubusercontent.com serves
+//      branch urls from a CDN that is only EVENTUALLY consistent with the branch,
+//      so a check running shortly after an upstream push compares against the
+//      PREVIOUS version, finds no difference, and reports a clean bill of health.
+//      That window is precisely when a drift check matters most, and the failure
+//      is in the reassuring direction, which is the direction nobody re-checks.
+//      (Found by duckdb_markdown, whose check reported "in sync" against a copy
+//      two spec versions old; it only surfaced because a human said otherwise.)
+//
+//      Resolve the branch to a commit sha first, then fetch the SHA-PINNED url,
+//      which is immutable and therefore cannot be stale:
+//
+//        https://api.github.com/repos/teaguesterling/duckdb_duck_block_utils/commits/main
 //        https://raw.githubusercontent.com/teaguesterling/
-//          duckdb_duck_block_utils/main/src/include/duck_block_vocabulary.hpp
+//          duckdb_duck_block_utils/<sha>/src/include/duck_block_vocabulary.hpp
+//
+//      Print the sha alongside the verdict, so the output says what it actually
+//      compared against. And when the sha lookup fails -- rate limit, outage,
+//      offline -- falling back to the branch url is fine, but that path must NEVER
+//      print OK: "no drift seen" from a copy you could not date is not a clean
+//      bill of health, and reporting it as one is the same defect again.
 //
 //      A plain `diff` over this file fires on comment edits and cosmetic churn
 //      -- commit 3957f36 rewrote every idx_t to uint64_t and changed no name

@@ -1450,3 +1450,56 @@ SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":
        duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"LineBlock","c":[[{"t":"Str","c":"line one"}]]}]}'))::VARCHAR NOT LIKE '%"t":"Para"%';
 ----
 true	true
+
+# ============================================================================
+# NESTED INLINE CONTAINMENT.
+#
+# Not a fix -- a guard. The webbed session found their writer walked the inline
+# run FLAT and ignored level, so a wrapper rendered empty and its text escaped
+# it: "a <b>bold <i>inner</i></b> c" lost the bolding on "bold " silently. That
+# is the containment defect they had already fixed for BLOCKS, one level down in
+# the adjacent function. panduck predicted it in webbed's code without seeing it.
+#
+# This path is correct here, verified rather than assumed. Pinned because three
+# sibling extensions had the same defect and nothing here would have noticed if
+# a future change introduced it.
+# ============================================================================
+
+# The reader emits genuinely nested inlines: wrapper with NULL content, children
+# one level deeper.
+# NOTE the reader writes an EMPTY STRING for a wrapper's content, while the block
+# builders write NULL. Both mean "no content of my own" and nothing reads them
+# differently today, but it is a divergence -- recorded here so the next person
+# measures it rather than assuming, as this test's first version did.
+query III
+SELECT b.element_type, b.level, coalesce(b.content, '<NULL>')
+FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Para","c":[{"t":"Strong","c":[{"t":"Str","c":"bold"},{"t":"Emph","c":[{"t":"Str","c":"inner"}]}]}]}]}')) AS b)
+WHERE b.kind = 'inline';
+----
+bold	2	(empty)
+text	3	bold
+italic	3	(empty)
+text	4	inner
+
+# DISCRIMINATING: a flat walk emits the wrapper EMPTY and lets its text escape,
+# which still renders every word -- so asserting the words survive would pass
+# against the defect. The property is that the bold region CONTAINS the nested
+# text, i.e. bold-on precedes it and bold-off follows it.
+query I
+SELECT duck_blocks_render_ansi(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a"},{"t":"Space"},{"t":"Strong","c":[{"t":"Str","c":"bold"},{"t":"Space"},{"t":"Emph","c":[{"t":"Str","c":"inner"}]}]},{"t":"Space"},{"t":"Str","c":"c"}]}]}'), 40)
+       LIKE '%' || chr(27) || '[1mbold ' || chr(27) || '[3minner%';
+----
+true
+
+# Three levels nest LIFO and every wrapper closes; adjacent wrappers stay apart.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Para","c":[{"t":"Strong","c":[{"t":"Str","c":"b"},{"t":"Emph","c":[{"t":"Str","c":"i"},{"t":"Strikeout","c":[{"t":"Str","c":"s"}]}]}]},{"t":"Str","c":"|"},{"t":"Emph","c":[{"t":"Str","c":"second"}]}]}]}'))::VARCHAR = '[{"t":"Para","c":[{"t":"Strong","c":[{"t":"Str","c":"b"},{"t":"Emph","c":[{"t":"Str","c":"i"},{"t":"Strikeout","c":[{"t":"Str","c":"s"}]}]}]},{"t":"Str","c":"|"},{"t":"Emph","c":[{"t":"Str","c":"second"}]}]}]';
+----
+true
+
+# A wrapper whose own content is empty must not also emit that emptiness as an
+# element. duckdb_markdown's version of this produced "My ****Doc".
+query I
+SELECT duck_blocks_to_text(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Para","c":[{"t":"Str","c":"My"},{"t":"Space"},{"t":"Strong","c":[{"t":"Str","c":"Doc"}]}]}]}'));
+----
+My Doc

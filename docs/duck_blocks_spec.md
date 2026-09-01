@@ -380,10 +380,23 @@ is **not** a schema, and it is not sufficient to decode against.
 
 ### Spec 2.0: ONE shape per element_type
 
-**Every producer in this repo emits the same shape for a given `element_type`.**
-Before 2.0 it emitted three for `list` alone, and a consumer's decoder silently
-depended on which producer made the block. That is the defect this rule exists to
-prevent, and it is a promise consumers can rely on rather than a convention.
+**Every producer in this repo emits the same shape for a given BLOCK
+`element_type`.** Before 2.0 it emitted three for `list` alone, and a consumer's
+decoder silently depended on which producer made the block. That is the defect
+this rule exists to prevent, and it is a promise consumers can rely on rather
+than a convention.
+
+**Known gap: INLINE wrappers are not yet covered by this rule.** `duck_block_bold('y')`
+produces `bold` carrying `y` in `content`, where the Pandoc reader produces `bold`
+with an empty `content` and a `text` child one level deeper. Both round-trip and
+render correctly today because every path in this repo reads either, but it is the
+same divergence this section exists to eliminate, and a consumer that tests
+`content IS NULL` to identify a wrapper will get different answers from different
+producers. Do not rely on either form for inlines yet; walk children if present
+and fall back to `content`. Blocks are settled; inlines are scheduled.
+
+Relatedly, "no content of its own" is spelled two ways: the block builders write
+NULL, the Pandoc reader writes an empty string. Treat both as absent.
 
 **A container carries no content of its own.** `div`, `section`, `figure`,
 `caption`, `blockquote`, `list` and `list_item` own children at `level + 1`; their
