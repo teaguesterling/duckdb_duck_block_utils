@@ -87,60 +87,38 @@ static void BlockKindsFun(DataChunk &args, ExpressionState &state, Vector &resul
 	result.Reference(kinds);
 }
 
+// The single list of declared element_type names. Shared rather than duplicated:
+// `duck_blocks_lint` warns on a type not in here, and if it kept its own copy the
+// two would drift -- which is the defect that made an image's alt text invisible
+// in this repo, one fact written twice and checked by the party that writes both.
+const vector<string> &BlockTypes::AllTypeNames() {
+	static const vector<string> names = {
+	    BlockTypes::TYPE_HEADING,       BlockTypes::TYPE_PARAGRAPH,   BlockTypes::TYPE_PLAIN,
+	    BlockTypes::TYPE_CODE,          BlockTypes::TYPE_BLOCKQUOTE,  BlockTypes::TYPE_LIST,
+	    BlockTypes::TYPE_LIST_ITEM,     BlockTypes::TYPE_TABLE,       BlockTypes::TYPE_HR,
+	    BlockTypes::TYPE_METADATA,      BlockTypes::TYPE_IMAGE,       BlockTypes::TYPE_RAW,
+	    BlockTypes::TYPE_DIV,           BlockTypes::TYPE_SECTION,     BlockTypes::TYPE_PAGE,
+	    BlockTypes::TYPE_LINEBLOCK,     BlockTypes::TYPE_DEFLIST,     BlockTypes::TYPE_FIGURE,
+	    BlockTypes::TYPE_CAPTION,       BlockTypes::TYPE_GENERIC,     BlockTypes::INLINE_TEXT,
+	    BlockTypes::INLINE_SPACE,       BlockTypes::INLINE_SOFTBREAK, BlockTypes::INLINE_LINEBREAK,
+	    BlockTypes::INLINE_BOLD,        BlockTypes::INLINE_ITALIC,    BlockTypes::INLINE_STRIKETHROUGH,
+	    BlockTypes::INLINE_SUPERSCRIPT, BlockTypes::INLINE_SUBSCRIPT, BlockTypes::INLINE_SMALLCAPS,
+	    BlockTypes::INLINE_UNDERLINE,   BlockTypes::INLINE_CODE,      BlockTypes::INLINE_MATH,
+	    BlockTypes::INLINE_LINK,        BlockTypes::INLINE_IMAGE,     BlockTypes::INLINE_QUOTED,
+	    BlockTypes::INLINE_CITE,        BlockTypes::INLINE_NOTE,      BlockTypes::INLINE_SPAN,
+	    BlockTypes::INLINE_RAW,         BlockTypes::VALUE_STRING,     BlockTypes::VALUE_BOOL,
+	    BlockTypes::VALUE_LIST,         BlockTypes::VALUE_MAP,        BlockTypes::VALUE_INLINES,
+	    BlockTypes::VALUE_BLOCKS,       BlockTypes::VALUE_VERSION,
+	};
+	return names;
+}
+
 static void BlockTypesFun(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto types = StringListValue({
-	    // blocks
-	    BlockTypes::TYPE_HEADING,
-	    BlockTypes::TYPE_PARAGRAPH,
-	    BlockTypes::TYPE_PLAIN,
-	    BlockTypes::TYPE_CODE,
-	    BlockTypes::TYPE_BLOCKQUOTE,
-	    BlockTypes::TYPE_LIST,
-	    BlockTypes::TYPE_LIST_ITEM,
-	    BlockTypes::TYPE_TABLE,
-	    BlockTypes::TYPE_HR,
-	    BlockTypes::TYPE_METADATA,
-	    BlockTypes::TYPE_IMAGE,
-	    BlockTypes::TYPE_RAW,
-	    BlockTypes::TYPE_DIV,
-	    BlockTypes::TYPE_SECTION,
-	    BlockTypes::TYPE_PAGE,
-	    BlockTypes::TYPE_LINEBLOCK,
-	    BlockTypes::TYPE_DEFLIST,
-	    BlockTypes::TYPE_FIGURE,
-	    BlockTypes::TYPE_CAPTION,
-	    BlockTypes::TYPE_GENERIC,
-	    // inlines
-	    BlockTypes::INLINE_TEXT,
-	    BlockTypes::INLINE_SPACE,
-	    BlockTypes::INLINE_SOFTBREAK,
-	    BlockTypes::INLINE_LINEBREAK,
-	    BlockTypes::INLINE_BOLD,
-	    BlockTypes::INLINE_ITALIC,
-	    BlockTypes::INLINE_STRIKETHROUGH,
-	    BlockTypes::INLINE_SUPERSCRIPT,
-	    BlockTypes::INLINE_SUBSCRIPT,
-	    BlockTypes::INLINE_SMALLCAPS,
-	    BlockTypes::INLINE_UNDERLINE,
-	    BlockTypes::INLINE_CODE,
-	    BlockTypes::INLINE_MATH,
-	    BlockTypes::INLINE_LINK,
-	    BlockTypes::INLINE_IMAGE,
-	    BlockTypes::INLINE_QUOTED,
-	    BlockTypes::INLINE_CITE,
-	    BlockTypes::INLINE_NOTE,
-	    BlockTypes::INLINE_SPAN,
-	    BlockTypes::INLINE_RAW,
-	    // values
-	    BlockTypes::VALUE_STRING,
-	    BlockTypes::VALUE_BOOL,
-	    BlockTypes::VALUE_LIST,
-	    BlockTypes::VALUE_MAP,
-	    BlockTypes::VALUE_INLINES,
-	    BlockTypes::VALUE_BLOCKS,
-	    BlockTypes::VALUE_VERSION,
-	});
-	result.Reference(types);
+	vector<Value> vals;
+	for (auto &n : BlockTypes::AllTypeNames()) {
+		vals.push_back(Value(n));
+	}
+	result.Reference(Value::LIST(LogicalType::VARCHAR, std::move(vals)));
 }
 
 static void SpecVersionFun(DataChunk &args, ExpressionState &state, Vector &result) {

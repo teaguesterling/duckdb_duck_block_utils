@@ -28,6 +28,10 @@ public:
 
 	// Register types with the extension loader
 	static void Register(ExtensionLoader &loader);
+
+	// Every declared element_type, in one place. See the definition for why it is
+	// not duplicated into the linter.
+	static const vector<string> &AllTypeNames();
 };
 
 } // namespace duckdb

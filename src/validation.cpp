@@ -496,6 +496,47 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				}
 			}
 
+			// AN element_type THAT IS NOT IN THE VOCABULARY. Nothing checked this until
+			// 2026-09-01: `duck_blocks_validate` accepted `zzzz_not_a_type` as valid and
+			// the linter said nothing, so the 43 declared type names were decorative from
+			// a validation standpoint and any typo or private invention passed silently.
+			//
+			// Found by duckdb_markdown, who emit `frontmatter` where the vocabulary
+			// declares `metadata` and observed that nothing objects -- "your 'what can
+			// this check not see' applied to the thing that just checked me."
+			//
+			// A LINT, NOT AN ERROR, and the distinction is load-bearing: a consumer built
+			// against an older vocabulary must still be able to read data written by a
+			// newer producer. Rejecting an unknown type would make every additive spec
+			// release break every consumer that had not upgraded yet, which is the
+			// opposite of what MINOR is for. So it degrades: a name we do not know is
+			// reported, not refused.
+			//
+			// `generic` is the declared backstop for a construct genuinely outside the
+			// vocabulary -- it keeps the original name in attributes['source_type'] -- so
+			// the message points there rather than implying the element is wrong.
+			if (!element_type.empty()) {
+				bool declared = false;
+				for (auto &known : BlockTypes::AllTypeNames()) {
+					if (known == element_type) {
+						declared = true;
+						break;
+					}
+				}
+				if (!declared) {
+					child_list_t<Value> warning_values;
+					warning_values.push_back(make_pair("severity", Value("warning")));
+					warning_values.push_back(
+					    make_pair("message", Value("element_type '" + element_type +
+					                               "' is not in the vocabulary (duck_block_type_names()). If this "
+					                               "construct has no duck_block equivalent, use `generic` and keep "
+					                               "the original name in attributes['source_type'], so it is visible "
+					                               "as a gap rather than silently private.")));
+					warning_values.push_back(make_pair("element_order", Value(element_order)));
+					warnings.push_back(Value::STRUCT(std::move(warning_values)));
+				}
+			}
+
 			// Check for code blocks without language
 			if (element_type == BlockTypes::TYPE_CODE || element_type == BlockTypes::INLINE_CODE) {
 				auto language = GetElementAttribute(block, "language");

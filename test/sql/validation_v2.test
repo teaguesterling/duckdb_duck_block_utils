@@ -567,3 +567,44 @@ SELECT duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'div','conte
        duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'list','content':'CARRIED','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block])::VARCHAR LIKE '%CARRIED%';
 ----
 true	false
+
+# ============================================================================
+# AN element_type OUTSIDE THE VOCABULARY WAS INVISIBLE.
+#
+# `duck_blocks_validate` accepted `zzzz_not_a_type` as valid and the linter said
+# nothing, so the 43 declared type names were decorative from a validation
+# standpoint: any typo or private invention passed silently.
+#
+# Found by duckdb_markdown, who emit `frontmatter` where the vocabulary declares
+# `metadata`, and observed that nothing objected -- "your 'what can this check not
+# see' applied to the thing that just checked me."
+#
+# A LINT, NOT AN ERROR. A consumer built against an older vocabulary must still
+# read data from a newer producer; rejecting an unknown type would make every
+# additive release break every consumer that had not upgraded, which is the
+# opposite of what MINOR is for.
+# ============================================================================
+
+query I
+SELECT list_bool_or(list_transform(duck_blocks_lint([
+  {'kind':'block','element_type':'frontmatter','content':'t','level':1,'encoding':'yaml','attributes':MAP{},'element_order':0}::duck_block
+]), w -> w.message LIKE '%not in the vocabulary%'));
+----
+true
+
+# SILENT on every declared type, driven from duck_block_type_names() rather than a
+# sample -- a lint that fired on a real type would be muted within a day.
+query I
+SELECT sum(n) FROM (
+  SELECT len(duck_blocks_lint([{'kind':'block','element_type':t,'content':'x','level':1,'encoding':'text','attributes':MAP{'heading_level':'1','language':'sql','src':'i.png','format':'html','list_type':'bullet','source_type':'X'},'element_order':0}::duck_block])) AS n
+  FROM (SELECT unnest(duck_block_type_names()) AS t)
+);
+----
+0
+
+# ...and silent on real reader output, which is the case that decides whether the
+# lint is usable at all.
+query I
+SELECT len(duck_blocks_lint(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"x"}]}]}')));
+----
+0
