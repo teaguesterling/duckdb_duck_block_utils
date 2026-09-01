@@ -302,6 +302,12 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 		const bool is_ordered = (strcmp(pandoc_type, "OrderedList") == 0);
 		block_type = BlockTypes::TYPE_LIST;
 		attrs["list_type"] = is_ordered ? "ordered" : "bullet";
+		// `ordered` is the attribute spec v1.0 documents for this; `list_type` arrived
+		// later with this reader and nothing ever said which was canonical. Emitting
+		// only list_type meant a consumer written against the PUBLISHED v1 spec read
+		// nothing at all from a Pandoc-produced list. Both are emitted; v1's name is
+		// the canonical one.
+		attrs["ordered"] = is_ordered ? "true" : "false";
 
 		yyjson_val *items_arr = c_val;
 		if (is_ordered && c_val && yyjson_is_arr(c_val) && yyjson_arr_size(c_val) >= 2) {

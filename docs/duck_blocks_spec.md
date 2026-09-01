@@ -98,7 +98,7 @@ now rejects a NULL level outright.
 | `paragraph` | Text paragraph | NULL | `text`, `markdown` | |
 | `code` | Code block | NULL | `text` | `language` |
 | `blockquote` | Quoted content | depth (top level 1) | — (container) | |
-| `list` | List container | depth (top level 1) | — (container) | `list_type`, and for ordered `start`, `number_style`, `number_delim` |
+| `list` | List container | depth (top level 1) | — (container) | `ordered` (canonical, per v1.0), `list_type` (alias), and for ordered `start`, `number_style`, `number_delim` |
 | `list_item` | List item | parent `list` + 1 | — (container) | |
 | `deflist` | Definition list | NULL | `json` | |
 | `lineblock` | Preserved line breaks | NULL | `text` (lines joined with `\n`) | |
@@ -377,6 +377,14 @@ heading rank. A semantic level lives in an attribute beside it: a top-level `h2`
 is `level` 1 with `attributes['heading_level']` = 2, and the two numbers are
 independent. A consumer needing quote or list nesting depth counts containers by
 walking the structure rather than reading it off this number.
+
+**Two names for list orderedness, and `ordered` is the canonical one.** Spec 1.0
+documents `attributes['ordered']` = 'true'/'false'. `list_type` = 'ordered'/'bullet'
+arrived later with the Pandoc reader and nothing ever said which won, so for a
+while the reader emitted only `list_type` — meaning a consumer written against the
+published v1 spec read nothing at all from a Pandoc-produced list. Both are now
+emitted by both producers. Producers SHOULD emit both; consumers MUST tolerate
+either, and `ordered` is the name to prefer when writing new code.
 
 **Do NOT fall back to `level` when a semantic attribute is missing.** A heading
 without `attributes['heading_level']` has no rank information at all — reading its

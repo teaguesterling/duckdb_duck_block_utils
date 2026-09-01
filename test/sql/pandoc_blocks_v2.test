@@ -1578,3 +1578,27 @@ query I
 SELECT duck_blocks_to_pandoc_blocks(duck_block_list(['a','b']))::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"a"}]}],[{"t":"Plain","c":[{"t":"Str","c":"b"}]}]]}]';
 ----
 true
+
+# ============================================================================
+# `ordered` is the attribute spec v1.0 documents for list orderedness. The Pandoc
+# reader emitted only `list_type`, which arrived later, so a consumer written
+# against the PUBLISHED v1 spec read nothing at all from a Pandoc-produced list.
+# Both producers now emit both names.
+# ============================================================================
+
+query IIII
+SELECT (SELECT b.attributes['ordered'] FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"OrderedList","c":[[1,{"t":"Decimal"},{"t":"Period"}],[[{"t":"Plain","c":[{"t":"Str","c":"a"}]}]]]}]}')) AS b) WHERE b.element_type='list'),
+       (SELECT b.attributes['ordered'] FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"a"}]}]]}]}')) AS b) WHERE b.element_type='list'),
+       (SELECT b.attributes['ordered'] FROM (SELECT unnest(duck_block_list(true,['a'])) AS b) WHERE b.element_type='list'),
+       (SELECT b.attributes['ordered'] FROM (SELECT unnest(duck_block_list(['a'])) AS b) WHERE b.element_type='list');
+----
+true	false	true	false
+
+# DISCRIMINATING: list_type was always present, so asserting orderedness is
+# READABLE would have passed against the defect. The property is that v1's name
+# specifically is there.
+query II
+SELECT (SELECT b.attributes['list_type'] FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"OrderedList","c":[[1,{"t":"Decimal"},{"t":"Period"}],[[{"t":"Plain","c":[{"t":"Str","c":"a"}]}]]]}]}')) AS b) WHERE b.element_type='list'),
+       (SELECT b.attributes['ordered'] IS NOT NULL FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"OrderedList","c":[[1,{"t":"Decimal"},{"t":"Period"}],[[{"t":"Plain","c":[{"t":"Str","c":"a"}]}]]]}]}')) AS b) WHERE b.element_type='list');
+----
+ordered	true
