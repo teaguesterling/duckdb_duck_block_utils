@@ -1,4 +1,6 @@
 #include "pandoc_block_convert.hpp"
+
+#include <set>
 #include "pandoc_convert_util.hpp"
 #include "pandoc_inline_convert.hpp"
 #include "block_types.hpp"
@@ -464,6 +466,33 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 			PandocAttr pattr;
 			ParsePandocAttrVal(attr_val, pattr);
 			StorePandocAttr(pattr, attrs);
+
+			// A Div carrying a sectioning role is a `section`, not a `div`. Pandoc has
+			// no Section constructor, so the exporter writes one as a Div whose class is
+			// the role -- and this reader never read it back, making `section` WRITE-ONLY
+			// from the Pandoc path: section -> Div classed 'article' -> div. The type
+			// survived a round trip as a different, less specific type, which is the
+			// asymmetry `generic` exists to prevent and this had instead of it.
+			//
+			// The role set is HTML5's sectioning elements exactly, which is why an HTML
+			// reader mapping <article> onto role='article' is reading the spec rather
+			// than guessing from the names lining up.
+			{
+				auto role_it = attrs.find("role");
+				string role = role_it != attrs.end() ? role_it->second : string();
+				if (role.empty()) {
+					auto class_it = attrs.find("class");
+					if (class_it != attrs.end()) {
+						role = class_it->second;
+					}
+				}
+				static const std::set<string> SECTIONING_ROLES = {"section", "article", "aside", "nav",
+				                                                  "header",  "footer",  "main"};
+				if (!role.empty() && SECTIONING_ROLES.find(role) != SECTIONING_ROLES.end()) {
+					block_type = BlockTypes::TYPE_SECTION;
+					attrs["role"] = role;
+				}
+			}
 
 			result.push_back(CreateDocBlock(block_type, "", attrs, order++, encoding, block_level));
 
