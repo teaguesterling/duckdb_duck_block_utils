@@ -147,6 +147,24 @@ list's children are `list_item`s, never text, so a `list` can never *have* a sin
 text child and therefore never carries `content`. Text on a `list` is malformed and is
 dropped on export.
 
+**THE RULE IS UNIVERSAL. It is not settled per type.** It holds for `figure`, `section`,
+`div`, `blockquote`, `caption` and `list_item` alike, and it is decided by what sits
+BESIDE the run — never by which `element_type` is above it. `duck_blocks_normalize` and
+`duck_blocks_lint` are both type-blind by construction for exactly this reason, and
+`vendor/duck_block_conformance.sql`'s `duck_blocks_warnings` flags a lone `plain` under
+any of them.
+
+> Asked by the webbed session, who measured that `<figure>Some text</figure>` emitting
+> `figure > plain('Some text')` and `figure(content='Some text')` BOTH pass validity, and
+> asked whether the rule they had been given for `list_item` was universal or per-type.
+> It is universal, so the first shape is valid-but-not-canonical.
+>
+> They could not have known: validity accepts both, and the advisory rule that expresses
+> the preference lived only in the extension — which they cannot load, because DuckDB
+> matches extension ABI by exact version string and they vendor DuckDB off-tag. Two
+> conformant producers could differ on the same document with nothing objecting. The
+> advisory rules are in the vendorable file now for that reason.
+
 > This paragraph once said containers "carry no content of their own", which
 > **directly contradicted** the content rule stated later in this same document. Both
 > statements were published, and an implementer conforming to either one was following
@@ -989,7 +1007,7 @@ implementation of it.
 
 | file | gives you |
 |---|---|
-| `vendor/duck_block_conformance.sql` | `duck_blocks_are_valid`, `duck_blocks_errors` (with `{element_order, field, message}` detail), `duck_blocks_undeclared_types`, and the declared kind/type lists — pure DuckDB SQL |
+| `vendor/duck_block_conformance.sql` | `duck_blocks_are_valid`, `duck_blocks_errors` (with `{element_order, field, message}` detail), `duck_blocks_warnings` (advisory rules), `duck_blocks_undeclared_types`, and the declared kind / type / encoding lists — pure DuckDB SQL |
 | `vendor/duck_block_normalize.hpp` | the content rule as a transform: collapse a lone `plain` into its container, to a fixpoint |
 | `src/include/duck_block_vocabulary.hpp` | the names as C++ constants |
 

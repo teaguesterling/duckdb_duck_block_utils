@@ -14,7 +14,7 @@ because this repo can always load itself.
 
 | file | what it is | needs |
 |---|---|---|
-| `duck_block_conformance.sql` | validity, error detail, and the declared kind/type lists, as DuckDB macros | DuckDB. Nothing else. |
+| `duck_block_conformance.sql` | validity, error detail, advisory rules, and the declared kind / type / encoding lists, as DuckDB macros | DuckDB. Nothing else. |
 | `duck_block_normalize.hpp` | the spec 6.1 content rule as a transform — collapses a lone `plain` into its container, to a fixpoint | `duck_block_vocabulary.hpp` + DuckDB's `Value` API |
 | `../src/include/duck_block_vocabulary.hpp` | the element_type / kind / attribute names as C++ constants | `<cstdint>`. Nothing else. |
 
@@ -70,7 +70,14 @@ CREATE TEMP TABLE d AS SELECT my_reader('doc.epub') AS blk;   -- MATERIALISE FIR
 SELECT duck_blocks_are_valid(blk) FROM d;                     -- gate: true/false
 SELECT * FROM duck_blocks_errors((SELECT blk FROM d));        -- why it failed
 SELECT duck_blocks_undeclared_types((SELECT blk FROM d));     -- type names outside the vocabulary
+SELECT * FROM duck_blocks_warnings((SELECT blk FROM d));      -- legal but non-canonical or superseded
 ```
+
+`duck_blocks_warnings` is the advisory half: shapes that are VALID but not what the
+vocabulary asks for — a lone `plain` that should be its container's `content`, a
+pre-native `table`, a `deflist`, a heading with no rank, an undeclared `element_type`.
+Nothing here makes a document invalid, and a consumer must still read data that trips
+them.
 
 **Materialise first, always.** Do not try to work out whether your producer is
 exempt from that — the file explains why the exemption is not knowable, and the
