@@ -385,3 +385,68 @@ SELECT duck_blocks_to_pandoc_blocks([
    'attributes':MAP{'page_number':'7'},'element_order':0}::duck_block]) LIKE '%page%';
 ----
 true
+
+# ============================================================================
+# Inline `generic` passes its children through. This is deliberate, not luck.
+#
+# The asymmetry with BLOCK generic is about whether CONTENT survives, not about
+# how important the type is:
+#
+#   block generic   content is a verbatim fragment, NO children -- dropping the
+#                   element loses everything, so a consumer must leave a trace
+#   inline generic  a marker whose CHILDREN carry the text -- dropping the
+#                   wrapper loses only source_type, exactly as dropping `span`
+#                   loses only its identity
+#
+# So a RENDERING may drop the wrapper identity; a TRANSPORT may not. The ANSI
+# renderer and text extractor drop it, and should.
+#
+# The Pandoc exporter did NOT preserve it until this test was written: inline
+# generic fell through to a "[generic]" placeholder that destroyed the children's
+# text -- the same defect as the "[Underline]" placeholder fixed on the IMPORT
+# side, surviving on export because nothing had round-tripped an unmapped inline.
+# It now emits a Span carrying source_type as a class.
+#
+# Neither renderer branches on INLINE_GENERIC -- both reach it by fallthrough.
+# These assertions are what make that correct by design rather than by accident,
+# found by duckdb_markdown auditing their writer against the vocabulary header.
+# ============================================================================
+
+query I
+SELECT duck_blocks_to_text(pandoc_ast_to_blocks(
+  '[{"t":"Para","c":[{"t":"Str","c":"before "},{"t":"Bogus","c":[{"t":"Str","c":"KEPT"}]},{"t":"Str","c":" after"}]}]'));
+----
+before KEPT after
+
+query I
+SELECT duck_blocks_render_ansi(pandoc_ast_to_blocks(
+  '[{"t":"Para","c":[{"t":"Str","c":"before "},{"t":"Bogus","c":[{"t":"Str","c":"KEPT"}]},{"t":"Str","c":" after"}]}]'))
+  LIKE '%before KEPT after%';
+----
+true
+
+# the TRANSPORT keeps what the renderings drop -- BOTH the text and the identity
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks(
+  '[{"t":"Para","c":[{"t":"Bogus","c":[{"t":"Str","c":"KEPT"}]}]}]')) LIKE '%KEPT%';
+----
+true
+
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks(
+  '[{"t":"Para","c":[{"t":"Bogus","c":[{"t":"Str","c":"KEPT"}]}]}]')) LIKE '%Bogus%';
+----
+true
+
+# and no placeholder survives anywhere
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks(
+  '[{"t":"Para","c":[{"t":"Bogus","c":[{"t":"Str","c":"KEPT"}]}]}]')) LIKE '%[generic]%';
+----
+false
+
+# BLOCK generic is the loud case -- its content has nowhere else to live
+query I
+SELECT pandoc_ast_to_blocks('[{"t":"FutureThing","c":[1,2]}]')[1].attributes['source_type'];
+----
+FutureThing

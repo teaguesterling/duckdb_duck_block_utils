@@ -553,6 +553,50 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 			yyjson_mut_obj_add_val(doc, obj, "c", c_arr);
 			yyjson_mut_arr_add_val(arr, obj);
 			i = nested_end - 1;
+		} else if (inline_type == BlockTypes::INLINE_GENERIC) {
+			// The EXPORT half of the no-silent-drops rule. This used to fall through
+			// to the "[generic]" placeholder below, which destroyed the children's
+			// text -- the same defect as the "[Underline]" placeholder on the import
+			// side, surviving here because nothing round-tripped an unmapped inline.
+			//
+			// Emitted as a Span carrying source_type as a class: a real Pandoc
+			// constructor, so the text survives AND what it stood in for is still
+			// recorded. Re-importing yields `span` rather than `generic`, which is
+			// lossy in TYPE but not in content or identity.
+			idx_t nested_end = i + 1;
+			yyjson_mut_val *nested = ConvertDbInlinesToPandocVal(doc, inlines, i + 1, level + 1, nested_end, depth + 1);
+			string source_type;
+			auto &gen_attrs = children[BlockTypes::ATTRIBUTES_IDX];
+			if (!gen_attrs.IsNull()) {
+				for (auto &entry : MapValue::GetChildren(gen_attrs)) {
+					if (entry.IsNull()) {
+						continue;
+					}
+					auto &kv = StructValue::GetChildren(entry);
+					if (kv.size() >= 2 && !kv[0].IsNull() && kv[0].GetValue<string>() == "source_type") {
+						if (!kv[1].IsNull()) {
+							source_type = kv[1].GetValue<string>();
+						}
+						break;
+					}
+				}
+			}
+			yyjson_mut_val *obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, obj, "t", "Span");
+			yyjson_mut_val *c_arr = yyjson_mut_arr(doc);
+			yyjson_mut_val *attr_arr = yyjson_mut_arr(doc);
+			yyjson_mut_arr_add_str(doc, attr_arr, "");
+			yyjson_mut_val *classes = yyjson_mut_arr(doc);
+			if (!source_type.empty()) {
+				yyjson_mut_arr_add_strncpy(doc, classes, source_type.data(), source_type.size());
+			}
+			yyjson_mut_arr_add_val(attr_arr, classes);
+			yyjson_mut_arr_add_val(attr_arr, yyjson_mut_arr(doc));
+			yyjson_mut_arr_add_val(c_arr, attr_arr);
+			yyjson_mut_arr_add_val(c_arr, nested);
+			yyjson_mut_obj_add_val(doc, obj, "c", c_arr);
+			yyjson_mut_arr_add_val(arr, obj);
+			i = nested_end - 1;
 		} else {
 			yyjson_mut_val *obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, obj, "t", "Str");
