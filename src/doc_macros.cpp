@@ -19,7 +19,7 @@ static string DocMacrosQuery(ClientContext &context, const FunctionParameters &p
 	// Attempt initial companion extension auto-loads in background
 	// json only: it is a CORE DuckDB extension, and to_json() backs the `blocks`
 	// and `pandoc` output formats. markdown and webbed are deliberately NOT loaded
-	// -- doc_render no longer calls their writers, and auto-loading a sibling
+	// -- nothing here calls their writers, and auto-loading a sibling
 	// document-format extension is the dependency this extension does not take.
 	ExtensionHelper::TryAutoLoadExtension(context, "json");
 
@@ -33,35 +33,17 @@ static string DocMacrosQuery(ClientContext &context, const FunctionParameters &p
 -- were its main consumer now live in panduck.
 CREATE OR REPLACE MACRO db_quote(s) AS ('''' || replace(coalesce(s, ''), '''', '''''') || '''');
 
--- 0. Output rendering. duck_block_utils DEPENDS ON NOTHING, so this does not
--- delegate to duckdb_markdown or webbed -- calling their writers here would make
--- this extension depend on them. Callers compose directly instead:
+-- Document queries over a block list. These take LIST(duck_block), never a path:
+-- path -> blocks is panduck's job (read_panduck_doc / panduck_read_blocks), and
+-- this extension depends on nothing.
 --
---     duck_blocks_to_md(blocks)     -- LOAD markdown
---     duck_blocks_to_html(blocks)   -- LOAD webbed
---
--- ANSI stays because it is the one output that is not a FORMAT: it knows only
--- the duck_block vocabulary, which makes it a utility over the spec rather than
--- a converter. md and html are formats, so the same test sends them out.
--- `json` is a core DuckDB extension rather than a sibling document-format one,
--- so to_json() is not the same kind of dependency.
-CREATE OR REPLACE MACRO doc_render(blocks, output_format := 'text') AS (
-    CASE lower(output_format)
-        WHEN 'text'   THEN db_blocks_to_text(blocks)
-        WHEN 'ansi'   THEN db_blocks_render_ansi(blocks)
-        WHEN 'blocks' THEN to_json(blocks)::VARCHAR
-        WHEN 'pandoc' THEN to_json(duck_blocks_to_pandoc_ast(blocks))::VARCHAR
-        WHEN 'md'     THEN error('doc_render: md is duckdb_markdown''s job -- ' ||
-                                 'call duck_blocks_to_md(blocks) directly')
-        WHEN 'html'   THEN error('doc_render: html is webbed''s job -- ' ||
-                                 'call duck_blocks_to_html(blocks) directly')
-        ELSE error('doc_render: unsupported output_format ' || coalesce(output_format, 'NULL') ||
-                   '; expected one of text, ansi, blocks, pandoc')
-    END
-);
+-- Named db_* like everything else here. The `doc_*` prefix now belongs to panduck.
+-- There is no shared render helper: the output CASE below is four direct calls,
+-- and wrapping it in an indirection bought a name without buying anything else.
 
--- 3. Table of contents over a block list.
-CREATE OR REPLACE MACRO doc_toc(blocks) AS TABLE
+-- Table of contents, splatted into columns. The scalar db_blocks_toc() returns
+-- the same data as a LIST(STRUCT) when a list is what you want.
+CREATE OR REPLACE MACRO db_toc(blocks) AS TABLE
     SELECT (toc).level AS level,
            (toc).title AS title,
            (toc).id AS id,
@@ -69,14 +51,21 @@ CREATE OR REPLACE MACRO doc_toc(blocks) AS TABLE
            (toc).element_order AS element_order
     FROM (SELECT unnest(db_blocks_toc(blocks)) AS toc);
 
--- 4. Slice a section and its child subsections to the next heading boundary.
+-- Slice a section and its child subsections to the next heading boundary.
 -- The `top` CTE selects innermost non-overlapping matches; getting it wrong
--- returns the wrong slice silently rather than failing, so it is copied verbatim
--- from the path-taking version -- only the block source and the output changed.
-CREATE OR REPLACE MACRO doc_section(blocks, section_pattern, output_format := 'text') AS (
+-- returns the wrong slice SILENTLY rather than failing, so treat it as fixed.
+CREATE OR REPLACE MACRO db_section(blocks, section_pattern, output_format := 'text') AS (
     [
         (
-            SELECT doc_render(sliced_blocks, output_format)
+            SELECT CASE lower(output_format)
+                       WHEN 'text'   THEN db_blocks_to_text(sliced)
+                       WHEN 'ansi'   THEN db_blocks_render_ansi(sliced)
+                       WHEN 'blocks' THEN to_json(sliced)::VARCHAR
+                       WHEN 'pandoc' THEN to_json(duck_blocks_to_pandoc_ast(sliced))::VARCHAR
+                       ELSE error('db_section: unsupported output_format ' ||
+                                  coalesce(output_format, 'NULL') ||
+                                  '; expected text, ansi, blocks or pandoc')
+                   END
             FROM (
                 WITH doc AS (SELECT blocks AS b),
                      h AS (SELECT e.level AS lvl, e.title AS title, e.id AS id, e.element_order AS ord
@@ -88,16 +77,16 @@ CREATE OR REPLACE MACRO doc_section(blocks, section_pattern, output_format := 't
                      top AS (SELECT s, e FROM sec a
                              WHERE NOT EXISTS (SELECT 1 FROM sec b2
                                                WHERE b2.s <= a.s AND b2.e >= a.e AND (b2.s, b2.e) <> (a.s, a.e)))
-                SELECT db_blocks_reorder(flatten(list(db_blocks_slice(doc.b, top.s, top.e) ORDER BY top.s))) AS sliced_blocks
+                SELECT db_blocks_reorder(flatten(list(db_blocks_slice(doc.b, top.s, top.e) ORDER BY top.s))) AS sliced
                 FROM doc, top
             )
         )
     ][1]
 );
 
--- 5. Search sections for matching text. The preamble span in the UNION ALL makes
+-- Sections whose text matches a pattern. The preamble span in the UNION ALL makes
 -- content before the first heading searchable and is load-bearing.
-CREATE OR REPLACE MACRO doc_search(blocks, query_term, output_format := 'text') AS TABLE
+CREATE OR REPLACE MACRO db_sections_like(blocks, query_term, output_format := 'text') AS TABLE
     WITH doc AS (SELECT blocks AS b),
          h AS (SELECT e.element_order AS ord, e.title AS title
                FROM (SELECT unnest(db_blocks_headings(b)) AS e FROM doc)),
@@ -105,12 +94,20 @@ CREATE OR REPLACE MACRO doc_search(blocks, query_term, output_format := 'text') 
                   UNION ALL
                   SELECT 0 AS s, coalesce((SELECT min(ord) - 1 FROM h), 2147483647)::INT AS e, '(preamble)' AS title
                   WHERE coalesce((SELECT min(ord) - 1 FROM h), 2147483647)::INT >= 0),
-         hit AS (SELECT span.s, span.e, span.title, db_blocks_slice(doc.b, span.s, span.e) AS sec_blocks
+         hit AS (SELECT span.s, span.e, span.title, db_blocks_slice(doc.b, span.s, span.e) AS sec
                  FROM doc, span
                  WHERE db_blocks_to_text(db_blocks_slice(doc.b, span.s, span.e)) ILIKE '%' || query_term || '%')
     SELECT hit.title AS section,
            hit.s AS start_order,
-           doc_render(hit.sec_blocks, output_format) AS content
+           CASE lower(output_format)
+               WHEN 'text'   THEN db_blocks_to_text(hit.sec)
+               WHEN 'ansi'   THEN db_blocks_render_ansi(hit.sec)
+               WHEN 'blocks' THEN to_json(hit.sec)::VARCHAR
+               WHEN 'pandoc' THEN to_json(duck_blocks_to_pandoc_ast(hit.sec))::VARCHAR
+               ELSE error('db_sections_like: unsupported output_format ' ||
+                          coalesce(output_format, 'NULL') ||
+                          '; expected text, ansi, blocks or pandoc')
+           END AS content
     FROM hit
     ORDER BY hit.s;
 

@@ -26,17 +26,17 @@ PRAGMA duck_block_doc_macros;
 # ============================================================================
 
 query I
-SELECT count(*) > 0 FROM doc_toc(parse_markdown_to_duck_blocks('# A' || chr(10) || chr(10) || '## B'));
+SELECT count(*) > 0 FROM db_toc(parse_markdown_to_duck_blocks('# A' || chr(10) || chr(10) || '## B'));
 ----
 true
 
 query T
-SELECT title FROM doc_toc(parse_markdown_to_duck_blocks('# Overview' || chr(10) || chr(10) || 'body')) WHERE title = 'Overview';
+SELECT title FROM db_toc(parse_markdown_to_duck_blocks('# Overview' || chr(10) || chr(10) || 'body')) WHERE title = 'Overview';
 ----
 Overview
 
 query I
-SELECT doc_section(parse_markdown_to_duck_blocks(
+SELECT db_section(parse_markdown_to_duck_blocks(
   '# A' || chr(10) || chr(10) || 'body a' || chr(10) || chr(10) || '# B' || chr(10) || chr(10) || 'body b'), 'A')
   LIKE '%body a%';
 ----
@@ -44,14 +44,14 @@ true
 
 # the slice stops at the next same-level heading
 query I
-SELECT doc_section(parse_markdown_to_duck_blocks(
+SELECT db_section(parse_markdown_to_duck_blocks(
   '# A' || chr(10) || chr(10) || 'body a' || chr(10) || chr(10) || '# B' || chr(10) || chr(10) || 'body b'), 'A')
   LIKE '%body b%';
 ----
 false
 
 query I
-SELECT count(*) > 0 FROM doc_search(parse_markdown_to_duck_blocks(
+SELECT count(*) > 0 FROM db_sections_like(parse_markdown_to_duck_blocks(
   '# A' || chr(10) || chr(10) || 'findme'), 'findme');
 ----
 true
@@ -59,17 +59,17 @@ true
 # doc_search honours output_format now -- the old inlined CASE silently fell
 # back to text for every format except text and ansi
 query I
-SELECT content LIKE '%pandoc-api-version%' FROM doc_search(parse_markdown_to_duck_blocks(
+SELECT content LIKE '%pandoc-api-version%' FROM db_sections_like(parse_markdown_to_duck_blocks(
   '# A' || chr(10) || chr(10) || 'findme'), 'findme', output_format := 'pandoc') LIMIT 1;
 ----
 true
 
 # and an unsupported one raises rather than quietly returning text
 statement error
-SELECT content FROM doc_search(parse_markdown_to_duck_blocks(
+SELECT content FROM db_sections_like(parse_markdown_to_duck_blocks(
   '# A' || chr(10) || chr(10) || 'findme'), 'findme', output_format := 'md');
 ----
-duck_blocks_to_md
+unsupported output_format
 
 # ============================================================================
 # profile_table
@@ -81,48 +81,36 @@ SELECT count(*) FROM profile_table('SELECT 100 AS num, ''val'' AS str');
 2
 
 # ============================================================================
-# doc_render -- one output path, format-specific writers delegated
-# md lives in duckdb_markdown, html in webbed. This extension owns only text,
-# ansi, blocks and pandoc.
+# doc_render is GONE. After md/html left, it was four direct calls behind a
+# string parameter -- an indirection that bought a name and nothing else.
 # ============================================================================
 
-query I
-SELECT doc_render(parse_markdown_to_duck_blocks('# T'), 'text') LIKE '%T%';
-----
-true
-
-# md and html are FORMATS, so they belong to the format extensions. Delegating
-# to them here would make duck_block_utils depend on markdown and webbed, which
-# it must not. ANSI stays because it is the one output that is not a format --
-# it knows only the vocabulary.
 statement error
-SELECT doc_render(parse_markdown_to_duck_blocks('# Title'), 'md');
+SELECT doc_render(db_paragraph('x'), 'text');
 ----
-duck_blocks_to_md
+Catalog Error
 
-statement error
-SELECT doc_render(parse_markdown_to_duck_blocks('# Title'), 'html');
-----
-duck_blocks_to_html
-
-# ...and the direct composition the error points at does work
+# the direct calls it wrapped are the API
 query I
-SELECT duck_blocks_to_md(parse_markdown_to_duck_blocks('# Title')) LIKE '#%Title%';
+SELECT db_blocks_to_text(db_paragraph([db_text('hello '), db_bold('world')]));
+----
+hello world
+
+query I
+SELECT db_blocks_render_ansi(db_paragraph('T')) LIKE '%T%';
 ----
 true
 
+# the section macros keep output_format, with the CASE inlined
 query I
-SELECT doc_render(parse_markdown_to_duck_blocks('# Title'), 'pandoc') LIKE '%pandoc-api-version%';
-----
-true
-
-query I
-SELECT doc_render(parse_markdown_to_duck_blocks('# T'), 'ansi') LIKE '%T%';
+SELECT db_section(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'body a'), 'A', output_format := 'pandoc')
+  LIKE '%pandoc-api-version%';
 ----
 true
 
 statement error
-SELECT doc_render(parse_markdown_to_duck_blocks('# T'), 'nonsense');
+SELECT db_section(parse_markdown_to_duck_blocks('# A'), 'A', output_format := 'md');
 ----
 unsupported output_format
 
@@ -155,6 +143,12 @@ Catalog Error
 
 statement error
 SELECT doc_select('README.md', 'x');
+----
+Catalog Error
+
+# ...and the doc_* query macros are renamed to db_*, freeing the doc_ prefix
+statement error
+SELECT count(*) FROM doc_toc(db_paragraph('x'));
 ----
 Catalog Error
 
