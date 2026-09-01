@@ -1,6 +1,6 @@
 # Duck Blocks Canonical Specification
 
-**Version:** 6.1 — this MUST equal `duck_block_spec_version()`, and
+**Version:** 6.2 — this MUST equal `duck_block_spec_version()`, and
 `test/check_spec_alignment.py` fails if it does not. It read `0.4.0` from v1.0.0
 through 2026-08-31 while the shipped value moved to 6.0, so a reader trusting the
 document disagreed with every consumer asserting the function.
@@ -366,9 +366,27 @@ value  bool       L1  key=draft       content="true"
 A consumer walking blocks MUST stop its inline run at a `kind='value'` element, not
 merely at the next block — the inlines under a `value` belong to that value.
 
-Metadata is appended **after** a document's blocks, so `blocks[1]` still points at the
-first content block — but see the `kind` filtering rule above; ordering is a
-convenience, not a contract.
+Metadata is appended **after** a document's blocks. **This is a contract**, not the
+convenience this paragraph called it until spec 6.2 — the wording predates anything
+depending on it, and two producers have now asked where value elements go relative to
+blocks, which is a question a convenience cannot answer.
+
+`blocks[1]` therefore still points at the first content block. But do not index
+blindly: filter on `kind`, per the rule above.
+
+**A consumer walking blocks MUST end an inline run at any NON-INLINE element, not
+merely at the next block.** The inlines beneath a `kind='value'` element belong to that
+value. This is stated because getting it wrong is not a subtle failure: this repo's own
+exporter stopped at `kind='block'`, walked past a `value`, and emitted a document whose
+**body had been replaced by its title**. It needs a document carrying both metadata and
+blocks, which is the normal case and was in none of its fixtures.
+
+**A document with NO blocks at all is conformant.** A `.toml` or `.yaml` file read as a
+document is entirely metadata; a bare `kind='value'` tree with nothing of `kind='block'`
+in it is valid, lints clean, and is what `pandoc_ast_to_blocks` itself emits for a
+document with metadata and an empty body. Asked by the panduck session, who noted that
+"nothing objects" was reasoning they had twice had to retract that day — correctly, so
+this is stated rather than left to be inferred from silence.
 
 ### Version marker
 

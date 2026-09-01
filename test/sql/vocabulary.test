@@ -35,7 +35,7 @@ true
 query I
 SELECT duck_block_spec_version();
 ----
-6.1
+6.2
 
 # ...and it must be well-formed MAJOR.MINOR, since the contract in the header
 # says consumers assert major equality plus a minor floor. A version that does
@@ -595,3 +595,34 @@ query I
 SELECT duck_blocks_validate([{'kind':'value','element_type':'metadata','content':'t','level':0,'encoding':'yaml','attributes':MAP{},'element_order':0}::duck_block]).valid;
 ----
 false
+
+# ============================================================================
+# A DOCUMENT WITH NO BLOCKS IS CONFORMANT.
+#
+# A .toml or .yaml file read as a document is entirely metadata -- no body, no
+# blocks. Asked by panduck, who flagged that "nothing objects" was reasoning they
+# had twice had to retract that day.
+#
+# It is more than unobjected-to: `pandoc_ast_to_blocks` itself emits exactly this
+# for a document with metadata and an empty body, so the shape is one this repo
+# produces rather than merely tolerates.
+# ============================================================================
+
+query III
+SELECT duck_blocks_validate([
+  {'kind':'value','element_type':'map','content':NULL,'level':1,'encoding':'text','attributes':MAP{'source_type':'toml'},'element_order':0}::duck_block,
+  {'kind':'value','element_type':'string','content':'en','level':2,'encoding':'text','attributes':MAP{'key':'lang'},'element_order':1}::duck_block]).valid,
+       len(duck_blocks_lint([
+  {'kind':'value','element_type':'map','content':NULL,'level':1,'encoding':'text','attributes':MAP{'source_type':'toml'},'element_order':0}::duck_block,
+  {'kind':'value','element_type':'string','content':'en','level':2,'encoding':'text','attributes':MAP{'key':'lang'},'element_order':1}::duck_block])),
+       (SELECT count(*) FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaString","c":"T"}},"blocks":[]}')) AS b) WHERE b.kind = 'block');
+----
+true	0	0
+
+# ORDERING IS A CONTRACT as of 6.2: value elements come AFTER the blocks. Two
+# producers asked where they go, which is a question a convenience cannot answer.
+query I
+SELECT list_position(list_transform(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a"}]}]}'), e -> e.kind), 'value')
+     > list_position(list_transform(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a"}]}]}'), e -> e.kind), 'block');
+----
+true
