@@ -364,6 +364,28 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				// than inverted: there is nothing to warn about here.
 			}
 
+			// A heading with no heading_level carries NO rank information under 3.0,
+			// because `level` is structural depth and never semantic. A consumer's only
+			// remaining move is to guess -- and duckdb_markdown's writer guesses by
+			// falling back to `level`, which was a fair reading while the spec said
+			// headings carried NULL there, and under 3.0 renders a heading's DEPTH as
+			// its RANK: a heading inside two containers becomes h3 whatever it is.
+			//
+			// Warning rather than error: the data is recoverable by defaulting to 1,
+			// and both producers here always emit the attribute, so this only reaches
+			// third-party blocks. But it is the attribute that carries the meaning, so
+			// its absence is worth saying out loud rather than leaving each consumer to
+			// invent a fallback.
+			if (element_type == BlockTypes::TYPE_HEADING && GetElementAttribute(block, "heading_level").empty()) {
+				child_list_t<Value> warning_values;
+				warning_values.push_back(make_pair("severity", Value("warning")));
+				warning_values.push_back(make_pair(
+				    "message", Value("heading without attributes['heading_level']: its rank is unspecified. Do NOT "
+				                     "fall back to `level`, which is structural depth, not rank.")));
+				warning_values.push_back(make_pair("element_order", Value(element_order)));
+				warnings.push_back(Value::STRUCT(std::move(warning_values)));
+			}
+
 			// `generic` exists to make an unmapped construct VISIBLE. Without
 			// source_type it records that something was lost but not what, which
 			// defeats the point of the backstop.

@@ -378,6 +378,14 @@ is `level` 1 with `attributes['heading_level']` = 2, and the two numbers are
 independent. A consumer needing quote or list nesting depth counts containers by
 walking the structure rather than reading it off this number.
 
+**Do NOT fall back to `level` when a semantic attribute is missing.** A heading
+without `attributes['heading_level']` has no rank information at all — reading its
+`level` gives you its depth, so a heading inside two containers renders as `h3`
+whatever it actually is. That is a live hazard, not a hypothetical: it is a fair
+reading of spec 1.x/2.0, which said headings carried NULL there, and 3.0 turns it
+into silent corruption. Default to 1 and treat the block as malformed;
+`duck_blocks_lint()` warns on it. Both producers here always emit the attribute.
+
 `duck_blocks_validate()` enforces this: a NULL level, a level below 1, or a level
 that jumps by more than one from the previous element are all errors. The jump is
 an error because depth-first ordering descends one at a time, so a jump means the

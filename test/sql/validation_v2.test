@@ -380,3 +380,25 @@ SELECT (duck_blocks_validate([
   {'kind':'block','element_type':'paragraph','content':'deep','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block])).valid;
 ----
 true
+
+# ============================================================================
+# A heading's RANK lives in attributes['heading_level']; `level` is its DEPTH.
+# A heading missing the attribute carries no rank at all, and a consumer falling
+# back to `level` renders a heading inside two containers as h3 whatever it is.
+# duckdb_markdown's writer does exactly that -- a fair reading of 1.x/2.0, which
+# said headings carried NULL there, and silent corruption under 3.0.
+# ============================================================================
+
+query I
+SELECT count(*) FROM (SELECT unnest(duck_blocks_lint([{'kind':'block','element_type':'heading','content':'T','level':3,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block])) AS w)
+WHERE w.severity = 'warning' AND w.message LIKE '%heading_level%';
+----
+1
+
+# DISCRIMINATING: a heading WITH the attribute must stay silent, including when
+# the two numbers differ -- which is the normal case, not a conflict.
+query II
+SELECT (SELECT count(*) FROM (SELECT unnest(duck_blocks_lint([{'kind':'block','element_type':'heading','content':'T','level':3,'encoding':'text','attributes':MAP{'heading_level':'1'},'element_order':0}::duck_block])) AS w)),
+       (SELECT count(*) FROM (SELECT unnest(duck_blocks_lint(duck_block_heading(2,'T'))) AS w));
+----
+0	0
