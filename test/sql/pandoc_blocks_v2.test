@@ -1417,3 +1417,31 @@ query I
 SELECT duck_blocks_to_pandoc_blocks(duck_block_blockquote('builder quote'))::VARCHAR = '[{"t":"BlockQuote","c":[{"t":"Para","c":[{"t":"Str","c":"builder quote"}]}]}]';
 ----
 true
+
+# ============================================================================
+# EXPORT BRANCHES FOR deflist AND lineblock.
+#
+# Found by sweeping every block type through the exporter after fixing the same
+# defect for `generic` at b943f43 -- the sweep that should have accompanied that
+# fix. Neither type had an export branch, so both fell to the terminal Para
+# fallback and came back as a paragraph whose VISIBLE TEXT was their own raw AST.
+# ============================================================================
+
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"definition"}]}]]]]}]}'))::VARCHAR = '[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"definition"}]}]]]]}]';
+----
+true
+
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"LineBlock","c":[[{"t":"Str","c":"line one"}],[{"t":"Str","c":"line two"}]]}]}'))::VARCHAR = '[{"t":"LineBlock","c":[[{"t":"Str","c":"line one"}],[{"t":"Str","c":"line two"}]]}]';
+----
+true
+
+# DISCRIMINATING for both: the defect PRESERVED the words (they were inside the
+# JSON it printed), so asserting "term"/"line one" survived would have passed.
+# The property is that no Para was fabricated and the constructor name survives.
+query II
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"definition"}]}]]]]}]}'))::VARCHAR NOT LIKE '%"t":"Para"%',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"LineBlock","c":[[{"t":"Str","c":"line one"}]]}]}'))::VARCHAR NOT LIKE '%"t":"Para"%';
+----
+true	true

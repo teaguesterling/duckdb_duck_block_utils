@@ -1412,6 +1412,51 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			yyjson_mut_obj_add_val(doc, para_obj, "c", pc_arr);
 			yyjson_mut_arr_add_val(blocks_arr, para_obj);
 			block_idx++;
+		} else if (element_type == BlockTypes::TYPE_DEFLIST &&
+		           GetElementStringField(block, BlockTypes::ENCODING_IDX) == BlockTypes::ENCODING_JSON &&
+		           !content.empty()) {
+			// Found by sweeping every block type through the exporter after fixing the
+			// same defect for `generic`: deflist had NO export branch, so it fell to the
+			// terminal Para fallback and came back out as a paragraph whose visible text
+			// was its own raw AST. Splicing the stored tuple back makes it lossless.
+			yyjson_mut_val *dl_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, dl_obj, "t", "DefinitionList");
+			yyjson_doc *sub_doc = yyjson_read(content.c_str(), content.size(), 0);
+			if (sub_doc) {
+				yyjson_mut_obj_add_val(doc, dl_obj, "c", yyjson_val_mut_copy(doc, yyjson_doc_get_root(sub_doc)));
+				yyjson_doc_free(sub_doc);
+			} else {
+				yyjson_mut_obj_add_val(doc, dl_obj, "c", yyjson_mut_arr(doc));
+			}
+			yyjson_mut_arr_add_val(blocks_arr, dl_obj);
+			block_idx++;
+		} else if (element_type == BlockTypes::TYPE_LINEBLOCK) {
+			// Same sweep, same fallback. LineBlock c = [[Inline]] -- one inline array per
+			// line -- and the reader stores the lines newline-separated in content, so
+			// the split is the inverse of the join it did on the way in.
+			yyjson_mut_val *lb_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, lb_obj, "t", "LineBlock");
+			yyjson_mut_val *lines_arr = yyjson_mut_arr(doc);
+			size_t line_start = 0;
+			while (line_start <= content.size()) {
+				size_t nl = content.find('\n', line_start);
+				string line = content.substr(line_start, nl == string::npos ? string::npos : nl - line_start);
+				yyjson_mut_val *line_arr = yyjson_mut_arr(doc);
+				if (!line.empty()) {
+					yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+					yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+					yyjson_mut_obj_add_strncpy(doc, str_obj, "c", line.data(), line.size());
+					yyjson_mut_arr_add_val(line_arr, str_obj);
+				}
+				yyjson_mut_arr_add_val(lines_arr, line_arr);
+				if (nl == string::npos) {
+					break;
+				}
+				line_start = nl + 1;
+			}
+			yyjson_mut_obj_add_val(doc, lb_obj, "c", lines_arr);
+			yyjson_mut_arr_add_val(blocks_arr, lb_obj);
+			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_GENERIC &&
 		           GetElementStringField(block, BlockTypes::ENCODING_IDX) == BlockTypes::ENCODING_JSON &&
 		           !content.empty()) {
