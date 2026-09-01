@@ -122,6 +122,24 @@ def main() -> int:
 
     print(f"  no constant shadowed; {len(EXEMPT)} exempt with reasons")
     print("OK: the vocabulary's own constants are used.")
+    # WHAT THIS CANNOT SEE, stated so a green run is not read as more than it is.
+    #
+    # It checks that a constant is USED, never that the RIGHT one is used. Two
+    # constants can share a value -- ROLE_DEFINITION and LIST_TYPE_DEFINITION are both
+    # "definition"; ATTR_ORDERED_LEGACY and LIST_TYPE_ORDERED are both "ordered" -- and
+    # then using either satisfies this check while one of them says the wrong thing.
+    #
+    # That is not hypothetical. A bulk conversion in this repo replaced the attribute
+    # KEY "ordered" with LIST_TYPE_ORDERED at 18 sites: `attrs[LIST_TYPE_ORDERED]`
+    # compiles, produces byte-identical output, passes every test and this check, and
+    # means the wrong thing. panduck named the hazard an hour before it was committed
+    # here -- "right by coincidence and wrong in meaning... it compiles, matches, and
+    # reads as deliberate."
+    #
+    # No mechanical fix: the values genuinely are the same string, so position is the
+    # only signal and this check does not parse. Reviewing a bulk constant conversion
+    # by hand is the only instrument, which is worth knowing before running one.
+    print("    (cannot tell WHICH constant is right when two share a value -- see the note)")
     return 0
 
 

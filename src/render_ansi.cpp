@@ -904,7 +904,7 @@ static void RenderListItems(const JVal &items, bool ordered, int depth, size_t w
 		if (item.type == JVal::Type::OBJECT) {
 			auto *sub = item.Find("items");
 			if (sub && sub->type == JVal::Type::ARRAY) {
-				auto *ord = item.Find(BlockTypes::LIST_TYPE_ORDERED);
+				auto *ord = item.Find(BlockTypes::ATTR_ORDERED_LEGACY);
 				RenderListItems(*sub, ord && ord->str == "true", depth + 1, width, theme, lines);
 			}
 		}
@@ -1203,7 +1203,7 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 			ActiveList open_list;
 			open_list.level = GetDepth(block);
 			open_list.ordered = (GetAttribute(block, BlockTypes::ATTR_LIST_TYPE) == BlockTypes::LIST_TYPE_ORDERED) ||
-			                    (GetAttribute(block, BlockTypes::LIST_TYPE_ORDERED) == "true");
+			                    (GetAttribute(block, BlockTypes::ATTR_ORDERED_LEGACY) == "true");
 			auto start_attr = GetAttribute(block, "start");
 			open_list.number = 1;
 			if (!start_attr.empty()) {
@@ -1312,7 +1312,7 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 				// same one-sided read that made every Pandoc ordered list a bullet list.
 				RenderListItems(items,
 				                (GetAttribute(block, BlockTypes::ATTR_LIST_TYPE) == BlockTypes::LIST_TYPE_ORDERED) ||
-				                    (GetAttribute(block, BlockTypes::LIST_TYPE_ORDERED) == "true"),
+				                    (GetAttribute(block, BlockTypes::ATTR_ORDERED_LEGACY) == "true"),
 				                0, width, theme, lines);
 			}
 		} else if (element_type == BlockTypes::TYPE_TABLE) {

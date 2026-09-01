@@ -315,7 +315,7 @@ void BuilderFunctions::DbListBlockFun(DataChunk &args, ExpressionState &state, V
 		json += "]";
 
 		map<string, string> attrs;
-		attrs[BlockTypes::LIST_TYPE_ORDERED] = (!ordered.IsNull() && ordered.GetValue<bool>()) ? "true" : "false";
+		attrs[BlockTypes::ATTR_ORDERED_LEGACY] = (!ordered.IsNull() && ordered.GetValue<bool>()) ? "true" : "false";
 
 		SetBlockFields(entries, i, BlockTypes::TYPE_LIST, Value(json), Value(1), BlockTypes::ENCODING_JSON,
 		               CreateAttributesMap(attrs));
@@ -664,7 +664,7 @@ void BuilderFunctions::DbListBlockV2Fun(DataChunk &args, ExpressionState &state,
 
 		map<string, string> attrs;
 		const bool is_ordered = !ordered.IsNull() && ordered.GetValue<bool>();
-		attrs[BlockTypes::LIST_TYPE_ORDERED] = is_ordered ? "true" : "false";
+		attrs[BlockTypes::ATTR_ORDERED_LEGACY] = is_ordered ? "true" : "false";
 		// Both attribute names. The Pandoc reader writes list_type, these builders wrote
 		// only `ordered`, and a consumer reading one saw nothing from the other.
 		attrs[BlockTypes::ATTR_LIST_TYPE] = is_ordered ? BlockTypes::LIST_TYPE_ORDERED : BlockTypes::LIST_TYPE_BULLET;
@@ -708,7 +708,7 @@ void BuilderFunctions::DbListBlockV2NoOrderFun(DataChunk &args, ExpressionState 
 		auto items = items_vec.GetValue(i);
 
 		map<string, string> attrs;
-		attrs[BlockTypes::LIST_TYPE_ORDERED] = "false";
+		attrs[BlockTypes::ATTR_ORDERED_LEGACY] = "false";
 		attrs[BlockTypes::ATTR_LIST_TYPE] = BlockTypes::LIST_TYPE_BULLET;
 
 		// STRUCTURAL, not JSON. This was the third shape duck_block_utils emitted for
@@ -752,7 +752,7 @@ void BuilderFunctions::DbListItemV2Fun(DataChunk &args, ExpressionState &state, 
 		auto content = content_vec.GetValue(i);
 
 		map<string, string> attrs;
-		attrs[BlockTypes::LIST_TYPE_ORDERED] = (!ordered.IsNull() && ordered.GetValue<bool>()) ? "true" : "false";
+		attrs[BlockTypes::ATTR_ORDERED_LEGACY] = (!ordered.IsNull() && ordered.GetValue<bool>()) ? "true" : "false";
 
 		auto parent = CreateBlockWithNullContent(BlockTypes::TYPE_LIST_ITEM, BlockTypes::KIND_BLOCK, Value(1),
 		                                         BlockTypes::ENCODING_TEXT, attrs);
@@ -770,7 +770,7 @@ void BuilderFunctions::DbListItemV2NoOrderFun(DataChunk &args, ExpressionState &
 		auto content = content_vec.GetValue(i);
 
 		map<string, string> attrs;
-		attrs[BlockTypes::LIST_TYPE_ORDERED] = "false";
+		attrs[BlockTypes::ATTR_ORDERED_LEGACY] = "false";
 
 		auto parent = CreateBlockWithNullContent(BlockTypes::TYPE_LIST_ITEM, BlockTypes::KIND_BLOCK, Value(1),
 		                                         BlockTypes::ENCODING_TEXT, attrs);
@@ -1275,7 +1275,7 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 
 			    // Create list parent element with NULL content (children follow)
 			    map<string, string> attrs;
-			    attrs[BlockTypes::LIST_TYPE_ORDERED] = is_ordered ? "true" : "false";
+			    attrs[BlockTypes::ATTR_ORDERED_LEGACY] = is_ordered ? "true" : "false";
 			    auto list_parent = BuilderFunctions::CreateBlockWithNullContent(
 			        BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
 
@@ -1320,7 +1320,7 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 
 			    // Create list parent element with NULL content (children follow)
 			    map<string, string> attrs;
-			    attrs[BlockTypes::LIST_TYPE_ORDERED] = "false";
+			    attrs[BlockTypes::ATTR_ORDERED_LEGACY] = "false";
 			    auto list_parent = BuilderFunctions::CreateBlockWithNullContent(
 			        BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
 
@@ -1371,7 +1371,7 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 			    auto nested_list = nested_vec.GetValue(i);
 			    bool is_ordered = !ordered.IsNull() && ordered.GetValue<bool>();
 			    map<string, string> attrs;
-			    attrs[BlockTypes::LIST_TYPE_ORDERED] = is_ordered ? "true" : "false";
+			    attrs[BlockTypes::ATTR_ORDERED_LEGACY] = is_ordered ? "true" : "false";
 			    auto list_parent = BuilderFunctions::CreateBlockWithNullContent(
 			        BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
 			    vector<Value> result_list;
@@ -1409,7 +1409,7 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    for (idx_t i = 0; i < count; i++) {
 			    auto nested_list = nested_vec.GetValue(i);
 			    map<string, string> attrs;
-			    attrs[BlockTypes::LIST_TYPE_ORDERED] = "false";
+			    attrs[BlockTypes::ATTR_ORDERED_LEGACY] = "false";
 			    auto list_parent = BuilderFunctions::CreateBlockWithNullContent(
 			        BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
 			    vector<Value> result_list;
@@ -1466,7 +1466,7 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 			    auto nested_list = nested_vec.GetValue(i);
 			    auto flat_children = FlattenNestedList(nested_list);
 			    map<string, string> attrs;
-			    attrs[BlockTypes::LIST_TYPE_ORDERED] = "false";
+			    attrs[BlockTypes::ATTR_ORDERED_LEGACY] = "false";
 			    auto parent = BuilderFunctions::CreateBlockWithNullContent(
 			        BlockTypes::TYPE_LIST_ITEM, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
 			    auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
@@ -1487,7 +1487,7 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 			    auto flat_children = FlattenNestedList(nested_list);
 			    bool is_ordered = !ordered.IsNull() && ordered.GetValue<bool>();
 			    map<string, string> attrs;
-			    attrs[BlockTypes::LIST_TYPE_ORDERED] = is_ordered ? "true" : "false";
+			    attrs[BlockTypes::ATTR_ORDERED_LEGACY] = is_ordered ? "true" : "false";
 			    auto parent = BuilderFunctions::CreateBlockWithNullContent(
 			        BlockTypes::TYPE_LIST_ITEM, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
 			    auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);

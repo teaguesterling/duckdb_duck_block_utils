@@ -457,7 +457,7 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 		// only list_type meant a consumer written against the PUBLISHED v1 spec read
 		// nothing at all from a Pandoc-produced list. Both are emitted; v1's name is
 		// the canonical one.
-		attrs[BlockTypes::LIST_TYPE_ORDERED] = is_ordered ? "true" : "false";
+		attrs[BlockTypes::ATTR_ORDERED_LEGACY] = is_ordered ? "true" : "false";
 
 		yyjson_val *items_arr = c_val;
 		if (is_ordered && c_val && yyjson_is_arr(c_val) && yyjson_arr_size(c_val) >= 2) {
@@ -519,7 +519,7 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 		// DefinitionList c = [([Inline], [[Block]])] -- term/definitions pairs.
 		block_type = BlockTypes::TYPE_LIST;
 		attrs[BlockTypes::ATTR_LIST_TYPE] = BlockTypes::LIST_TYPE_DEFINITION;
-		attrs[BlockTypes::LIST_TYPE_ORDERED] = "false";
+		attrs[BlockTypes::ATTR_ORDERED_LEGACY] = "false";
 		result.push_back(CreateDocBlock(block_type, "", attrs, order++, encoding, block_level));
 
 		if (c_val && yyjson_is_arr(c_val)) {
@@ -1121,7 +1121,7 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 	CheckPandocDepth(depth);
 	auto &list_block = blocks_list[start_idx];
 	auto list_type = GetElementAttribute(list_block, BlockTypes::ATTR_LIST_TYPE);
-	auto ordered_attr = GetElementAttribute(list_block, BlockTypes::LIST_TYPE_ORDERED);
+	auto ordered_attr = GetElementAttribute(list_block, BlockTypes::ATTR_ORDERED_LEGACY);
 	bool is_ordered = (list_type == BlockTypes::LIST_TYPE_ORDERED) || (ordered_attr == "true");
 	const bool is_definition = (list_type == BlockTypes::LIST_TYPE_DEFINITION);
 	const char *pandoc_type = is_definition ? "DefinitionList" : (is_ordered ? "OrderedList" : "BulletList");
@@ -2005,7 +2005,7 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			// what I had written down.
 			bool json_ordered =
 			    (GetElementAttribute(block, BlockTypes::ATTR_LIST_TYPE) == BlockTypes::LIST_TYPE_ORDERED) ||
-			    (GetElementAttribute(block, BlockTypes::LIST_TYPE_ORDERED) == "true");
+			    (GetElementAttribute(block, BlockTypes::ATTR_ORDERED_LEGACY) == "true");
 			yyjson_mut_val *list_obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, list_obj, "t", json_ordered ? "OrderedList" : "BulletList");
 			yyjson_mut_val *items_arr = yyjson_mut_arr(doc);

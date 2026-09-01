@@ -850,3 +850,34 @@ query I
 SELECT duck_blocks_validate([{'kind':'block','element_type':'metadata','content':'t','level':0,'encoding':'yaml','attributes':MAP{},'element_order':0}::duck_block]).valid;
 ----
 false
+
+# ============================================================================
+# THE LEGACY `ordered` ATTRIBUTE IS STILL EMITTED AND STILL READ.
+#
+# `list_type` is canonical; `attributes['ordered']` = 'true'/'false' is a legacy
+# alias kept because data written before the rule exists and does not rewrite
+# itself. Producers may emit both -- this one does -- and consumers must tolerate
+# it, reading list_type first and falling back.
+#
+# Pinned because a bulk constant conversion replaced the attribute KEY "ordered"
+# with LIST_TYPE_ORDERED at 18 sites: same string, byte-identical output, every
+# test green, and the wrong meaning. Only the KEY/VALUE distinction was wrong, so
+# only an assertion that reads both axes could ever have caught it.
+# ============================================================================
+
+query IIII
+SELECT (SELECT b.attributes['list_type'] FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"OrderedList","c":[[1,{"t":"Decimal"},{"t":"Period"}],[[{"t":"Plain","c":[{"t":"Str","c":"x"}]}]]]}]')) AS b) WHERE b.element_type='list'),
+       (SELECT b.attributes['ordered'] FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"OrderedList","c":[[1,{"t":"Decimal"},{"t":"Period"}],[[{"t":"Plain","c":[{"t":"Str","c":"x"}]}]]]}]')) AS b) WHERE b.element_type='list'),
+       (SELECT b.attributes['list_type'] FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"x"}]}]]}]')) AS b) WHERE b.element_type='list'),
+       (SELECT b.attributes['ordered'] FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"x"}]}]]}]')) AS b) WHERE b.element_type='list');
+----
+ordered	true	bullet	false
+
+# DISCRIMINATING: a consumer reading ONLY the legacy alias must still get the right
+# answer for a definition list -- which is the case the boolean cannot express, and
+# the reason list_type won.
+query II
+SELECT (SELECT b.attributes['list_type'] FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"T"}],[[{"t":"Plain","c":[{"t":"Str","c":"d"}]}]]]]}]')) AS b) WHERE b.element_type='list'),
+       (SELECT coalesce(b.attributes['ordered'],'(absent)') FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"T"}],[[{"t":"Plain","c":[{"t":"Str","c":"d"}]}]]]]}]')) AS b) WHERE b.element_type='list');
+----
+definition	false
