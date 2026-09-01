@@ -268,7 +268,12 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				const bool cur_null =
 				    BlockTypes::LEVEL_IDX >= cur_children.size() || cur_children[BlockTypes::LEVEL_IDX].IsNull();
 				const int32_t cur_depth = cur_null ? 1 : GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
-				if (cur_depth <= pending_empty_depth) {
+				// Suppress when the structural warning below covers the same element:
+				// "empty" and "owns no children" are one fact, and reporting it twice is
+				// the noise that camouflages signal.
+				const bool covered_by_structural =
+				    !open_container_type.empty() && open_container_order == pending_empty_order;
+				if (cur_depth <= pending_empty_depth && !covered_by_structural) {
 					child_list_t<Value> warning_values;
 					warning_values.push_back(make_pair("severity", Value("info")));
 					warning_values.push_back(make_pair(
@@ -289,11 +294,17 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				if (open_container_depth >= 0 && depth <= open_container_depth) {
 					child_list_t<Value> warning_values;
 					warning_values.push_back(make_pair("severity", Value("warning")));
+					// States the OBSERVATION, not an intent. Two elements at the same depth
+					// are siblings, and an empty container beside a sibling is legal --
+					// webbed established that while checking a defect I had wrongly
+					// relayed as theirs. It is still worth a warning, because a producer
+					// that meant the next block as content produces exactly this and the
+					// result renders as text sitting where a reader expects it.
 					warning_values.push_back(make_pair(
-					    "message", Value(open_container_type + " owns no children: the next block is at depth " +
-					                     std::to_string(depth) + ", not deeper than the container's " +
-					                     std::to_string(open_container_depth) +
-					                     ". Its content is a SIBLING, so it renders outside the container.")));
+					    "message", Value(open_container_type + " at depth " + std::to_string(open_container_depth) +
+					                     " owns no children: the next block is at depth " + std::to_string(depth) +
+					                     ", so it is a SIBLING rather than content. Legal, but if that block was "
+					                     "meant to be inside, it will render outside.")));
 					warning_values.push_back(make_pair("element_order", Value(open_container_order)));
 					warnings.push_back(Value::STRUCT(std::move(warning_values)));
 				}

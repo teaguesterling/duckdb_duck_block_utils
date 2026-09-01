@@ -319,8 +319,10 @@ WHERE w.message LIKE '%no content and no children%';
 ----
 1
 
-# On panduck's real epub rows the structural warnings must outnumber the infos --
-# the signal has to dominate, which is the whole point of removing the noise.
+# On panduck's real epub rows: two structural warnings and NO infos. The
+# "empty element" info used to fire alongside each of them, describing the same
+# fact twice -- one condition, one line, since duplicate reporting is the noise
+# that camouflages signal just as surely as a rule firing on correct code.
 query II
 SELECT count(*) FILTER (WHERE w.severity = 'warning'), count(*) FILTER (WHERE w.severity = 'info')
 FROM (SELECT unnest(duck_blocks_lint([
@@ -328,7 +330,7 @@ FROM (SELECT unnest(duck_blocks_lint([
   {'kind':'block','element_type':'blockquote','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':14}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER),
   {'kind':'block','element_type':'paragraph','content':'A block quote.','level':1,'encoding':'text','attributes':MAP{},'element_order':15}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])) AS w);
 ----
-2	1
+2	0
 
 # ============================================================================
 # LEVEL IS VALIDATED. `level` and adjacency together describe the entire document
