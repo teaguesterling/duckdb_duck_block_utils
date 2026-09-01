@@ -10,6 +10,7 @@
 #include "assembly.hpp"
 #include "extraction.hpp"
 #include "validation.hpp"
+#include "normalize.hpp"
 #include "pandoc_block_convert.hpp"
 #include "pragma_aliases.hpp"
 #include "render_macros.hpp"
@@ -44,6 +45,8 @@ static void LoadInternal(ExtensionLoader &loader) {
 
 	// Phase 5: Validation Functions
 	ValidationFunctions::Register(loader);
+
+	NormalizeFunctions::Register(loader);
 
 	// Phase 6: Pandoc AST Block Functions
 	PandocBlockConvert::Register(loader);

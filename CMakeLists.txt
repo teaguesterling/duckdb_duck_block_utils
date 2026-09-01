@@ -20,6 +20,7 @@ set(EXTENSION_SOURCES
     src/assembly.cpp
     src/extraction.cpp
     src/validation.cpp
+    src/normalize.cpp
     src/pandoc_block_convert.cpp
     src/pragma_aliases.cpp
     src/render_macros.cpp

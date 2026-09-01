@@ -1,6 +1,6 @@
 # Duck Blocks Canonical Specification
 
-**Version:** 6.0 — this MUST equal `duck_block_spec_version()`, and
+**Version:** 6.1 — this MUST equal `duck_block_spec_version()`, and
 `test/check_spec_alignment.py` fails if it does not. It read `0.4.0` from v1.0.0
 through 2026-08-31 while the shipped value moved to 6.0, so a reader trusting the
 document disagreed with every consumer asserting the function.
@@ -581,6 +581,24 @@ this reader collapsed both constructors onto `paragraph`, which is how tight-vs-
 list items were being lost — and lost independently in webbed, by a different
 mechanism, with neither reader aware. The gap was a constructor we failed to
 represent, not a variation we failed to annotate.
+
+**Implementers: the rule is sibling-dependent, and that costs a streaming reader
+one lookahead.** Whether a text run becomes its container's `content` or stays a
+`plain` depends on what FOLLOWS it, which a reader emitting as it walks does not
+yet know when it reaches the run. Raised by the panduck session, whose EPUB and
+LaTeX readers both stream; it applies to any streaming reader of any format.
+
+You do not have to solve it. Emit the naive shape — always a `plain` child — and
+call `duck_blocks_normalize(blocks)` on the finished vector, which applies this
+rule and returns the 6.1 shape. It is idempotent, so it is safe to call on input
+that may already have been normalised upstream. That is exactly what this repo's
+own Pandoc reader does: it emits `plain` during the walk and collapses afterwards.
+
+The pass is deliberately type-blind — it asks only about levels and adjacency,
+never about the parent's `element_type` — so a container type added later is
+covered without being listed. If you do implement it yourself, keep that property:
+enumerating the container types you happen to know is what lost `table`, `deflist`
+and `lineblock` inside every container, in code that was correct when written.
 
 **Migrating from 5.0.** A consumer that reads a container's `content` needs no
 change — that has been required since v1. A consumer that walks for a `plain` child

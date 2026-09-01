@@ -459,3 +459,73 @@ SELECT len(duck_blocks_lint([
 ]));
 ----
 0
+
+# ============================================================================
+# duck_blocks_normalize -- SPEC 6.1
+#
+# 6.0's content rule is SIBLING-DEPENDENT: whether a text run becomes its
+# container's content or stays a `plain` depends on what FOLLOWS it, which a
+# streaming reader does not know when it reaches the run. Raised by panduck,
+# whose EPUB and LaTeX readers both emit as they walk.
+#
+# Exported rather than left private so four extensions do not each grow their own
+# lookahead and drift -- the same argument that put tight-vs-loose in the
+# vocabulary instead of in each reader.
+# ============================================================================
+
+# Collapses the naive shape a streaming producer emits.
+query II
+SELECT len(duck_blocks_normalize([
+  {'kind':'block','element_type':'list','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'list_item','content':NULL,'level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'plain','content':'x','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+])),
+       duck_blocks_normalize([
+  {'kind':'block','element_type':'list','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'list_item','content':NULL,'level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'plain','content':'x','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+])[2].content;
+----
+2	x
+
+# IDEMPOTENT. A producer cannot always tell whether its input was normalised
+# upstream, so a normaliser that is unsafe to run twice is one nobody can call
+# defensively -- and "call it if you are not sure" is the whole point of exporting it.
+query I
+SELECT duck_blocks_normalize(duck_blocks_normalize([
+  {'kind':'block','element_type':'list','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'list_item','content':NULL,'level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'plain','content':'x','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+])) = duck_blocks_normalize([
+  {'kind':'block','element_type':'list','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'list_item','content':NULL,'level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'plain','content':'x','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+]);
+----
+true
+
+# DISCRIMINATING: it must NOT eat a legitimate `plain`. A normaliser that removed
+# every plain would pass both assertions above, and would silently destroy the one
+# shape the type exists for.
+query II
+SELECT len(duck_blocks_normalize([
+  {'kind':'block','element_type':'section','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'plain','content':'Lead','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'heading','content':'H','level':2,'encoding':'text','attributes':MAP{'heading_level':'2'},'element_order':2}::duck_block
+])),
+       duck_blocks_normalize([
+  {'kind':'block','element_type':'plain','content':'top','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block
+])[1].element_type;
+----
+3	plain
+
+# It settles the lint: normalize then lint reports nothing. This is the pair a
+# producer actually runs -- fix with one, verify with the other.
+query I
+SELECT len(duck_blocks_lint(duck_blocks_normalize([
+  {'kind':'block','element_type':'list','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'list_item','content':NULL,'level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'plain','content':'x','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+])));
+----
+0
