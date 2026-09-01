@@ -744,8 +744,58 @@ static yyjson_mut_val *CreatePandocAttrVal(yyjson_mut_doc *doc, const Value &ele
 
 static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list, idx_t &start_idx,
                                               int32_t list_level, idx_t depth);
+static void ConvertContainerChildrenToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list, idx_t &start_idx,
+                                                int32_t parent_level, idx_t depth, yyjson_mut_val *target_arr,
+                                                yyjson_mut_val *switch_arr, const char *switch_type);
 static yyjson_mut_val *ConvertDivToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list, idx_t &start_idx,
                                              int32_t div_level, idx_t depth);
+
+// A block child no walk enumerates. Emitted as a Div classed with its element_type,
+// carrying whatever content it had -- visible and correctly nested rather than
+// silently skipped.
+//
+// Shared by the container walk and the list walk deliberately. Those two had
+// SEPARATE terminal arms, and that duplication is the root of this whole class:
+// a type added to one dispatch is invisible to the other, which is how table,
+// deflist and lineblock came to be dropped inside containers, and code blocks,
+// blockquotes and horizontal rules inside list items.
+static yyjson_mut_val *ConvertUnhandledChildToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list,
+                                                        idx_t &idx, idx_t depth, const Value &child,
+                                                        const string &child_type, const string &content,
+                                                        const vector<Value> &inline_children, int32_t child_level) {
+	yyjson_mut_val *fallback = yyjson_mut_obj(doc);
+	yyjson_mut_obj_add_str(doc, fallback, "t", "Div");
+	yyjson_mut_val *fc_arr = yyjson_mut_arr(doc);
+	yyjson_mut_arr_add_val(fc_arr, CreatePandocAttrVal(doc, child, child_type));
+	yyjson_mut_val *fb_blocks = yyjson_mut_arr(doc);
+	if (!content.empty() || !inline_children.empty()) {
+		yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
+		yyjson_mut_obj_add_str(doc, para_obj, "t", "Plain");
+		if (!inline_children.empty()) {
+			idx_t inl_end = 0;
+			yyjson_mut_obj_add_val(
+			    doc, para_obj, "c",
+			    PandocInlineConvert::ConvertDbInlinesToPandocVal(doc, inline_children, 0, child_level + 1, inl_end, 1));
+		} else {
+			yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
+			yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+			yyjson_mut_obj_add_strncpy(doc, str_obj, "c", content.data(), content.size());
+			yyjson_mut_arr_add_val(inl_arr, str_obj);
+			yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
+		}
+		yyjson_mut_arr_add_val(fb_blocks, para_obj);
+	}
+	// The child's OWN descendants. Without this the fallback kept an element's own
+	// text and dropped everything below it -- a blockquote inside a list item came
+	// through as an empty Div and its quoted paragraph vanished, the same silent
+	// loss one level deeper. Delegating means the fallback needs to know nothing
+	// about what the subtree contains.
+	ConvertContainerChildrenToPandocVal(doc, blocks_list, idx, child_level, depth + 1, fb_blocks, nullptr, nullptr);
+	yyjson_mut_arr_add_val(fc_arr, fb_blocks);
+	yyjson_mut_obj_add_val(doc, fallback, "c", fc_arr);
+	return fallback;
+}
 
 static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list, idx_t &start_idx,
                                               int32_t list_level, idx_t depth) {
@@ -764,6 +814,10 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 		// before `plain` existed.
 		bool tight = true;
 		vector<string> extra_paragraphs;
+		// Block children this walk does not enumerate -- a code block, blockquote or
+		// horizontal rule inside a list item, all legal Pandoc and all silently
+		// dropped before. Carried through rather than skipped.
+		vector<yyjson_mut_val *> extra_blocks;
 		vector<Value> inlines;
 		yyjson_mut_val *nested_list_val = nullptr;
 	};
@@ -792,7 +846,13 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 				current_item.content = GetElementStringField(child, BlockTypes::CONTENT_IDX);
 				in_item = true;
 				j++;
-			} else if (child_type == BlockTypes::TYPE_LIST && child_level == list_level + 1) {
+			} else if (child_type == BlockTypes::TYPE_LIST &&
+			           (child_level == list_level + 1 || child_level == list_level + 2)) {
+				// A nested list is a child of the LIST_ITEM, so it sits at list_level + 2.
+				// This only accepted list_level + 1, so every nested list from the Pandoc
+				// reader fell past it -- to a bare `j++` before today, meaning nested
+				// lists were dropped on export entirely. The +1 case is kept for a list
+				// directly under a list, which the builders can produce.
 				if (in_item) {
 					current_item.nested_list_val = ConvertListToPandocVal(doc, blocks_list, j, child_level, depth + 1);
 				} else {
@@ -821,6 +881,26 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 				j++;
 			} else if (child_level <= list_level) {
 				break;
+			} else if (in_item && child_level == list_level + 2) {
+				// NEVER SILENTLY DROP -- this was a bare `j++`, so a code block,
+				// blockquote or horizontal rule inside a list item vanished. Same
+				// defect as the container walk had, one function over, which is why
+				// the fallback is now shared rather than written twice.
+				auto child_content = GetElementStringField(child, BlockTypes::CONTENT_IDX);
+				vector<Value> child_inlines;
+				for (idx_t k = j + 1; k < blocks_list.size(); k++) {
+					auto &inl = blocks_list[k];
+					if (inl.IsNull()) {
+						continue;
+					}
+					if (GetElementStringField(inl, BlockTypes::KIND_IDX) != BlockTypes::KIND_INLINE ||
+					    GetElementLevel(inl) <= child_level) {
+						break;
+					}
+					child_inlines.push_back(inl);
+				}
+				current_item.extra_blocks.push_back(ConvertUnhandledChildToPandocVal(
+				    doc, blocks_list, j, depth, child, child_type, child_content, child_inlines, child_level));
 			} else {
 				j++;
 			}
@@ -904,6 +984,10 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 			yyjson_mut_arr_add_val(pinl, pstr);
 			yyjson_mut_obj_add_val(doc, para_obj, "c", pinl);
 			yyjson_mut_arr_add_val(item_blocks, para_obj);
+		}
+
+		for (auto *extra : item.extra_blocks) {
+			yyjson_mut_arr_add_val(item_blocks, extra);
 		}
 
 		if (item.nested_list_val) {
@@ -1105,48 +1189,12 @@ static void ConvertContainerChildrenToPandocVal(yyjson_mut_doc *doc, const vecto
 				yyjson_mut_arr_add_val(child_blocks_arr, obj);
 				j++;
 			} else {
-				// NEVER SILENTLY DROP. This was `j++` -- a bare skip -- so any block type
-				// this chain did not enumerate disappeared inside every container.
-				// lineblock, deflist and table were all being lost that way, and the next
-				// type added would have been too.
-				//
-				// That is the structural point webbed made: a type-keyed walk cannot pass
-				// through a type it does not know, so it needs a terminal arm that does
-				// not need to know. Their HTML writer never had this defect because its
-				// containment is LEVEL-driven -- it pops on depth and renders whatever
-				// arrives, so a new type is handled by construction rather than invisible
-				// by construction.
-				//
-				// Emitted as a Div classed with the element_type, matching how `generic`
-				// records an unmapped construct: visible, correctly nested, and honest
-				// about what it stood in for.
-				yyjson_mut_val *fallback = yyjson_mut_obj(doc);
-				yyjson_mut_obj_add_str(doc, fallback, "t", "Div");
-				yyjson_mut_val *fc_arr = yyjson_mut_arr(doc);
-				yyjson_mut_arr_add_val(fc_arr, CreatePandocAttrVal(doc, child, child_type));
-				yyjson_mut_val *fb_blocks = yyjson_mut_arr(doc);
-				if (!content.empty() || !inline_children.empty()) {
-					yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
-					yyjson_mut_obj_add_str(doc, para_obj, "t", "Plain");
-					if (!inline_children.empty()) {
-						idx_t inl_end = 0;
-						yyjson_mut_obj_add_val(doc, para_obj, "c",
-						                       PandocInlineConvert::ConvertDbInlinesToPandocVal(
-						                           doc, inline_children, 0, child_level + 1, inl_end, 1));
-					} else {
-						yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
-						yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
-						yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
-						yyjson_mut_obj_add_strncpy(doc, str_obj, "c", content.data(), content.size());
-						yyjson_mut_arr_add_val(inl_arr, str_obj);
-						yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
-					}
-					yyjson_mut_arr_add_val(fb_blocks, para_obj);
-				}
-				yyjson_mut_arr_add_val(fc_arr, fb_blocks);
-				yyjson_mut_obj_add_val(doc, fallback, "c", fc_arr);
-				yyjson_mut_arr_add_val(child_blocks_arr, fallback);
-				j++;
+				// NEVER SILENTLY DROP. This was a bare `j++`, so any block type the chain
+				// did not enumerate vanished inside every container -- lineblock, deflist
+				// and table all were, long before today.
+				yyjson_mut_arr_add_val(child_blocks_arr,
+				                       ConvertUnhandledChildToPandocVal(doc, blocks_list, j, depth, child, child_type,
+				                                                        content, inline_children, child_level));
 			}
 		} else {
 			j++;

@@ -1716,3 +1716,46 @@ SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":
        duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Div","c":[["",[],[]],[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"i"}]}]]}]]}]}'))::VARCHAR LIKE '%"t":"BulletList"%';
 ----
 true	true	true
+
+# ============================================================================
+# A LIST ITEM MUST NOT DROP CHILDREN EITHER -- the same bare `j++`, one function
+# over from the container walk. A Pandoc list item holds [Block], so a code
+# block, blockquote or horizontal rule inside one is ordinary and all three
+# vanished.
+#
+# Found by checking the adjacent function after fixing the container walk, which
+# is the sibling pattern that has caught something every time today. Both walks
+# now share ONE fallback -- the duplication was the root of the class.
+# ============================================================================
+
+query III
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"item"}]},{"t":"CodeBlock","c":[["",[],[]],"the code"]}]]}]}'))::VARCHAR LIKE '%the code%',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"item"}]},{"t":"BlockQuote","c":[{"t":"Para","c":[{"t":"Str","c":"quoted"}]}]}]]}]}'))::VARCHAR LIKE '%quoted%',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"item"}]},{"t":"HorizontalRule"}]]}]}'))::VARCHAR LIKE '%"hr"%';
+----
+true	true	true
+
+# DISCRIMINATING: the item's own text always survived, so asserting that 'item'
+# is in the output would have passed against all three. The property is that the
+# SECOND child reaches the output.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"item"}]},{"t":"CodeBlock","c":[["",[],[]],"the code"]}]]}]}'))::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"item"}]},{"t":"Div","c":[["",["code"],[]],[{"t":"Plain","c":[{"t":"Str","c":"the code"}]}]]}]]}]';
+----
+true
+
+# The child stays INSIDE its item -- splitting into a second item would also make
+# the text survive while corrupting the list. ONE list_item, and the code sits at
+# the item's child depth.
+query II
+SELECT count(*) FILTER (WHERE b.element_type = 'list_item'),
+       max(b.level) FILTER (WHERE b.element_type = 'code')
+FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"item"}]},{"t":"CodeBlock","c":[["",[],[]],"x"]}]]}]}')) AS b);
+----
+1	3
+
+# Nested lists inside an item must still work -- they have their own branch and
+# must not be swallowed by the new fallback.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"outer"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"inner"}]}]]}]]}]}'))::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"outer"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"inner"}]}]]}]]}]';
+----
+true
