@@ -582,11 +582,20 @@ list items were being lost — and lost independently in webbed, by a different
 mechanism, with neither reader aware. The gap was a constructor we failed to
 represent, not a variation we failed to annotate.
 
-**Implementers: the rule is sibling-dependent, and that costs a streaming reader
-one lookahead.** Whether a text run becomes its container's `content` or stays a
-`plain` depends on what FOLLOWS it, which a reader emitting as it walks does not
-yet know when it reaches the run. Raised by the panduck session, whose EPUB and
-LaTeX readers both stream; it applies to any streaming reader of any format.
+**Implementers: this rule CANNOT be applied while streaming. Do not try.**
+
+Whether a text run becomes its container's `content` or stays a `plain` depends on
+what FOLLOWS it. A rule whose input includes the element's later siblings is not
+merely awkward for a reader that emits as it walks — it is unavailable to it. A
+producer applying this rule inline is necessarily guessing, and the guess will be
+right for its own test documents, which is what makes the resulting bug ship.
+
+Raised by the panduck session, whose EPUB and LaTeX readers both stream, and
+sharpened by duckdb_markdown to the form above. It applies to any streaming reader
+of any format. It does NOT apply to a reader that walks a complete tree — webbed
+parses HTML into a full DOM, so a node's siblings are known before anything is
+emitted, and it needs nothing here. The distinguishing property is whether sibling
+information is available at decision time, not how the container is tracked.
 
 You do not have to solve it. Emit the naive shape — always a `plain` child — and
 call `duck_blocks_normalize(blocks)` on the finished vector, which applies this
