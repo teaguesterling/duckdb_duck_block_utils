@@ -326,31 +326,39 @@ def main() -> int:
                 "-noheader",
                 "-list",
                 "-c",
-                f"SELECT DISTINCT w.element_order FROM (SELECT unnest(duck_blocks_lint({doc})) AS w) ORDER BY 1;",
+                f"SELECT w.element_order FROM (SELECT unnest(duck_blocks_lint({doc})) AS w) ORDER BY 1;",
             ],
             capture_output=True,
             text=True,
         )
         sql = subprocess.run(
             [str(duckdb), "-noheader", "-list"],
-            input=MACROS.read_text() + f"\nSELECT DISTINCT element_order FROM duck_blocks_warnings({doc}) ORDER BY 1;",
+            input=MACROS.read_text() + f"\nSELECT element_order FROM duck_blocks_warnings({doc}) ORDER BY 1;",
             capture_output=True,
             text=True,
         )
-        a = {x.strip() for x in ext.stdout.split() if x.strip()}
-        b = {x.strip() for x in sql.stdout.split() if x.strip()}
+        # SORTED LISTS, not sets. `SELECT DISTINCT` threw away multiplicity, so two
+        # implementations that flag the same element a different NUMBER of times --
+        # one rule against two, or a rule accidentally duplicated -- compared equal.
+        # duckeye hit the same shape from the other side on 2026-09-01: `grep -c`
+        # counts LINES, so three findings rendered onto one line counted as one and
+        # a guard reported FIXED with the defect fully present. Distinctness and
+        # line-counting are the same mistake -- measuring something coarser than the
+        # property and reading agreement off the coarser thing.
+        a = sorted(x.strip() for x in ext.stdout.split() if x.strip())
+        b = sorted(x.strip() for x in sql.stdout.split() if x.strip())
         if must_fire and not a:
             print(f"\nFAIL: nothing flagged `{name}`, and both implementations were silent.")
             print("      Agreement on silence is not agreement -- a rule deleted from both,")
             print("      or a probe that no longer matches, produces exactly this output.")
             return 1
         if not must_fire and a:
-            print(f"\nFAIL: `{name}` is conforming and was flagged anyway at {sorted(a)}.")
+            print(f"\nFAIL: `{name}` is conforming and was flagged anyway at {a}.")
             print("      A rule that fires on correct data gets muted, and then it catches nothing.")
             return 1
         if a != b:
             print(f"\nFAIL: advisory rules disagree on `{name}`.")
-            print(f"      extension flags element_order {sorted(a) or 'none'};" f" SQL flags {sorted(b) or 'none'}")
+            print(f"      extension flags element_order {a or 'none'};" f" SQL flags {b or 'none'}")
             print("      A producer who cannot load the extension gets the SQL answer and no")
             print("      way to know it differs -- which is the whole reason these rules exist.")
             return 1
