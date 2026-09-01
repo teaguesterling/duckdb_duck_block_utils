@@ -15,6 +15,7 @@ check:
 	python3 test/check_vocabulary_header.py
 	python3 test/check_spec_alignment.py
 	python3 test/pandoc/check_pandoc_alignment.py
+	python3 test/check_roundtrip_sweep.py
 
 check-strict:
 	DUCK_BLOCK_CHECKS_STRICT=1 $(MAKE) check

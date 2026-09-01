@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""Sweep EVERY block type through the paths that enumerate types.
+
+Two failure classes, both found repeatedly in one week, both invisible to code
+review because the code was CORRECT for every type that existed when it was
+written -- the defect is created by a later addition, elsewhere:
+
+  WRITE-ONLY   a type exports fine and cannot be read back, so a round trip
+               silently downgrades it. `section` became `div`; `page_break`
+               became `div`. Neither was findable by looking at section or
+               page_break.
+
+  DROPPED      a container's child walk enumerates type names, so a type it does
+               not know vanishes. `table`, `deflist` and `lineblock` were lost
+               inside every div, blockquote, figure and caption -- for weeks.
+
+A sweep produces CANDIDATES, not findings. Three candidates here were investigated
+and are NOT defects; they are listed in INHERENT with their reasoning so the sweep
+cannot re-raise them and nobody re-investigates. Recording the negatives is the
+part that keeps a sweep usable -- an unexplained exclusion and a forgotten defect
+look identical.
+
+Set DUCK_BLOCK_CHECKS_STRICT=1 to make a skip a failure (see the other checks).
+"""
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+REPO = HERE.parent
+
+STRUCT = (
+    'STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, '
+    '"encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)'
+)
+
+# element_type -> (content SQL, encoding, attributes SQL, needs a child block?)
+PROBES = {
+    "heading": ("'H'", "text", "MAP{'heading_level':'2'}", False),
+    "paragraph": ("'x'", "text", "MAP{}", False),
+    "plain": ("'x'", "text", "MAP{}", False),
+    "code": ("'x'", "text", "MAP{}", False),
+    "hr": ("'x'", "text", "MAP{}", False),
+    "lineblock": ("'x'", "text", "MAP{}", False),
+    "raw": ("'<b>x</b>'", "html", "MAP{'format':'html'}", False),
+    "image": ("'alt'", "text", "MAP{'src':'i.png'}", False),
+    "section": ("NULL", "text", "MAP{'role':'article'}", True),
+    "page_break": ("''", "text", "MAP{'page_number':'3'}", False),
+    "generic": (r"""'{"t":"Marquee","c":[]}'""", "json", "MAP{'source_type':'Marquee'}", False),
+    "blockquote": ("NULL", "text", "MAP{}", True),
+    "div": ("NULL", "text", "MAP{}", True),
+    "figure": ("NULL", "text", "MAP{}", True),
+    "caption": ("NULL", "text", "MAP{}", True),
+}
+
+# Round trips that do NOT preserve the type, investigated and found inherent.
+# Each entry is (what it becomes, why it cannot be otherwise).
+INHERENT = {
+    "image": (
+        "paragraph",
+        "Pandoc has no block Image constructor. Para[Image] is its only encoding, so a "
+        "block image and a paragraph containing one image are the SAME document to it. "
+        "Unlike section and page_break -- where the exporter writes a recoverable marker "
+        "-- there is nothing to write, so promoting invents a distinction the source "
+        "cannot carry. Was 'fixed' once; the existing tests caught that it destroyed the "
+        "alt text.",
+    ),
+    "caption": (
+        "paragraph",
+        "Only a STANDALONE caption, which is malformed anyway -- a caption belongs to "
+        "the container before it. Inside a figure it round-trips: figure > plain > "
+        "caption > plain. The sweep's synthetic probe is unrepresentative here.",
+    ),
+}
+
+# Constructors that must survive inside a container, with a probe string to find.
+NESTED = [
+    ("CodeBlock", r'{"t":"CodeBlock","c":[["",[],[]],"NESTPROBE"]}', "NESTPROBE"),
+    ("HorizontalRule", r'{"t":"HorizontalRule"}', "HorizontalRule"),
+    ("LineBlock", r'{"t":"LineBlock","c":[[{"t":"Str","c":"NESTPROBE"}]]}', "NESTPROBE"),
+    ("BulletList", r'{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"NESTPROBE"}]}]]}', "NESTPROBE"),
+    (
+        "DefinitionList",
+        r'{"t":"DefinitionList","c":[[[{"t":"Str","c":"NESTPROBE"}],[[{"t":"Plain","c":[{"t":"Str","c":"d"}]}]]]]}',
+        "NESTPROBE",
+    ),
+    ("Plain", r'{"t":"Plain","c":[{"t":"Str","c":"NESTPROBE"}]}', "NESTPROBE"),
+    (
+        "Table",
+        r'{"t":"Table","c":[["",[],[]],[null,[]],[],[["",[],[]],[[["",[],[]],[[["",[],[]],'
+        r'{"t":"AlignDefault"},1,1,[{"t":"Plain","c":[{"t":"Str","c":"NESTPROBE"}]}]]]]]],[],[["",[],[]],[]]]}',
+        "NESTPROBE",
+    ),
+]
+
+
+def skip(reason: str) -> int:
+    if os.environ.get("DUCK_BLOCK_CHECKS_STRICT") == "1":
+        print(f"FAIL: {reason}")
+        print("      DUCK_BLOCK_CHECKS_STRICT=1 is set, so a skipped check is a failed check.")
+        return 1
+    print(f"SKIP: {reason}")
+    return 0
+
+
+def duckdb_bin():
+    for candidate in ("build/release/duckdb", "build/debug/duckdb"):
+        path = REPO / candidate
+        if path.exists():
+            return path
+    return None
+
+
+def run(duckdb, sql: str) -> str:
+    proc = subprocess.run([str(duckdb), "-noheader", "-list", "-c", sql], capture_output=True, text=True)
+    if proc.returncode != 0:
+        return "<ERROR> " + proc.stderr.strip().splitlines()[0] if proc.stderr.strip() else "<ERROR>"
+    return proc.stdout.strip().splitlines()[0] if proc.stdout.strip() else ""
+
+
+def main() -> int:
+    duckdb = duckdb_bin()
+    if duckdb is None:
+        return skip("no built duckdb binary (run `make` first)")
+
+    failed = False
+
+    print("Round-trip sweep: export then read back, every block type")
+    for ty, (content, enc, attrs, needs_child) in sorted(PROBES.items()):
+        child = ""
+        if needs_child:
+            child = (
+                f", {{'kind':'block','element_type':'paragraph','content':'inner','level':2,"
+                f"'encoding':'text','attributes':MAP{{}},'element_order':1}}::{STRUCT}"
+            )
+        sql = (
+            f"SELECT coalesce((SELECT b.element_type FROM (SELECT unnest(pandoc_ast_to_blocks("
+            f"duck_blocks_to_pandoc_blocks([{{'kind':'block','element_type':'{ty}','content':{content},"
+            f"'level':1,'encoding':'{enc}','attributes':{attrs},'element_order':0}}::{STRUCT}{child}]"
+            f")::VARCHAR)) AS b) WHERE b.kind='block' LIMIT 1), '<NOTHING>');"
+        )
+        got = run(duckdb, sql)
+        if got == ty:
+            continue
+        if ty in INHERENT and got == INHERENT[ty][0]:
+            continue
+        failed = True
+        print(f"\nFAIL: `{ty}` does not survive a round trip -- it reads back as `{got}`.")
+        if ty in INHERENT:
+            print(f"      Expected `{INHERENT[ty][0]}` by the recorded exception, got `{got}`.")
+        else:
+            print("      Either the reader cannot read what the exporter writes (add the read side),")
+            print("      or the encoding genuinely cannot carry the distinction -- in which case add")
+            print("      it to INHERENT with the reasoning rather than 'fixing' it.")
+    if not failed:
+        n_inherent = len(INHERENT)
+        print(
+            f"  {len(PROBES) - n_inherent} types round-trip to themselves; "
+            f"{n_inherent} recorded as inherent ({', '.join(sorted(INHERENT))})"
+        )
+
+    print("Containment sweep: every constructor inside a Div")
+    for name, inner, probe in NESTED:
+        doc = '{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Div","c":[["",[],[]],[' + inner + ']]}]}'
+        got = run(duckdb, f"SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{doc}'))::VARCHAR;")
+        if probe in got:
+            continue
+        failed = True
+        print(f"\nFAIL: `{name}` is DROPPED inside a container -- its content never reaches the output.")
+        print("      A container's child walk must not decide whether a child EXISTS by")
+        print("      enumerating type names. Add a terminal arm that does not need to know.")
+    if not failed:
+        print(f"  all {len(NESTED)} constructors survive inside a container")
+
+    if failed:
+        return 1
+    print("OK: no write-only types, nothing dropped inside a container.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
