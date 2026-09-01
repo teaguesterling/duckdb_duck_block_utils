@@ -91,6 +91,18 @@ static void BlockKindsFun(DataChunk &args, ExpressionState &state, Vector &resul
 // `duck_blocks_lint` warns on a type not in here, and if it kept its own copy the
 // two would drift -- which is the defect that made an image's alt text invisible
 // in this repo, one fact written twice and checked by the party that writes both.
+// Every declared encoding, in one place. The list was hardcoded in FOUR: this file's
+// callers in type_functions.cpp and validation.cpp, and TWICE in the vendorable SQL --
+// so adding `toml` meant editing five copies, four of which nothing compared. The
+// header had the constants all along and nobody built the list from them.
+const vector<string> &BlockTypes::AllEncodingNames() {
+	static const vector<string> names = {
+	    BlockTypes::ENCODING_TEXT, BlockTypes::ENCODING_JSON,  BlockTypes::ENCODING_YAML,     BlockTypes::ENCODING_HTML,
+	    BlockTypes::ENCODING_XML,  BlockTypes::ENCODING_LATEX, BlockTypes::ENCODING_MARKDOWN, BlockTypes::ENCODING_TOML,
+	};
+	return names;
+}
+
 const vector<string> &BlockTypes::AllTypeNames() {
 	static const vector<string> names = {
 	    BlockTypes::TYPE_HEADING,       BlockTypes::TYPE_PARAGRAPH,   BlockTypes::TYPE_PLAIN,
@@ -111,6 +123,16 @@ const vector<string> &BlockTypes::AllTypeNames() {
 	    BlockTypes::VALUE_BLOCKS,       BlockTypes::VALUE_VERSION,
 	};
 	return names;
+}
+
+// Exposed so a consumer can ask the BUILD what encodings exist rather than copying a
+// list -- and so the vendorable SQL's copy can be compared against it on every check.
+static void BlockEncodingsFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	vector<Value> vals;
+	for (auto &n : BlockTypes::AllEncodingNames()) {
+		vals.push_back(Value(n));
+	}
+	result.Reference(Value::LIST(LogicalType::VARCHAR, std::move(vals)));
 }
 
 static void BlockTypesFun(DataChunk &args, ExpressionState &state, Vector &result) {
@@ -195,6 +217,7 @@ void BlockTypes::Register(ExtensionLoader &loader) {
 	auto varchar_list = LogicalType::LIST(LogicalType::VARCHAR);
 	loader.RegisterFunction(ScalarFunction("duck_block_kind_names", {}, varchar_list, BlockKindsFun));
 	loader.RegisterFunction(ScalarFunction("duck_block_type_names", {}, varchar_list, BlockTypesFun));
+	loader.RegisterFunction(ScalarFunction("duck_block_encoding_names", {}, varchar_list, BlockEncodingsFun));
 	loader.RegisterFunction(ScalarFunction("duck_block_spec_version", {}, LogicalType::VARCHAR, SpecVersionFun));
 	loader.RegisterFunction(
 	    ScalarFunction("duck_blocks_stamp", {DuckBlockListType()}, DuckBlockListType(), BlocksStampFun));

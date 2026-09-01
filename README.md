@@ -18,7 +18,7 @@ This extension complements format-specific document extensions (markdown, HTML, 
 - **Conversion helpers**: Normalize blocks and track provenance
 - **ANSI terminal rendering**: `PRAGMA duck_block_render` — render documents and query results as styled terminal output, glow-style ([docs](docs/rendering.md))
 - **Page composition & query tables**: `duck_blocks_page`, `duck_blocks_query_table`, `duck_blocks_table` — assemble dashboards that embed live query results as rendered tables
-- **Vocabulary introspection**: `duck_block_kind_names`, `duck_block_type_names`, `duck_block_spec_version` — so sibling extensions can *assert* they agree with the vocabulary rather than mirroring a header
+- **Vocabulary introspection**: `duck_block_kind_names`, `duck_block_type_names`, `duck_block_encoding_names`, `duck_block_spec_version` — so sibling extensions can *assert* they agree with the vocabulary rather than mirroring a header
 - **Document queries over blocks**: `duck_blocks_toc_rows`, `duck_blocks_get_section`, `duck_blocks_sections_like` — these take `LIST(duck_block)`, not file paths
 
 ## Naming

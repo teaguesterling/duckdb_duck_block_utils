@@ -223,6 +223,33 @@ def main() -> int:
         print("      which is what the two-kind version did to every metadata element.")
         return 1
     print(f"  the file's embedded kind list matches the build ({len(kb)}: {', '.join(sorted(kb))})")
+
+    # The ENCODING list, third axis, same discipline. It was hardcoded in four places
+    # across the repo before 2026-09-01, so `toml` was a five-file change with four
+    # unchecked copies -- exactly the arithmetic that makes a copy dangerous.
+    e_file = subprocess.run(
+        [str(duckdb), "-noheader", "-list"],
+        input=MACROS.read_text() + "\nSELECT unnest(duck_block_declared_encodings());",
+        capture_output=True,
+        text=True,
+    )
+    e_build = subprocess.run(
+        [str(duckdb), "-noheader", "-list", "-c", "SELECT unnest(duck_block_encoding_names());"],
+        capture_output=True,
+        text=True,
+    )
+    ef = {x.strip() for x in e_file.stdout.split() if x.strip()}
+    eb = {x.strip() for x in e_build.stdout.split() if x.strip()}
+    if not eb:
+        print("\nFAIL: could not read duck_block_encoding_names() from the build.")
+        return 1
+    if ef != eb:
+        print("\nFAIL: the ENCODING list embedded in the conformance file has drifted.")
+        print(f"      file: {sorted(ef)}\n      build: {sorted(eb)}")
+        print("      An encoding missing here makes the macro reject conforming data;")
+        print("      an extra one makes it accept data the build rejects.")
+        return 1
+    print(f"  the file's embedded encoding list matches the build ({len(eb)} values)")
     failed = False
     for row in rows:
         name, ext, mac = (p.strip() for p in row.split("|"))

@@ -197,6 +197,41 @@ def main() -> int:
         print("      where the build produces it. Describe the rule, not when it landed.")
         return 1
     print(f"  the document names no spec version (the build says {shipped})")
+
+    # THE ENCODING TABLE, same comparison as the type tables. Added because the spec
+    # says of that table "make check fails if the two disagree" -- and until this
+    # existed, it did not. A document asserting a guard that is not there is worse than
+    # one that says nothing: a reader stops checking, on the strength of the claim.
+    enc_build = {
+        line.strip()
+        for line in subprocess.run(
+            [str(duckdb), "-noheader", "-list", "-c", "SELECT unnest(duck_block_encoding_names());"],
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        if line.strip()
+    }
+    enc_doc = set()
+    in_enc = False
+    for line in text.splitlines():
+        if line.startswith("| Encoding |"):
+            in_enc = True
+            continue
+        if not line.startswith("|"):
+            in_enc = False
+        if not in_enc:
+            continue
+        m = re.match(r"\|\s*`([a-z_]+)`\s*\|", line)
+        if m:
+            enc_doc.add(m.group(1))
+    if enc_build and enc_doc != enc_build:
+        print("\nFAIL: the spec's encoding table disagrees with duck_block_encoding_names().")
+        if enc_build - enc_doc:
+            print(f"      declared by the build, undocumented: {sorted(enc_build - enc_doc)}")
+        if enc_doc - enc_build:
+            print(f"      documented, not declared by the build: {sorted(enc_doc - enc_build)}")
+        return 1
+    print(f"  the encoding table matches the build ({len(enc_build)} values)")
     if undocumented:
         failed = True
         print("\nFAIL: the build has element types the spec does not document:")

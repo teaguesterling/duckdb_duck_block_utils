@@ -59,6 +59,7 @@ Introspect the live vocabulary rather than mirroring this table:
 
 ```sql
 SELECT duck_block_kind_names();        -- ['block', 'inline', 'value']
+SELECT duck_block_encoding_names();    -- every legal `encoding` value
 SELECT duck_block_type_names();        -- every element_type name
 SELECT duck_block_spec_version(); -- the spec version this build implements
 ```
@@ -310,10 +311,32 @@ in a `list` have no key. Nesting uses `level`, exactly as block containers do.
 "which of the two metadata homes is this" and the ROLE answers "what did it come
 from" — genuinely different questions that were being asked of one field.
 
-| role | source |
-|---|---|
-| `frontmatter` | a YAML/TOML frontmatter block at the head of a markdown-family document |
-| *(absent)* | unspecified; a consumer treats it as an opaque blob |
+| role | source | has a document body? |
+|---|---|---|
+| `frontmatter` | a frontmatter block at the head of a document | yes — the blob precedes it |
+| `document` | the blob **is** the whole document — a `.toml` or `.yaml` file read as metadata, with no body at all | no |
+| *(absent)* | unspecified; a consumer treats it as an opaque blob | unknown |
+
+`frontmatter` and `document` differ on a structural fact, not on file extension: whether
+there is a body the metadata belongs to. A `.yaml` file read whole is `document` even
+though a frontmatter block is also YAML.
+
+**Keep the blob VERBATIM. Do not parse it to decide the role, and do not parse it at
+all.** Teague's ruling, and the reason is isolation rather than taste: panduck's `.toml`
+branch parsed the file to build a value tree, which meant it *could not read a `.toml`
+file at all* unless a third-party TOML extension was installed — a hard dependency
+acquired to do work this vocabulary does not want done. Unparsed, it is a file read and
+nothing else.
+
+A producer MAY lift specific well-defined fields into `attributes` without parsing the
+whole document. That is a narrow allowance, not an invitation: a partial parse wearing
+an attribute is still a parse, and the moment it needs a real parser it has crossed the
+same line.
+
+**`encoding` says how to read the blob**, and TOML is a declared encoding for exactly
+this reason — a verbatim `.toml` file emitted as `text` discards the one fact a consumer
+needs in order to parse it, which is the opposite of what a verbatim blob is for. Use
+`attributes['source_type']` only for something `encoding` cannot say.
 
 Proposed by Teague; the reasoning is this document's own, four sections up: *"One type
 plus a role attribute, following `heading`+`heading_level` rather than minting a type
@@ -530,13 +553,16 @@ element's parent is not in the list and the tree cannot be reconstructed.
 
 ## Content Encoding
 
-The `encoding` field indicates how to interpret `content`:
+The `encoding` field indicates how to interpret `content`. The authoritative list is
+`duck_block_encoding_names()` — this table restates it, and `make check` fails if the
+two disagree.
 
 | Encoding | Description |
 |----------|-------------|
 | `text` | Plain text, no markup |
 | `markdown` | Markdown-formatted text |
 | `yaml` | YAML content |
+| `toml` | TOML content |
 | `json` | JSON content |
 | `html` | HTML content |
 | `xml` | XML content |

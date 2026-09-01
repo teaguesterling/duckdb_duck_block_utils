@@ -9,7 +9,16 @@ static const std::unordered_set<string> VALID_BLOCK_TYPES = {"heading", "paragra
                                                              "table",   "hr",        "metadata", "image",      "raw"};
 
 // Valid encodings
-static const std::unordered_set<string> VALID_ENCODINGS = {"text", "json", "yaml", "html", "xml", "latex", "markdown"};
+// Built from BlockTypes::AllEncodingNames() rather than restated -- a second copy
+// of this list is what made `toml` a five-file change with four unchecked copies.
+static bool IsValidEncoding(const string &e) {
+	for (auto &n : BlockTypes::AllEncodingNames()) {
+		if (n == e) {
+			return true;
+		}
+	}
+	return false;
+}
 
 // Helper to create empty attributes map
 static Value CreateEmptyMap() {
@@ -170,7 +179,7 @@ void TypeFunctions::DuckBlockValidFun(DataChunk &args, ExpressionState &state, V
 		// Check encoding is valid (if not null)
 		if (!children[BlockTypes::ENCODING_IDX].IsNull()) {
 			auto encoding = children[BlockTypes::ENCODING_IDX].GetValue<string>();
-			if (VALID_ENCODINGS.find(encoding) == VALID_ENCODINGS.end()) {
+			if (!IsValidEncoding(encoding)) {
 				result.SetValue(i, Value(false));
 				continue;
 			}

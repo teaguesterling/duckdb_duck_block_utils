@@ -50,7 +50,16 @@ static string GetElementAttribute(const Value &element, const string &key) {
 }
 
 // Valid encodings
-static const std::set<string> VALID_ENCODINGS = {"text", "json", "yaml", "html", "xml", "latex", "markdown"};
+// Built from BlockTypes::AllEncodingNames() rather than restated -- a second copy
+// of this list is what made `toml` a five-file change with four unchecked copies.
+static bool IsValidEncoding(const string &e) {
+	for (auto &n : BlockTypes::AllEncodingNames()) {
+		if (n == e) {
+			return true;
+		}
+	}
+	return false;
+}
 
 // Valid kinds
 // Built from the vocabulary, not written out. kind='value' was added without
@@ -169,7 +178,7 @@ void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &
 			}
 
 			// Check encoding is valid
-			if (!encoding.empty() && VALID_ENCODINGS.find(encoding) == VALID_ENCODINGS.end()) {
+			if (!encoding.empty() && !IsValidEncoding(encoding)) {
 				child_list_t<Value> error_values;
 				error_values.push_back(make_pair("element_order", Value(element_order)));
 				error_values.push_back(make_pair("field", Value("encoding")));

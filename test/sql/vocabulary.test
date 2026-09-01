@@ -626,3 +626,40 @@ SELECT list_position(list_transform(pandoc_ast_to_blocks('{"meta":{"t":{"t":"Met
      > list_position(list_transform(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a"}]}]}'), e -> e.kind), 'block');
 ----
 true
+
+# ============================================================================
+# ATTRIBUTE NAMES AND ROLE VALUES ARE CONSTANTS NOW, AND toml IS AN ENCODING.
+#
+# `"role"` was a bare string literal in six places in this repo's source and in
+# every consumer's. A drift check that compares CONSTANTS by name and value could
+# see none of it, so a misspelled `"roles"` or `'front-matter'` produced an element
+# that was valid, conformant, lint-clean and wrong.
+#
+# Raised by duckdb_markdown, whose argument is the one that decided `metadata`+role
+# over minting a `frontmatter` type: if the ROLE carries the meaning, the role needs
+# the enforcement the type has.
+#
+# `toml` is declared because a verbatim .toml blob emitted as `text` discards the one
+# fact a consumer needs to parse it -- asked for by panduck rather than minted.
+# ============================================================================
+
+query II
+SELECT list_contains(duck_block_encoding_names(), 'toml'),
+       duck_blocks_validate([{'kind':'block','element_type':'metadata','content':'a = 1','level':1,'encoding':'toml','attributes':MAP{'role':'document'},'element_order':0}::duck_block]).valid;
+----
+true	true
+
+# DISCRIMINATING: an undeclared encoding must still be REJECTED, or "the validator
+# got laxer" reads the assertion above equally well.
+query I
+SELECT duck_blocks_validate([{'kind':'block','element_type':'metadata','content':'x','level':1,'encoding':'klingon','attributes':MAP{},'element_order':0}::duck_block]).valid;
+----
+false
+
+# The encoding list is built from ONE source. It was hardcoded in four places --
+# two C++ validators and twice in the vendorable SQL -- so `toml` was a five-file
+# change with four copies nothing compared.
+query I
+SELECT len(duck_block_encoding_names()) = 8;
+----
+true

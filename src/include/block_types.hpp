@@ -32,6 +32,9 @@ public:
 	// Every declared element_type, in one place. See the definition for why it is
 	// not duplicated into the linter.
 	static const vector<string> &AllTypeNames();
+
+	// Every declared encoding, in one place -- see the definition for why.
+	static const vector<string> &AllEncodingNames();
 };
 
 } // namespace duckdb
