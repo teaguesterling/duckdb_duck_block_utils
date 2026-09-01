@@ -53,6 +53,41 @@ PROBES = {
     "div": ("NULL", "text", "MAP{}", True),
     "figure": ("NULL", "text", "MAP{}", True),
     "caption": ("NULL", "text", "MAP{}", True),
+    "list": ("NULL", "text", "MAP{'list_type':'bullet'}", True),
+    "table": (r"""'{"headers":["h"],"rows":[["c"]]}'""", "json", "MAP{}", False),
+    "deflist": ("'x'", "text", "MAP{}", False),
+}
+
+# A child that is not a paragraph, where the generic one would be malformed.
+CHILD_OVERRIDE = {
+    "list": "{'kind':'block','element_type':'list_item','content':'i','level':2,"
+    "'encoding':'text','attributes':MAP{},'element_order':1}",
+}
+
+# THE ARM'S OWN COVERAGE, which was the hole. This loop probes a hand-written dict
+# while the content arm below is driven by duck_block_type_names(). So a type could be
+# declared, exported, and covered ONLY by "its text appears somewhere in the AST" --
+# and 28 of 43 were. A bare Para/Str fallback satisfies that probe while destroying
+# the type completely, which is the same defect duckeye found in a guard asserting a
+# cell's text against a raw Table AST that contains the text either way: the check
+# measured CONTENT where the property is STRUCTURE.
+#
+# So every declared type must be probed here or excused here, with the reason.
+NOT_A_BLOCK = {
+    t: "inline; in block position the exporter correctly wraps it in Para, so a "
+    "round trip to itself is not the property. Covered by the NESTED arm and the "
+    "inline tests."
+    for t in (
+        "bold italic underline strikethrough smallcaps superscript subscript span "
+        "link cite note quoted math text space softbreak linebreak"
+    ).split()
+} | {
+    t: "kind='value'. Document metadata is not body content -- it lands in the "
+    "document's `meta`, never in `blocks`, so a block round trip is meaningless."
+    for t in "blocks inlines map string bool version metadata".split()
+} | {
+    "list_item": "Requires a parent list; standalone it is malformed. Probed with a "
+    "real parent in the content arm, which is the shape that occurs.",
 }
 
 # Round trips that do NOT preserve the type, investigated and found inherent.
@@ -66,6 +101,15 @@ INHERENT = {
         "-- there is nothing to write, so promoting invents a distinction the source "
         "cannot carry. Was 'fixed' once; the existing tests caught that it destroyed the "
         "alt text.",
+    ),
+    "deflist": (
+        "paragraph",
+        "SUPERSEDED, and the supported shape works: `list` with list_type='definition' "
+        "round-trips to itself with role=term/definition intact (measured). The exporter "
+        "has no deflist arm, so a producer still emitting deflist loses the structure -- "
+        "which is what the deflist_superseded advisory rule exists to say before it "
+        "happens. Not inherent to Pandoc, which has DefinitionList; inherent to the "
+        "deprecation.",
     ),
     "caption": (
         "paragraph",
@@ -221,10 +265,11 @@ def main() -> int:
     for ty, (content, enc, attrs, needs_child) in sorted(PROBES.items()):
         child = ""
         if needs_child:
-            child = (
-                f", {{'kind':'block','element_type':'paragraph','content':'inner','level':2,"
-                f"'encoding':'text','attributes':MAP{{}},'element_order':1}}::{STRUCT}"
-            )
+            child = ", " + (
+                CHILD_OVERRIDE.get(ty)
+                or f"{{'kind':'block','element_type':'paragraph','content':'inner','level':2,"
+                f"'encoding':'text','attributes':MAP{{}},'element_order':1}}"
+            ) + f"::{STRUCT}"
         sql = (
             f"SELECT coalesce((SELECT b.element_type FROM (SELECT unnest(pandoc_ast_to_blocks("
             f"duck_blocks_to_pandoc_blocks([{{'kind':'block','element_type':'{ty}','content':{content},"
@@ -250,6 +295,47 @@ def main() -> int:
             f"  {len(PROBES) - n_inherent} types round-trip to themselves; "
             f"{n_inherent} recorded as inherent ({', '.join(sorted(INHERENT))})"
         )
+
+    # COVERAGE OF THIS ARM, driven from the build rather than from the dict above.
+    # A hand-written probe list silently stops covering a type the moment one is added,
+    # and the summary line still says "every block type". Adding a type is precisely the
+    # change whose author is thinking about the new type rather than about the loops
+    # that enumerate them.
+    declared = set(run(duckdb, "SELECT string_agg(t, ' ') FROM (SELECT unnest(duck_block_type_names()) AS t);").split())
+    unaccounted = sorted(declared - set(PROBES) - set(NOT_A_BLOCK))
+    if unaccounted:
+        failed = True
+        print(f"\nFAIL: {len(unaccounted)} declared type(s) are neither probed nor excused here: {unaccounted}")
+        print("      Add a PROBES entry, or a NOT_A_BLOCK entry saying why a block round trip")
+        print("      is not the property. Leaving it out is not a third option: the content arm")
+        print("      below still passes it, and 'its text appears somewhere in the AST' is")
+        print("      satisfied by a fallback that destroys the type.")
+    stale_keys = sorted((set(PROBES) | set(NOT_A_BLOCK)) - declared)
+    if stale_keys:
+        failed = True
+        print(f"\nFAIL: {stale_keys} named here but no longer declared by the build.")
+        print("      A probe for a vanished type fails and looks exactly like a defect; an")
+        print("      exemption for one goes on excusing nothing, forever.")
+    # And the excuses expire the same way the others do: a type recorded as "not a block"
+    # that DOES round-trip to itself in block position has become block-capable, and the
+    # entry is now hiding a type nobody probes.
+    revived = []
+    for ty in sorted(NOT_A_BLOCK):
+        sql = (
+            f"SELECT coalesce((SELECT b.element_type FROM (SELECT unnest(pandoc_ast_to_blocks("
+            f"duck_blocks_to_pandoc_blocks([{{'kind':'block','element_type':'{ty}','content':'x',"
+            f"'level':1,'encoding':'text','attributes':MAP{{}},'element_order':0}}::{STRUCT}]"
+            f")::VARCHAR)) AS b) WHERE b.kind='block' LIMIT 1), '<NOTHING>');"
+        )
+        if run(duckdb, sql) == ty:
+            revived.append(ty)
+    if revived:
+        failed = True
+        print(f"\nFAIL: {revived} round-trip to themselves as blocks, so the excuse has expired.")
+        print("      Move them to PROBES -- an expired exemption hides the next regression")
+        print("      behind an explanation nobody rechecks.")
+    if not failed:
+        print(f"    coverage: all {len(declared)} declared types are probed here or excused with a reason")
 
     # Three containers, not one. This arm probed only a Div until 2026-09-01, and that
     # is exactly why a definition list silently dropped every block after the first for
