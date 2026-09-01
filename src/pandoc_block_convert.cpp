@@ -1335,6 +1335,65 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			yyjson_mut_obj_add_val(doc, raw_obj, "c", rc_arr);
 			yyjson_mut_arr_add_val(blocks_arr, raw_obj);
 			block_idx++;
+		} else if (element_type == BlockTypes::TYPE_LIST &&
+		           GetElementStringField(block, BlockTypes::ENCODING_IDX) == BlockTypes::ENCODING_JSON &&
+		           !content.empty() && !HasBlockChildren(blocks_list, block_idx)) {
+			// A spec-1.x list: items packed into content as a JSON array, no children.
+			// Nothing produces this any more, but the spec PROMISES stored 1.x block
+			// lists keep converting -- and until this branch existed that promise was
+			// false: ConvertListToPandocVal walks children, found none, and emitted
+			// `[{"t":"BulletList","c":[]}]`. Silent total loss of every item, which is
+			// the same defect the 2.0 migration fixed for the reader, still live for
+			// stored data. Found by auditing rulings against code rather than trusting
+			// what I had written down.
+			bool json_ordered = (GetElementAttribute(block, "list_type") == "ordered") ||
+			                    (GetElementAttribute(block, "ordered") == "true");
+			yyjson_mut_val *list_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, list_obj, "t", json_ordered ? "OrderedList" : "BulletList");
+			yyjson_mut_val *items_arr = yyjson_mut_arr(doc);
+			yyjson_doc *sub_doc = yyjson_read(content.c_str(), content.size(), 0);
+			if (sub_doc) {
+				yyjson_val *root = yyjson_doc_get_root(sub_doc);
+				if (root && yyjson_is_arr(root)) {
+					size_t idx, max;
+					yyjson_val *item;
+					yyjson_arr_foreach(root, idx, max, item) {
+						yyjson_mut_val *item_blocks = yyjson_mut_arr(doc);
+						yyjson_mut_val *plain_obj = yyjson_mut_obj(doc);
+						yyjson_mut_obj_add_str(doc, plain_obj, "t", "Plain");
+						yyjson_mut_val *inl = yyjson_mut_arr(doc);
+						if (item && yyjson_is_str(item)) {
+							const char *s = yyjson_get_str(item);
+							yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+							yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+							yyjson_mut_obj_add_strcpy(doc, str_obj, "c", s ? s : "");
+							yyjson_mut_arr_add_val(inl, str_obj);
+						}
+						yyjson_mut_obj_add_val(doc, plain_obj, "c", inl);
+						yyjson_mut_arr_add_val(item_blocks, plain_obj);
+						yyjson_mut_arr_add_val(items_arr, item_blocks);
+					}
+				}
+				yyjson_doc_free(sub_doc);
+			}
+			if (json_ordered) {
+				yyjson_mut_val *c_outer = yyjson_mut_arr(doc);
+				yyjson_mut_val *spec = yyjson_mut_arr(doc);
+				yyjson_mut_arr_add_int(doc, spec, 1);
+				yyjson_mut_val *sty = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, sty, "t", "Decimal");
+				yyjson_mut_arr_add_val(spec, sty);
+				yyjson_mut_val *dlm = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, dlm, "t", "Period");
+				yyjson_mut_arr_add_val(spec, dlm);
+				yyjson_mut_arr_add_val(c_outer, spec);
+				yyjson_mut_arr_add_val(c_outer, items_arr);
+				yyjson_mut_obj_add_val(doc, list_obj, "c", c_outer);
+			} else {
+				yyjson_mut_obj_add_val(doc, list_obj, "c", items_arr);
+			}
+			yyjson_mut_arr_add_val(blocks_arr, list_obj);
+			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_LIST) {
 			int32_t list_level = GetElementLevel(block);
 			yyjson_mut_val *list_obj = ConvertListToPandocVal(doc, blocks_list, block_idx, list_level, 1);

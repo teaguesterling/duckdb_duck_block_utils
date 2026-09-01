@@ -1540,3 +1540,42 @@ query I
 SELECT count(*) FROM (SELECT unnest(duck_blocks_lint(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"Para","c":[{"t":"Str","c":"b"}]}]]}]}'))) AS w);
 ----
 0
+
+# ============================================================================
+# STORED 1.x DATA STILL CONVERTS.
+#
+# The spec promises "both old forms are still ACCEPTED on export, so stored 1.x
+# block lists keep converting". That promise was FALSE for the JSON list form:
+# ConvertListToPandocVal walks children, a 1.x list has none, and the result was
+# [{"t":"BulletList","c":[]}] -- silent total loss of every item.
+#
+# This is not hypothetical data. The community build (078a9b3) produces exactly
+# this shape, so anything persisted from it hit this path. Found by auditing the
+# rulings written into the spec against the code, rather than trusting them.
+# ============================================================================
+
+query I
+SELECT duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'list','content':'["a","b"]','level':NULL,'encoding':'json','attributes':MAP{'ordered':'false'},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"a"}]}],[{"t":"Plain","c":[{"t":"Str","c":"b"}]}]]}]';
+----
+true
+
+# DISCRIMINATING: the defect produced a well-formed BulletList, so asserting that
+# a BulletList comes out would have passed against it. The property is that the
+# ITEMS are in it.
+query I
+SELECT duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'list','content':'["a","b"]','level':NULL,'encoding':'json','attributes':MAP{'ordered':'false'},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])::VARCHAR NOT LIKE '%"c":[]%';
+----
+true
+
+# 1.x ordered lists keep their ordering.
+query I
+SELECT duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'list','content':'["a"]','level':NULL,'encoding':'json','attributes':MAP{'ordered':'true'},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])::VARCHAR LIKE '%OrderedList%';
+----
+true
+
+# The 2.0 structural path must be unaffected -- the legacy branch only fires when
+# there are no children to walk.
+query I
+SELECT duck_blocks_to_pandoc_blocks(duck_block_list(['a','b']))::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"a"}]}],[{"t":"Plain","c":[{"t":"Str","c":"b"}]}]]}]';
+----
+true
