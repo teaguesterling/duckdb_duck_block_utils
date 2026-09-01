@@ -356,9 +356,77 @@ def main() -> int:
             f"({', '.join(sorted(RENDER_EXEMPT))})"
         )
 
+    # EXCLUSIONS EXPIRE, and a stale one is worse than none: it goes on excusing a
+    # case that no longer needs excusing, and hides the next regression behind an
+    # explanation nobody rechecks. Recording the REASON is what lets you notice an
+    # entry has gone stale; this is the step past that, because the instinct on
+    # reading a stale reason is to fix the WORDING rather than delete the entry.
+    #
+    # duckdb_markdown's, after their line-block exclusion stopped holding within the
+    # hour: an entry whose condition no longer applies must be REMOVED, not annotated.
+    #
+    # So every exemption is re-checked against the property it excuses. An exempt type
+    # that now PASSES is reported as expired -- the sweep will not quietly keep
+    # forgiving it.
+    print("Exemption audit: is every recorded exclusion still load-bearing?")
+    stale = []
+    for ty, reason in sorted(CONTENT_EXEMPT.items()):
+        attrs = CONTENT_ATTRS.get(ty, "MAP{}")
+        blk = (
+            f"[{{'kind':'block','element_type':'{ty}','content':'{CONTENT_PROBE}','level':1,"
+            f"'encoding':'text','attributes':{attrs},'element_order':0}}::{STRUCT}]"
+        )
+        if CONTENT_PROBE in run(duckdb, f"SELECT duck_blocks_to_pandoc_blocks({blk})::VARCHAR;"):
+            stale.append(("CONTENT_EXEMPT", ty))
+    for ty, reason in sorted(RENDER_EXEMPT.items()):
+        attrs = CONTENT_ATTRS.get(ty, "MAP{}")
+        blk = (
+            f"[{{'kind':'block','element_type':'{ty}','content':'{CONTENT_PROBE}','level':1,"
+            f"'encoding':'text','attributes':{attrs},'element_order':0}}::{STRUCT}]"
+        )
+        shown = run_all(
+            duckdb, "SELECT regexp_replace(duck_blocks_render_ansi(" + blk + ", 40), '\x1b\\[[0-9;]*m', '', 'g');"
+        )
+        text = run_all(duckdb, f"SELECT duck_blocks_to_text({blk});")
+        if CONTENT_PROBE in shown and CONTENT_PROBE in text:
+            stale.append(("RENDER_EXEMPT", ty))
+    for ty, (becomes, reason) in sorted(INHERENT.items()):
+        content, enc, attrs, needs_child = PROBES[ty]
+        child = ""
+        if needs_child:
+            child = (
+                f", {{'kind':'block','element_type':'paragraph','content':'inner','level':2,"
+                f"'encoding':'text','attributes':MAP{{}},'element_order':1}}::{STRUCT}"
+            )
+        sql = (
+            f"SELECT coalesce((SELECT b.element_type FROM (SELECT unnest(pandoc_ast_to_blocks("
+            f"duck_blocks_to_pandoc_blocks([{{'kind':'block','element_type':'{ty}','content':{content},"
+            f"'level':1,'encoding':'{enc}','attributes':{attrs},'element_order':0}}::{STRUCT}{child}]"
+            f")::VARCHAR)) AS b) WHERE b.kind='block' LIMIT 1), '<NOTHING>');"
+        )
+        if run(duckdb, sql) == ty:
+            stale.append(("INHERENT", ty))
+    if stale:
+        failed = True
+        for where, ty in stale:
+            print(f"\nFAIL: `{ty}` no longer needs its {where} entry -- it PASSES now.")
+            print("      DELETE the entry rather than rewording it. A stale exclusion goes on")
+            print("      excusing a case that no longer needs excusing, and the next real")
+            print("      regression in that type hides behind an explanation nobody rechecks.")
+    else:
+        print(f"  all {len(CONTENT_EXEMPT) + len(RENDER_EXEMPT) + len(INHERENT)} exclusions still hold")
+
     if failed:
         return 1
     print("OK: no write-only types, nothing dropped in a container, no text lost on export or render.")
+    # WHAT THIS DOES NOT COVER, stated so a green run is not read as more than it is.
+    # duckdb_markdown found the same limit in their own arm by perturbing their writer
+    # to emit a hard break as a soft one and watching it PASS: a consistently wrong
+    # conversion is self-consistent on the second pass. These arms find output that is
+    # LOST or that MEANS something different when read back. They do not find output
+    # that is simply wrong in both directions -- that is the unit suite's job, and
+    # neither subsumes the other.
+    print("    (round-trip stability cannot see a consistently wrong conversion -- see test/sql/)")
     return 0
 
 
