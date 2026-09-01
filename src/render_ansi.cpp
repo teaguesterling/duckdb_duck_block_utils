@@ -1078,8 +1078,28 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 		}
 		auto kind = GetStringField(block, BlockTypes::KIND_IDX);
 		if (kind != BlockTypes::KIND_BLOCK) {
-			// A stray inline with no parent block: skip (it is not a document).
+			// A stray inline with no parent block, or document metadata. Skipping
+			// only the marker is not enough: a MetaBlocks value has kind='block'
+			// CHILDREN, which then rendered as body prose -- an abstract appearing
+			// in the rendered document. Consume the whole scope.
+			//
+			// GetIntField returns 0 for a NULL level; a top-level element has depth
+			// 1, so read it that way to keep the comparison meaningful.
+			const int lvl = GetIntField(block, BlockTypes::LEVEL_IDX);
+			const int scope = (lvl == 0) ? 1 : lvl;
 			bi++;
+			while (bi < blocks_list.size()) {
+				auto &child = blocks_list[bi];
+				if (child.IsNull()) {
+					bi++;
+					continue;
+				}
+				const int clvl = GetIntField(child, BlockTypes::LEVEL_IDX);
+				if (((clvl == 0) ? 1 : clvl) <= scope) {
+					break;
+				}
+				bi++;
+			}
 			continue;
 		}
 		auto element_type = GetStringField(block, BlockTypes::ELEMENT_TYPE_IDX);

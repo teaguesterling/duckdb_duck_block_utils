@@ -328,3 +328,21 @@ SELECT db_blocks_render_ansi([
 ]) LIKE '%' || chr(27) || '[2mBODY%';
 ----
 false
+
+# Document metadata must not render as body content. Skipping only the value
+# MARKER is insufficient: a MetaBlocks value has kind='block' CHILDREN, which
+# then rendered as prose -- an abstract appearing in the rendered document.
+query I
+SELECT db_blocks_render_ansi(pandoc_ast_to_blocks(
+  '{"meta":{"abstract":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"BLOCKLEAK"}]}]},
+            "title":{"t":"MetaInlines","c":[{"t":"Str","c":"INLEAK"}]}},
+    "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}')) LIKE '%LEAK%';
+----
+false
+
+query I
+SELECT db_blocks_render_ansi(pandoc_ast_to_blocks(
+  '{"meta":{"abstract":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"BLOCKLEAK"}]}]}},
+    "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}')) LIKE '%REALBODY%';
+----
+true

@@ -145,6 +145,16 @@ static string BlocksToText(const vector<Value> &blocks_list, const string &separ
 		// kind='inline' children, which would otherwise be picked up above as a
 		// stray inline run -- so skipping the marker alone still leaked the title.
 		if (kind != BlockTypes::KIND_BLOCK) {
+			// LEVEL-SCOPED skip: consume this element and everything nested deeper
+			// than it. The container rule from the spec -- children follow at
+			// level+1, the container ends at the first element back at its own
+			// level -- and it is shape-independent.
+			//
+			// The previous version resumed at the next block-or-value, which works
+			// for MetaInlines/List/Map (inline children) and FAILS for MetaBlocks,
+			// whose children ARE blocks: an abstract's paragraph was picked up as
+			// body text. A NULL level reads as 1, the depth of a top-level element.
+			const int32_t scope_level = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
 			i++;
 			while (i < blocks_list.size()) {
 				auto &child = blocks_list[i];
@@ -152,9 +162,8 @@ static string BlocksToText(const vector<Value> &blocks_list, const string &separ
 					i++;
 					continue;
 				}
-				auto child_kind = GetElementStringField(child, BlockTypes::KIND_IDX);
-				if (child_kind == BlockTypes::KIND_BLOCK || child_kind == BlockTypes::KIND_VALUE) {
-					break; // back to document content, or the next value element
+				if (GetElementIntField(child, BlockTypes::LEVEL_IDX, 1) <= scope_level) {
+					break; // back out to the containing level
 				}
 				i++;
 			}
@@ -251,12 +260,31 @@ void ExtractionFunctions::DbBlocksHeadingsFun(DataChunk &args, ExpressionState &
 		auto &blocks_list = ListValue::GetChildren(blocks_val);
 		vector<Value> headings;
 
+		int32_t value_scope = -1; // depth of the kind='value' element we are inside, or -1
 		idx_t bi = 0;
 		while (bi < blocks_list.size()) {
 			auto &block = blocks_list[bi];
 			if (block.IsNull()) {
 				bi++;
 				continue;
+			}
+
+			// Skip anything inside a kind='value' scope. These loops match on
+			// element_type alone, so a Header buried in MetaBlocks metadata --
+			// an abstract with its own heading -- was appearing in the document's
+			// table of contents. Level-scoped, like the text extractor: a value
+			// at level L contains everything deeper than L.
+			if (GetElementStringField(block, BlockTypes::KIND_IDX) == BlockTypes::KIND_VALUE) {
+				value_scope = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
+				bi++;
+				continue;
+			}
+			if (value_scope >= 0) {
+				if (GetElementIntField(block, BlockTypes::LEVEL_IDX, 1) > value_scope) {
+					bi++;
+					continue;
+				}
+				value_scope = -1; // back out to document content
 			}
 
 			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
@@ -379,12 +407,31 @@ void ExtractionFunctions::DbBlocksTocFun(DataChunk &args, ExpressionState &state
 		// First pass: find headings and minimum level
 		vector<std::tuple<int32_t, string, string, int32_t>> headings; // level, title, id, element_order
 
+		int32_t value_scope = -1; // depth of the kind='value' element we are inside, or -1
 		idx_t bi = 0;
 		while (bi < blocks_list.size()) {
 			auto &block = blocks_list[bi];
 			if (block.IsNull()) {
 				bi++;
 				continue;
+			}
+
+			// Skip anything inside a kind='value' scope. These loops match on
+			// element_type alone, so a Header buried in MetaBlocks metadata --
+			// an abstract with its own heading -- was appearing in the document's
+			// table of contents. Level-scoped, like the text extractor: a value
+			// at level L contains everything deeper than L.
+			if (GetElementStringField(block, BlockTypes::KIND_IDX) == BlockTypes::KIND_VALUE) {
+				value_scope = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
+				bi++;
+				continue;
+			}
+			if (value_scope >= 0) {
+				if (GetElementIntField(block, BlockTypes::LEVEL_IDX, 1) > value_scope) {
+					bi++;
+					continue;
+				}
+				value_scope = -1; // back out to document content
 			}
 
 			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);

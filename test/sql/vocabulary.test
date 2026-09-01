@@ -274,3 +274,51 @@ query I
 SELECT db_blocks_to_text(db_blockquote('inner')) LIKE '%inner%';
 ----
 true
+
+# ============================================================================
+# Metadata must not leak into extracted body text -- ALL metavalue shapes.
+#
+# The first fix skipped a value element and then resumed at the next block or
+# value. That works for MetaInlines/List/Map, whose children are inlines, and
+# FAILS for MetaBlocks, whose children ARE blocks -- so it resumed on the
+# abstract's own paragraph. Verified one shape, claimed the class.
+#
+# Now level-scoped: a value at level L consumes everything deeper than L, which
+# is the spec's own containment rule and shape-independent.
+# ============================================================================
+
+query I
+SELECT db_blocks_to_text(pandoc_ast_to_blocks(
+  '{"meta":{"abstract":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"BLOCKLEAK"}]}]}},
+    "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}'));
+----
+REALBODY
+
+# every shape at once: inlines, blocks, bool, list, map
+query I
+SELECT db_blocks_to_text(pandoc_ast_to_blocks(
+  '{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"INLEAK"}]},
+            "abstract":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"BLOCKLEAK"}]}]},
+            "draft":{"t":"MetaBool","c":true},
+            "tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"LISTLEAK"}]}]},
+            "author":{"t":"MetaMap","c":{"name":{"t":"MetaInlines","c":[{"t":"Str","c":"MAPLEAK"}]}}}},
+    "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}'));
+----
+REALBODY
+
+# nested MetaBlocks inside a MetaMap -- two levels deep, still contained
+query I
+SELECT db_blocks_to_text(pandoc_ast_to_blocks(
+  '{"meta":{"outer":{"t":"MetaMap","c":{"inner":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"DEEPLEAK"}]}]}}}},
+    "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}'));
+----
+REALBODY
+
+# the TOC must not pick up a heading buried in metadata either
+query I
+SELECT count(*) FROM (SELECT unnest(db_blocks_toc(pandoc_ast_to_blocks(
+  '{"meta":{"abstract":{"t":"MetaBlocks","c":[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"METAHEAD"}]]}]}},
+    "blocks":[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"Real"}]]}]}'))) AS t)
+WHERE (t).title = 'METAHEAD';
+----
+0
