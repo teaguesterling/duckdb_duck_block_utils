@@ -52,6 +52,32 @@ SELECT duck_block_heading(2, 'Title')[1].attributes['heading_level'];
 -- Returns: '2'
 ```
 
+### duck_block_plain
+
+```sql
+duck_block_plain(content VARCHAR) → LIST(duck_block)
+duck_block_plain(children LIST(duck_block)) → LIST(duck_block)
+duck_block_plain(children LIST(LIST(duck_block))) → LIST(duck_block)
+```
+
+A block-level run of text with **no paragraph semantics** — Pandoc's `Plain`, and in
+HTML text that is not wrapped in a `<p>`.
+
+```sql
+SELECT duck_block_plain('bare text');
+-- [{kind: block, element_type: plain, content: 'bare text', level: 1}]
+```
+
+**Use it only where the text has nowhere else to live.** A container whose *only*
+child is a text run carries that text in its own `content` instead — so
+`<li>text</li>` is a `list_item` with `content='text'`, not a `list_item` with a
+`plain` child. `plain` is for a run that has block siblings (`section > plain +
+heading`) or that sits at the top level, where the document root has no content field
+to hold it.
+
+`duck_blocks_lint()` warns if you emit a `plain` that should have been content, and
+`duck_blocks_normalize()` will rewrite it for you.
+
 ### duck_block_paragraph
 
 ```sql

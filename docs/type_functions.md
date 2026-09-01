@@ -58,7 +58,7 @@ duck_block(element_type VARCHAR, content VARCHAR) → duck_block
 
 **Defaults:**
 - `kind`: 'block'
-- `level`: NULL
+- `level`: 1 (top level — `level` is never NULL)
 - `encoding`: 'text'
 - `attributes`: empty map
 - `element_order`: 0
@@ -143,7 +143,7 @@ duck_block_valid(elem duck_block) → BOOLEAN
 ```
 
 **Validation Rules:**
-- `kind` must be 'block', 'inline' or 'value' (see docs/duck_blocks_spec.md; `value` since 3.0)
+- `kind` must be 'block', 'inline' or 'value' (the authoritative list is `duck_block_kind_names()`)
 - `element_type` must be non-empty
 - For blocks: `element_type` must be recognized (heading, paragraph, code, etc.)
 - For inlines: `element_type` must be recognized (text, link, bold, etc.)
@@ -221,7 +221,8 @@ duck_block_content(block duck_block) → VARCHAR
 duck_block_level(elem duck_block) → INTEGER
 ```
 
-Returns the `level` field (may be NULL for blocks, >= 1 for inlines).
+Returns the `level` field: structural depth, always >= 1 for every kind. It is
+never NULL — `duck_blocks_validate()` rejects a NULL level outright.
 
 ### duck_block_level
 

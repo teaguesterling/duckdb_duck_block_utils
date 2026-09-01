@@ -149,32 +149,54 @@ def main() -> int:
 
     failed = False
 
-    # The spec doc's own Version header against the shipped SPEC_VERSION. These are two
-    # copies of one fact, and they disagreed from v1.0.0 until 2026-08-31: the header
-    # read 0.4.0 while consumers asserted duck_block_spec_version(), which had moved
-    # five majors. Nothing compared them, so a peer reading the document to decide what
-    # to implement was reading a number no code had produced in months.
-    ver = subprocess.run(
-        [str(duckdb), "-noheader", "-list", "-c", "SELECT duck_block_spec_version();"],
-        capture_output=True,
-        text=True,
+    # THE DOCUMENT MUST NOT NAME A SPEC VERSION. Teague's instruction, and it replaces
+    # the check that stood here until now -- which asserted the doc's `**Version:**`
+    # header EQUALS duck_block_spec_version().
+    #
+    # That check was right for as long as the doc carried a version. It does not any
+    # more, so its condition is gone and the entry is REPLACED rather than reworded --
+    # the rule this repo applies to every stale exclusion, applied to a check of its own
+    # from four hours ago.
+    #
+    # The inverse is the useful assertion now. A number written in prose cannot be
+    # regenerated and goes stale silently: this document's header read `0.4.0` for eight
+    # months while the shipped value moved five majors, so anyone reading it to decide
+    # what to implement was reading a number no code had produced. `SPEC_VERSION` is the
+    # one place a version belongs, because the build produces it.
+    #
+    # Prose only -- `duck_block_spec_version()` is a function name, and
+    # `"pandoc-api-version":[1,23,1]` is Pandoc's, not ours.
+    shipped = (
+        subprocess.run(
+            [str(duckdb), "-noheader", "-list", "-c", "SELECT duck_block_spec_version();"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        or "<unreadable>"
     )
-    shipped = ver.stdout.strip() if ver.returncode == 0 else ""
-    m = re.search(r"^\*\*Version:\*\*\s*([0-9]+\.[0-9]+)", SPEC.read_text(), re.M)
-    header = m.group(1) if m else None
-    if not shipped:
-        failed = True
-        print("\nFAIL: could not read duck_block_spec_version()")
-    elif header is None:
-        failed = True
-        print("\nFAIL: the spec document has no parseable `**Version:** MAJOR.MINOR` header.")
-        print("      A consumer deciding what to implement reads that line.")
-    elif header != shipped:
-        failed = True
-        print(f"\nFAIL: the spec document says version {header}; the build ships {shipped}.")
-        print("      Whichever is right, they cannot both be published. Update the header.")
-    else:
-        print(f"  spec version {shipped} agrees between the document and the build")
+    text = SPEC.read_text()
+    named = []
+    for pat, what in (
+        (r"^\*\*Version:\*\*", "a `**Version:**` header"),
+        (r"\b[Ss]pec(?:ification)? \d+\.\d+", "prose naming a spec version"),
+        (r"\bas of \d+\.\d+", "prose naming a spec version"),
+        (r"\bsince (?:spec )?\d+\.\d+", "prose naming a spec version"),
+        (r"\b\d+\.\d+ ->", "a version-to-version change note"),
+    ):
+        for m in re.finditer(pat, text, re.M):
+            line = text[: m.start()].count("\n") + 1
+            named.append((line, what, text.splitlines()[line - 1].strip()[:78]))
+    if named:
+        print("\nFAIL: the spec document names a spec version. It must not.")
+        for line, what, ctx in named:
+            print(f"      line {line}: {what}")
+            print(f"        {ctx}")
+        print("      A number in prose cannot be regenerated and goes stale silently --")
+        print("      this header read 0.4.0 while the build shipped five majors later.")
+        print("      The version belongs beside SPEC_VERSION in the vocabulary header,")
+        print("      where the build produces it. Describe the rule, not when it landed.")
+        return 1
+    print(f"  the document names no spec version (the build says {shipped})")
     if undocumented:
         failed = True
         print("\nFAIL: the build has element types the spec does not document:")

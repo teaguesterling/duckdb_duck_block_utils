@@ -13,7 +13,7 @@ STRUCT(
     kind VARCHAR,                       -- 'block', 'inline' or 'value'
     element_type VARCHAR,               -- Element type identifier
     content VARCHAR,                    -- Primary content
-    level INTEGER,                      -- Hierarchy level (NULL if not applicable)
+    level INTEGER,                      -- Structural depth, ALWAYS explicit; top level is 1, never NULL
     encoding VARCHAR,                   -- Content encoding: 'text', 'json', 'yaml', 'html', 'xml'
     attributes MAP(VARCHAR, VARCHAR),   -- Type-specific metadata
     element_order INTEGER               -- Position in document (0-indexed)

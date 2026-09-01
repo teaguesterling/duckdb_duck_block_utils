@@ -1,10 +1,16 @@
 # Duck Blocks Canonical Specification
 
-**Version:** 6.2 — this MUST equal `duck_block_spec_version()`, and
-`test/check_spec_alignment.py` fails if it does not. It read `0.4.0` from v1.0.0
-through 2026-08-31 while the shipped value moved to 6.0, so a reader trusting the
-document disagreed with every consumer asserting the function.
-**Status:** Canonical (Unified duck_block type, heading_level attribute)
+**Status:** Canonical.
+
+> This document deliberately does **not** carry a version number, and does not name
+> spec versions in its prose. The shipped version is `duck_block_spec_version()` — one
+> value, produced by the build, which cannot go stale the way a number written here
+> did: this header read `0.4.0` for eight months while the shipped value moved five
+> majors, so anyone reading it to decide what to implement was reading a number no code
+> had produced in months.
+>
+> The change history lives beside `SPEC_VERSION` in `src/include/duck_block_vocabulary.hpp`,
+> where it is next to the constant it describes.
 
 This document defines the canonical representation for duck_blocks - structured document elements for DuckDB. Extensions that produce or consume duck_blocks (markdown, webbed, etc.) MUST conform to this specification.
 
@@ -92,8 +98,8 @@ depth 1. So a top-level container is 1, its children 2, its grandchildren 3. A
 container and a leaf sitting side by side at top level both carry 1 — depth is not
 a property of being a container.
 
-Spec 1.x and 2.0 documented a NULL at top level. That convention was never
-approved and is removed in 3.0: NULL and 1 both resolved to depth 1, so a child at
+Earlier revisions documented a NULL at top level. That convention was never
+approved and has been removed: NULL and 1 both resolved to depth 1, so a child at
 1 under a NULL parent was indistinguishable from its parent's sibling, and
 consumers expressing containment through `level` closed the container before the
 child rendered. That was a live defect in the portfolio. `duck_blocks_validate()`
@@ -140,7 +146,7 @@ list's children are `list_item`s, never text, so a `list` can never *have* a sin
 text child and therefore never carries `content`. Text on a `list` is malformed and is
 dropped on export.
 
-> This paragraph said containers "carry no content of their own" until spec 6.1, which
+> This paragraph once said containers "carry no content of their own", which
 > **directly contradicted** the content rule stated later in this same document. Both
 > statements were published, and an implementer conforming to either one was following
 > the spec. That is precisely how the `level` disagreement happened — v1.0 said three
@@ -367,7 +373,7 @@ A consumer walking blocks MUST stop its inline run at a `kind='value'` element, 
 merely at the next block — the inlines under a `value` belong to that value.
 
 Metadata is appended **after** a document's blocks. **This is a contract**, not the
-convenience this paragraph called it until spec 6.2 — the wording predates anything
+convenience this paragraph once called it — that wording predates anything
 depending on it, and two producers have now asked where value elements go relative to
 blocks, which is a question a convenience cannot answer.
 
@@ -491,7 +497,7 @@ independent. A consumer needing quote or list nesting depth counts containers by
 walking the structure rather than reading it off this number.
 
 **`list_type` is the canonical attribute for what kind of list this is.**
-`attributes['ordered']` = 'true'/'false' is a legacy alias, kept because spec 1.0
+`attributes['ordered']` = 'true'/'false' is a legacy alias, kept because the earliest spec
 documented it and the exporter has read both since v1.1.0.
 
 `list_type` wins because a boolean cannot grow. Ordered and bullet are two of a set
@@ -506,9 +512,9 @@ time a third list kind appears.
 **Do NOT fall back to `level` when a semantic attribute is missing.** A heading
 without `attributes['heading_level']` has no rank information at all — reading its
 `level` gives you its depth, so a heading inside two containers renders as `h3`
-whatever it actually is. That is a live hazard, not a hypothetical: it is a fair
-reading of spec 1.x/2.0, which said headings carried NULL there, and 3.0 turns it
-into silent corruption. Default to 1 and treat the block as malformed;
+whatever it actually is. That is a live hazard, not a hypothetical: it was a fair
+reading of an earlier revision, which said headings carried NULL there, and an
+explicit level turns it into silent corruption. Default to 1 and treat the block as malformed;
 `duck_blocks_lint()` warns on it. Both producers here always emit the attribute.
 
 `duck_blocks_validate()` enforces this: a NULL level, a level below 1, or a level
@@ -592,7 +598,7 @@ duck_block_bold('y')                bold content='y'
 duck_block_bold([text, italic])     bold content=NULL + children
 ```
 
-One rule, two inputs, two representations — not two shapes for one input. Spec 2.0
+One rule, two inputs, two representations — not two shapes for one input. The rule
 briefly replaced this for BLOCK containers with "a container never carries
 content", which was broader than the defect required: what actually needed fixing
 was `list` storing a JSON items array, not the content rule. It also left blocks
@@ -625,7 +631,7 @@ nothing emits it.
 `plain` is a block-level run of text that is **not** a paragraph. It is Pandoc's
 `Plain` constructor, and in HTML it is text not wrapped in a `<p>`.
 
-**As of spec 6.0, `plain` appears only where the text has nowhere else to live.**
+**`plain` appears only where the text has nowhere else to live.**
 The container's `content` is the first home for a single text child — that is v1's
 content rule and it has never changed — so `plain` is what you use when that home is
 taken or does not exist. There are exactly two such places:
@@ -650,9 +656,9 @@ Everywhere else, a lone text run is the container's own content:
 <blockquote>q</blockquote>   blockquote content="q"
 ```
 
-Spec 5.0 shipped the first column as `list_item > plain(...)`, which gave a
+An earlier revision shipped the first column as `list_item > plain(...)`, which gave a
 container with a single text child **two** legal shapes depending on which producer
-built it. Collapsing that back to one is the whole point of every version since 2.0.
+built it. Collapsing that back to one is the whole point of the content rule.
 
 **Tight vs loose survives this, and needs no attribute.** The two shapes above are
 exactly Pandoc's two constructors:
@@ -757,7 +763,7 @@ JSON, or read `list_item.content`, must read the child elements instead. Both ol
 forms are still ACCEPTED on export, so stored 1.x block lists keep converting —
 but nothing produces them any more.
 
-**As of spec 5.0 only `table` carries JSON, and it carries the NATIVE schema.**
+**Only `table` carries JSON, and it carries the NATIVE schema.**
 
 | Type | content | also |
 |------|---------|------|
@@ -845,7 +851,7 @@ Excerpt:
 ```sql
 -- Validate a single duck_block
 CREATE OR REPLACE MACRO duck_block_is_valid(elem) AS (
-    elem.kind IN ('block', 'inline', 'value')  -- 'value' since 3.0; omitting it rejects all metadata
+    elem.kind IN ('block', 'inline', 'value')  -- omitting 'value' rejects all metadata
     AND elem.element_type IS NOT NULL
     AND elem.level >= 1        -- explicit structural depth, never NULL
     AND elem.element_order >= 0
@@ -947,7 +953,7 @@ Extensions that produce duck_blocks:
   list is `duck_block_kind_names()`. **This said "either `'block'` or `'inline'`"
   until 2026-09-01**, which is the instruction that produces the metadata leak: a
   producer following it has nowhere to put a document's own title, and puts it in the
-  body as prose. `value` has existed since spec 3.0. The conformance macro above had
+  body as prose. `value` has existed for as long as document metadata has. The conformance macro above had
   the same omission, and it is published for extensions to copy — copied as written,
   it rejected every conforming metadata element as invalid.
 - SHOULD use canonical content representation

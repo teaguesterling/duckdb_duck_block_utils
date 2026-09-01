@@ -160,21 +160,43 @@ STRUCT(
 
 ### Block Types (kind='block')
 
-| Type | Description | level Field | Key Attributes |
-|------|-------------|-------------|----------------|
-| `heading` | Section headings (h1-h6) | NULL | `heading_level` (1-6) |
-| `paragraph` | Body text | NULL | |
-| `code` | Code blocks | NULL | `language` |
-| `blockquote` | Quoted text | Nesting depth | |
-| `list` | Ordered/unordered lists | NULL | `ordered` |
-| `table` | Tabular data | NULL | |
-| `hr` | Horizontal rule | NULL | |
-| `metadata` | YAML frontmatter | NULL | |
-| `image` | Image references | NULL | `src`, `alt`, `title` |
-| `raw` | Raw HTML/XML | NULL | `format` |
-| `div` | Generic container | NULL | `id`, `class` |
+| Type | Description | Key Attributes |
+|------|-------------|----------------|
+| `heading` | Section heading | `heading_level` (1-6) |
+| `paragraph` | Body text | |
+| `plain` | A block-level text run with no paragraph semantics | |
+| `code` | Code block | `language` |
+| `blockquote` | Quoted content | |
+| `list` | List container | `list_type`: `bullet` / `ordered` / `definition`; for ordered also `start`, `number_style`, `number_delim` |
+| `list_item` | An item in a list | `role` — `term` / `definition` in a definition list |
+| `table` | Tabular data | `pandoc_ast` (the verbatim source tuple) |
+| `hr` | Horizontal rule | |
+| `lineblock` | Preserved line breaks | |
+| `page_break` | Physical page boundary — a marker | `page_number` |
+| `metadata` | A verbatim metadata blob | `role` — e.g. `frontmatter` |
+| `image` | Block-level image | `src`, `alt`, `title` |
+| `raw` | Raw content in a named format | `format` |
+| `div` | Generic container | `id`, `class` |
+| `section` | Semantic sectioning container | `role`, `id`, `class` |
+| `figure` | Figure with a caption | `id`, `class` |
+| `caption` | Caption belonging to the container before it | `short_caption` |
+| `generic` | Structurally valid, type not in this vocabulary | `source_type` |
+| `deflist` | **Deprecated.** Use `list` with `list_type='definition'` | |
 
-**Note:** For headings, the semantic level (h1-h6) is stored in `attributes['heading_level']`, not the `level` field. This separates heading semantics from structural nesting depth.
+The authoritative list is `duck_block_type_names()`; `docs/duck_blocks_spec.md` documents
+every type in full, including the inline and `kind='value'` vocabularies.
+
+**`level` is not in the table because it is the same for every type: structural nesting
+depth in a depth-first ordering.** Top level is 1, a child is its parent's level + 1, and
+it is **never NULL** — `duck_blocks_validate()` rejects a NULL level outright. Level and
+adjacency together describe the whole document tree; there is no separate child-list
+field.
+
+**A heading's rank is NOT its level.** `h1`-`h6` lives in
+`attributes['heading_level']`; the `level` field is structural depth. Do **not** fall
+back to `level` when the attribute is missing — a heading nested inside two containers
+would read as `h3` whatever it actually is. That fallback was once documented advice and
+is now the single most costly mistake a producer can make here.
 
 ### Inline Types (kind='inline')
 
@@ -215,8 +237,9 @@ STRUCT(
 
 | Function | Description |
 |----------|-------------|
-| `duck_blocks_validate(blocks)` | Check schema compliance |
-| `duck_blocks_lint(blocks)` | Check for common issues |
+| `duck_blocks_validate(blocks)` | Check schema compliance — `{valid, errors}` with `{element_order, field, message}` per error |
+| `duck_blocks_lint(blocks)` | Advisory warnings: shapes that are legal but superseded, or that lose information |
+| `duck_blocks_normalize(blocks)` | Apply the content rule — collapse a lone `plain` into its container. Idempotent |
 | `duck_blocks_stats(blocks)` | Block type statistics |
 | `duck_blocks_structure(blocks)` | Analyze document structure |
 
@@ -236,6 +259,7 @@ Builders are **config-first, content-last** and each returns a `LIST(duck_block)
 |----------|-------------|
 | `duck_block_heading(level, content)` | Create heading block |
 | `duck_block_paragraph(content)` | Create paragraph block |
+| `duck_block_plain(content)` | Block-level text run with no paragraph semantics |
 | `duck_block_code(language, content)` | Create code block |
 | `duck_block_blockquote(content)` / `duck_block_blockquote(level, content)` | Create blockquote block |
 | `duck_block_list_block(items[])` / `duck_block_list_block(ordered, items[])` | Create list block (strings or rich items) |

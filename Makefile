@@ -18,6 +18,7 @@ check:
 	python3 test/check_roundtrip_sweep.py
 	python3 test/check_conformance_macro.py
 	python3 test/check_vendorable.py
+	python3 test/check_docs_cover_functions.py
 
 check-strict:
 	DUCK_BLOCK_CHECKS_STRICT=1 $(MAKE) check

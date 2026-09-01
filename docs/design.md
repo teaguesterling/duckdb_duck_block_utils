@@ -257,13 +257,13 @@ STRUCT(valid BOOL, errors LIST(VARCHAR)) duck_blocks_validate(LIST(duck_block) b
 
 // Implementation
 - Check each block:
-  - kind is 'block', 'inline' or 'value' (see docs/duck_blocks_spec.md; `value` since 3.0)
+  - kind is 'block', 'inline' or 'value' (the authoritative list is `duck_block_kind_names()`)
   - element_type is non-empty VARCHAR
   - encoding is one of: 'text', 'json', 'yaml', 'html', 'xml', 'latex', 'markdown'
   - If encoding = 'json', content is valid JSON
   - If encoding = 'yaml', content is valid YAML
   - element_order is non-negative integer
-  - level is NULL or positive integer (0 for metadata)
+  - level is an integer >= 1 — never NULL, and never 0
 - Return aggregated results
 ```
 

@@ -71,7 +71,17 @@ void TypeFunctions::DuckBlockSimpleFun(DataChunk &args, ExpressionState &state, 
 		entries[BlockTypes::KIND_IDX]->SetValue(i, Value(BlockTypes::KIND_BLOCK));
 		entries[BlockTypes::ELEMENT_TYPE_IDX]->SetValue(i, block_type_vec.GetValue(i));
 		entries[BlockTypes::CONTENT_IDX]->SetValue(i, content_vec.GetValue(i));
-		entries[BlockTypes::LEVEL_IDX]->SetValue(i, Value());
+		// LEVEL 1, not NULL. `duck_block('paragraph','x')` defaulted to NULL, which
+		// duck_blocks_validate REJECTS: "level is NULL; every element carries an
+		// explicit structural depth". So the vocabulary's own most basic constructor
+		// produced invalid output, and docs/type_functions.md documented that default
+		// accurately -- the doc was right about the code and the code was wrong.
+		//
+		// Third instance of this today, after duck_block_metadata and the spec's own
+		// `metadata` row. A default is the easiest place for a rule to not reach: every
+		// builder that passes a level explicitly was correct, and the one that omits it
+		// inherited a value from before the rule existed.
+		entries[BlockTypes::LEVEL_IDX]->SetValue(i, Value(1));
 		entries[BlockTypes::ENCODING_IDX]->SetValue(i, Value("text"));
 		entries[BlockTypes::ATTRIBUTES_IDX]->SetValue(i, CreateEmptyMap());
 		entries[BlockTypes::ELEMENT_ORDER_IDX]->SetValue(i, Value(0));
@@ -110,7 +120,7 @@ void TypeFunctions::ToDuckBlockFun(DataChunk &args, ExpressionState &state, Vect
 			kind = Value(BlockTypes::KIND_BLOCK);
 			element_type = children.size() > 0 ? children[0] : Value("paragraph");
 			content = children.size() > 1 ? children[1] : Value("");
-			level = Value();
+			level = Value(1); // not NULL -- see the note in DuckBlockFun above
 			encoding = Value("text");
 			attributes = CreateEmptyMap();
 			element_order = Value(0);
