@@ -575,6 +575,31 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				warning_values.push_back(make_pair("element_order", Value(element_order)));
 				warnings.push_back(Value::STRUCT(std::move(warning_values)));
 			}
+			// A `list` CARRYING CONTENT is the pre-structural shape: the items lived in
+			// a JSON array in `content` instead of being `list_item` children.
+			//
+			// Nothing caught this, while the structurally identical pre-5.0 TABLE shape
+			// warned -- the same asymmetry, one type over, and the list case is the more
+			// damaging of the two. Reported by webbed, whose reader still emits it and
+			// who measured what it costs: a NESTED list is not merely flattened, it is
+			// CORRUPTED. `<ul><li>outer<ul><li>inner</li></ul></li></ul>` becomes
+			// ["outerinner"] -- two items collapsed into one string with the words run
+			// together and the nesting gone, indistinguishable from a document that
+			// genuinely said "outerinner". `<ol start="3">` loses its start.
+			//
+			// The reader here never emits it: every list kind comes back with empty
+			// content and encoding='text', so this cannot fire on conforming output.
+			if (element_type == BlockTypes::TYPE_LIST && !content.empty()) {
+				child_list_t<Value> warning_values;
+				warning_values.push_back(make_pair("severity", Value("warning")));
+				warning_values.push_back(
+				    make_pair("message", Value("`list` carries content; its items belong in `list_item` children at "
+				                               "level + 1. The pre-structural shape put them in a JSON array, which "
+				                               "flattens nesting -- an outer item and its nested list come back as "
+				                               "one run-together string that a consumer cannot tell from real text.")));
+				warning_values.push_back(make_pair("element_order", Value(element_order)));
+				warnings.push_back(Value::STRUCT(std::move(warning_values)));
+			}
 			if (element_type == BlockTypes::TYPE_DEFLIST) {
 				child_list_t<Value> warning_values;
 				warning_values.push_back(make_pair("severity", Value("warning")));

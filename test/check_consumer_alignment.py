@@ -46,8 +46,9 @@ CONSUMERS = {
 # against a synthetic consumer -- perturbing a real peer's working tree to test my own
 # instrument would be editing someone else's session out from under them, and a guard
 # that needs that to prove itself is not one I would run.
-SEARCH_ROOTS = [Path(os.environ["DUCK_BLOCK_CONSUMER_ROOT"])] if os.environ.get(
-    "DUCK_BLOCK_CONSUMER_ROOT") else [REPO.parent]
+SEARCH_ROOTS = (
+    [Path(os.environ["DUCK_BLOCK_CONSUMER_ROOT"])] if os.environ.get("DUCK_BLOCK_CONSUMER_ROOT") else [REPO.parent]
+)
 
 CONST = r'static constexpr const char \*([A-Z_]+) = "([^"]*)";'
 VERSION = r'SPEC_VERSION = "([^"]*)"'
@@ -114,6 +115,50 @@ def main() -> int:
         if extra:
             print(f"        extra ({len(extra)}): {', '.join(extra)}")
             print("        -- names this format no longer has")
+
+    # SHADOWED CONSTANTS -- a second declaration where the check does not look.
+    #
+    # The comparison above reads the VENDORED header, and a consumer's vendored header
+    # can be perfectly correct while their code never uses it: a subclass that inherits
+    # the vocabulary and REDECLARES a name silently wins. Legal C++ name-hiding, clean
+    # build, no warning, and every `Theirs::ENCODING_JSON` reads as a use of the shared
+    # vocabulary while resolving to the local copy.
+    #
+    # webbed raised it after inheriting ATTR_ROLE alongside their own and watching it
+    # build clean. panduck then found SIX in their own tree -- ATTR_HEADING_LEVEL and
+    # five ENCODING_* -- all byte-identical, so nothing had broken yet and nothing
+    # would have said so if one had.
+    #
+    # panduck's own summary is the shape worth naming: A CHECK THAT EXAMINES THE RIGHT
+    # FILE CAN BE DEFEATED BY A SECOND DECLARATION SOMEWHERE IT DOES NOT LOOK. Their
+    # suggested signal needs no C++ parsing -- a name in a consumer header that is not
+    # the vendored copy, which also exists in canonical -- so that is what this does.
+    for name, rel in sorted(CONSUMERS.items()):
+        root = None
+        for r in SEARCH_ROOTS:
+            if (r / name).is_dir():
+                root = r / name
+                break
+        if root is None:
+            continue
+        vendored = (root / rel).resolve()
+        shadows = []
+        for hdr in sorted(root.rglob("*.hpp")):
+            if hdr.resolve() == vendored or "/duckdb/" in str(hdr):
+                continue
+            local = dict(re.findall(CONST, hdr.read_text(errors="ignore")))
+            for k in sorted(set(local) & set(canon)):
+                shadows.append((hdr.relative_to(root), k, local[k], canon[k]))
+        if shadows:
+            drifted.append(f"{name} (shadowed)")
+            print(f"\n  SHADOWED {name} -- {len(shadows)} constant(s) redeclared outside the vendored header")
+            for rel_p, k, theirs, mine in shadows:
+                verdict = "same value" if theirs == mine else f"VALUE DIFFERS: {theirs!r} vs {mine!r}"
+                print(f"        {rel_p}: {k}  ({verdict})")
+            print("        A local declaration WINS silently. Verify each value is byte-identical")
+            print("        BEFORE deleting -- deleting first turns a value difference into an")
+            print("        unexplained behaviour change several commits later, with the deletion")
+            print("        no longer an obvious suspect.")
 
     if not checked:
         print("  no consumer checkouts found -- nothing verified")

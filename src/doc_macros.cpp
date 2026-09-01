@@ -167,8 +167,11 @@ static const DefaultTableMacro DOC_TABLE_MACROS[] = {
 
 void DocMacros::Register(ExtensionLoader &loader) {
 	// 1. Register C++ scalar function duck_block_ensure_extension
+	// VOLATILE: it LOADs an extension if present, so its result depends on installed
+	// state and it has a side effect. Constant-folding either would be wrong.
 	auto ensure_ext_func = ScalarFunction("duck_block_ensure_extension", {LogicalType::VARCHAR}, LogicalType::BOOLEAN,
-	                                      DbEnsureExtensionFun);
+	                                      DbEnsureExtensionFun, nullptr, nullptr, nullptr, nullptr,
+	                                      LogicalType(LogicalTypeId::INVALID), FunctionStability::VOLATILE);
 	loader.RegisterFunction(ensure_ext_func);
 
 	// 2. The document-query macros, at LOAD (see above)

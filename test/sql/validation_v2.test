@@ -610,12 +610,30 @@ true
 query I
 SELECT sum(n) FROM (
   SELECT len(duck_blocks_lint([{'kind':'block','element_type':t,
+    -- CONFORMING content per type. Feeding every type the same string quietly turns
+    -- "no lint fires on conforming data" into "no lint fires ever", and this assertion
+    -- has now needed adjusting three times as rules were added -- once for `table`,
+    -- once for `deflist`, once for `list`. That is the assertion working: each time, a
+    -- new rule fired on a probe that was not conforming for that type.
+    --   table  needs the native schema; 'x' is not a table
     'content': CASE WHEN t = 'table' THEN '{"headers":["h"],"rows":[["r"]]}' ELSE 'x' END,
     'level':1,'encoding':'text','attributes':MAP{'heading_level':'1','language':'sql','src':'i.png','format':'html','list_type':'bullet','source_type':'X'},'element_order':0}::duck_block])) AS n
-  FROM (SELECT unnest(duck_block_type_names()) AS t) WHERE t <> 'deflist'
+  FROM (SELECT unnest(duck_block_type_names()) AS t) WHERE t NOT IN ('deflist', 'list')
 );
 ----
 0
+
+# `list` is excluded for a different reason than `deflist`, and the difference
+# matters. `deflist` warns BY DESIGN because it is deprecated. `list` is excluded
+# because A LONE `list` ELEMENT CANNOT BE CONFORMING AT ALL: with content it is the
+# pre-structural shape, and without content and without children it is an empty list.
+# There is no single-element probe that is a valid list, so this assertion cannot ask
+# the question for that type -- a real list needs items, which this shape has no way
+# to give it. Conformance for `list` is covered by the reader-output assertions
+# instead, which build real ones.
+#
+# If either exclusion ever stops warning, it has expired and should be DELETED rather
+# than reworded.
 
 # ...and silent on real reader output, which is the case that decides whether the
 # lint is usable at all.

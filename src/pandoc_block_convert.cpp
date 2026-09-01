@@ -2769,8 +2769,25 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	loader.RegisterFunction(blocks_to_ast_func);
 
 	// read_pandoc_ast(file_path VARCHAR) -> LIST(duck_block)
+	//
+	// VOLATILE, and it is a correctness fix rather than a hint. A CONSISTENT scalar with
+	// a literal argument gets constant-folded, so the path was OPENED TWICE -- confirmed
+	// by strace: two opens of /dev/stdin for one call. Against a regular file that is
+	// merely wasteful; against a PIPE the first read drains it and the second returns
+	// nothing, so `cat doc.json | duckdb -c "... read_pandoc_ast('/dev/stdin')"` silently
+	// yielded ZERO BLOCKS. Silently: no error, an empty document.
+	//
+	// Reported as issue #18 by the duckeye session, who worked around it by routing
+	// stdin through read_text() and asked me to confirm the mechanism in the code rather
+	// than trust their inference from the registration line. Reproduced here before
+	// changing anything -- file gives 1 block, pipe gives 0.
+	//
+	// A function that reads a file is not consistent: the same argument can yield
+	// different results, which is the definition of the flag. Every other file-reading
+	// scalar here has the same property.
 	auto read_pandoc_ast_func =
-	    ScalarFunction("read_pandoc_ast", {LogicalType::VARCHAR}, duck_block_list_type, ReadPandocAstFun);
+	    ScalarFunction("read_pandoc_ast", {LogicalType::VARCHAR}, duck_block_list_type, ReadPandocAstFun, nullptr,
+	                   nullptr, nullptr, nullptr, LogicalType(LogicalTypeId::INVALID), FunctionStability::VOLATILE);
 	loader.RegisterFunction(read_pandoc_ast_func);
 
 	// duck_blocks_to_pandoc_ast(blocks LIST(duck_block)) -> STRUCT(pandoc-api-version, meta, blocks)
@@ -2781,8 +2798,12 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 
 	// write_pandoc_ast(file_path VARCHAR, blocks LIST(duck_block)) -> BOOLEAN
 	// Writes duck_blocks directly to a file as Pandoc JSON AST
-	auto write_pandoc_ast_func = ScalarFunction("write_pandoc_ast", {LogicalType::VARCHAR, duck_block_list_type},
-	                                            LogicalType::BOOLEAN, WritePandocAstFun);
+	// VOLATILE for the same reason as read_pandoc_ast, pointed the other way: a
+	// constant-folded WRITE can run twice, or be hoisted out of the query it was meant
+	// to run inside. A function whose whole purpose is a side effect is not consistent.
+	auto write_pandoc_ast_func = ScalarFunction(
+	    "write_pandoc_ast", {LogicalType::VARCHAR, duck_block_list_type}, LogicalType::BOOLEAN, WritePandocAstFun,
+	    nullptr, nullptr, nullptr, nullptr, LogicalType(LogicalTypeId::INVALID), FunctionStability::VOLATILE);
 	loader.RegisterFunction(write_pandoc_ast_func);
 
 	// pandoc_ast(blocks, meta := {}, api_version := [1,23,1]) -> TABLE(pandoc-api-version, meta, blocks)
