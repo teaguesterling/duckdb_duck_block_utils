@@ -1139,3 +1139,41 @@ Extensions that consume duck_blocks:
 - 0.3.0: Unified doc_block and doc_inline into single duck_block type with `kind` discriminator
 - 0.2.0: Added Option C content rules for container types
 - 0.1.0: Initial draft specification
+
+## Two extensions must not register the same function name
+
+Measured by panduck 2026-09-01, before writing any converter code, because the
+converter relocation puts duck_block_utils and panduck briefly in possession of the
+same functions. The outcome is none of the three anyone predicted:
+
+```
+LOAD both            -> SUCCEEDS, either order, no error
+duckdb_functions()   -> TWO overloads of the same name
+calling it           -> Binder Error: Could not choose a best candidate function
+                          pandoc_ast_to_blocks(VARCHAR) -> STRUCT(...)[]
+                          pandoc_ast_to_blocks(VARCHAR) -> VARCHAR
+```
+
+Both registrations survive as ambiguous overloads and **every call fails at bind
+time.** Overload resolution keys on parameters, which are identical; the differing
+return types cannot break the tie and are what make it unresolvable.
+
+Better than silent shadowing — nobody gets the wrong implementation without knowing —
+and worse in the way that matters operationally: it does not degrade, it BREAKS, and
+the error names a construct the user did not write.
+
+**So a name is owned by exactly one extension in this family.** The converter
+relocation resolves it by panduck registering NEW names (`read_pandoc_blocks`,
+`read_pandoc_blocks_string`, table functions it wanted anyway) while
+`pandoc_ast_to_blocks` and friends stay here until this repo's release cycle retires
+them. No two-copy collision, and no hard cutover needed.
+
+**What is measured, and what is not.** duck_block_utils (91 registered names) against
+panduck (36): **zero shared**, with a positive control confirming the comparison can
+find a collision. The other five pairs are UNMEASURED — markdown and webbed vendor a
+DuckDB off the release tag, so neither can load into the same process as the others
+today and no collision between them is observable. That check becomes possible when
+the family aligns on one DuckDB version, and should not be written before then: a
+check that can see one pair of six while printing a family-wide verdict is worse than
+none.
+
