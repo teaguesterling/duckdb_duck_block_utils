@@ -732,7 +732,29 @@ A duck_block is **canonical** if:
 
 ## Validation Macro
 
-Extensions can use this macro to validate duck_blocks without depending on duck_block_utils:
+Extensions can use these macros to validate duck_blocks without depending on
+duck_block_utils.
+
+> **COPY `conformance/duck_block_conformance.sql`, not the snippet below.** That file
+> is the maintained one: `test/check_conformance_macro.py` runs it and the real
+> `duck_blocks_validate()` over the same corpus on every `make check` and FAILS on any
+> disagreement, including cases taken from real reader output rather than hand-built.
+>
+> The snippet here is an excerpt for reading. It cannot be checked, and an unchecked
+> second copy of a rule is how this document came to publish a validator that
+> **rejected conforming metadata as invalid** — it enumerated two kinds when three
+> exist. Two copies of one rule, maintained by one party, cannot detect their own
+> disagreement; comparing them can.
+>
+> **This matters more than it sounds.** An extension that vendors its own DuckDB
+> submodule pinned off the release tag cannot load duck_block_utils by ANY route —
+> DuckDB matches extension ABI by exact version string, and publishing does not change
+> it. For that class of consumer these macros are the *only* conformance available.
+> The webbed session's metadata blocks carried a NULL `level` for three major spec
+> versions with nothing in a position to object, because the check that would have
+> caught it was one they structurally could not run.
+
+Excerpt:
 
 ```sql
 -- Validate a single duck_block
