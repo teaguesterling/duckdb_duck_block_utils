@@ -96,6 +96,45 @@ NESTED = [
 ]
 
 
+# THIRD ARM. A container carrying its OWN text must not lose it on export.
+#
+# Neither arm above can see this class. The write-only arm compares element_type, so a
+# type that survives with its text gone passes. The containment arm builds its probes
+# from Pandoc AST, so it only ever exercises the shapes THIS repo's reader produces --
+# and a reader and an exporter written together share their misunderstandings. The
+# defect that prompted this arm was exactly that: the reader wrote an image's alt text
+# into BOTH `content` and `attributes['alt']`, the exporter read only the attribute, and
+# every round trip through this repo looked clean while any other producer -- one
+# following the vocabulary's content rule, which says the text goes in `content` -- lost
+# the alt silently.
+#
+# So these probes are HAND-BUILT rather than read from AST. That is the whole point:
+# they are the only thing here that does not go through the reader first.
+CONTENT_PROBE = "SWEEPTEXTZ"
+
+# Types needing an attribute before the probe means anything.
+CONTENT_ATTRS = {
+    "image": "MAP{'src':'i.png'}",
+    "raw": "MAP{'format':'html'}",
+    "heading": "MAP{'heading_level':'2'}",
+    "code": "MAP{'language':'sql'}",
+}
+
+# Types whose text legitimately has nowhere to go, with the reason. As in INHERENT, the
+# negatives are the part worth writing down: an unexplained exemption and a forgotten
+# defect look identical six months later.
+CONTENT_EXEMPT = {
+    "hr": "HorizontalRule has no text position at all -- Pandoc's constructor takes no arguments.",
+    "page_break": "A marker. It exports as an empty classed Div by design; it owns no blocks.",
+    "list": "A list's text lives in its ITEMS. A list carrying content directly is malformed, "
+    "and list_item is probed with a real parent below, which is the shape that matters.",
+    "table": "content is the native {headers,rows} JSON, so a bare word is not a table. Real "
+    "tables round-trip through the preserved pandoc_ast tuple and are tested in "
+    "pandoc_blocks_v2.test.",
+    "metadata": "kind='value', not a block -- it lands in the document's `meta`, not in `blocks`.",
+}
+
+
 def skip(reason: str) -> int:
     if os.environ.get("DUCK_BLOCK_CHECKS_STRICT") == "1":
         print(f"FAIL: {reason}")
@@ -174,9 +213,46 @@ def main() -> int:
     if not failed:
         print(f"  all {len(NESTED)} constructors survive inside a container")
 
+    print("Content sweep: every block type, hand-built, must not lose its own text")
+    types = run(duckdb, "SELECT string_agg(t, ' ') FROM (SELECT unnest(duck_block_type_names()) AS t);").split()
+    checked = 0
+    for ty in sorted(set(types)):
+        if ty in CONTENT_EXEMPT:
+            continue
+        attrs = CONTENT_ATTRS.get(ty, "MAP{}")
+        blk = (
+            f"{{'kind':'block','element_type':'{ty}','content':'{CONTENT_PROBE}','level':%d,"
+            f"'encoding':'text','attributes':{attrs},'element_order':%d}}::{STRUCT}"
+        )
+        # list_item gets a real parent: standalone it is malformed, and probing a
+        # malformed shape would report a defect the vocabulary does not have.
+        if ty == "list_item":
+            parent = (
+                f"{{'kind':'block','element_type':'list','content':NULL,'level':1,'encoding':'text',"
+                f"'attributes':MAP{{'list_type':'bullet'}},'element_order':0}}::{STRUCT}"
+            )
+            doc_sql = f"[{parent}, {blk % (2, 1)}]"
+        else:
+            doc_sql = f"[{blk % (1, 0)}]"
+        checked += 1
+        got = run(duckdb, f"SELECT duck_blocks_to_pandoc_blocks({doc_sql})::VARCHAR;")
+        if CONTENT_PROBE in got:
+            continue
+        failed = True
+        print(f"\nFAIL: `{ty}` carries text in `content` and the exporter DROPS it.")
+        print(f"      got: {got[:160]}")
+        print("      The vocabulary's content rule says a single text child lives in `content`,")
+        print("      so an exporter reading only an attribute loses it for every producer but")
+        print("      one that happens to write both. Read `content` as the fallback, or add the")
+        print("      type to CONTENT_EXEMPT with the reason its text has nowhere to go.")
+    if not failed:
+        print(
+            f"  {checked} types keep their text; {len(CONTENT_EXEMPT)} exempt " f"({', '.join(sorted(CONTENT_EXEMPT))})"
+        )
+
     if failed:
         return 1
-    print("OK: no write-only types, nothing dropped inside a container.")
+    print("OK: no write-only types, nothing dropped in a container, no text lost from content.")
     return 0
 
 

@@ -807,6 +807,103 @@ static void ProcessPandocMetaVal(const string &key, yyjson_val *val, int32_t &or
 	}
 }
 
+// SPEC 6.0 -- v1's content rule, applied by SHAPE rather than by type name.
+//
+// A container whose only block child is a `plain` HAS a single text child, and v1's rule
+// says that text belongs in the container's own `content`. So `<li>text</li>` reads back
+// as `list_item(content='text')`, not `list_item > plain('text')`. 5.0 shipped the second
+// and that was one rule too many: a container with a single text child sometimes carried
+// content and sometimes grew a child, depending on which producer built it.
+//
+// `plain` survives exactly where the text has nowhere else to live:
+//   * alongside block siblings   -- `section > plain('Lead') + heading`
+//   * at the top level           -- the document root has no content field to hold it
+//
+// TYPE-BLIND ON PURPOSE. This asks only about levels and adjacency, never about the
+// parent's element_type, so a container type added later is covered without being listed.
+// Enumerating the container types we happen to know is exactly what lost `table`,
+// `deflist` and `lineblock` inside every container, in code that was correct when written.
+//
+// TIGHT-VS-LOOSE IS NOT LOST. Measured before the change, not assumed: the exporter
+// already distinguishes the two shapes this leaves behind -- content on the item emits
+// `Plain` (tight), a `paragraph` child emits `Para` (loose). That is why `plain` can be
+// narrowed without a compensating export change.
+static void CollapseLonePlainIntoParent(vector<Value> &blocks) {
+	auto field = [&](idx_t i, idx_t f) -> const Value & {
+		return StructValue::GetChildren(blocks[i])[f];
+	};
+	auto str_field = [&](idx_t i, idx_t f) -> string {
+		auto &v = field(i, f);
+		return v.IsNull() ? string() : StringValue::Get(v);
+	};
+	auto is_block = [&](idx_t i) {
+		return str_field(i, BlockTypes::KIND_IDX) == BlockTypes::KIND_BLOCK;
+	};
+	auto level_of = [&](idx_t i) -> int32_t {
+		auto &v = field(i, BlockTypes::LEVEL_IDX);
+		return v.IsNull() ? -1 : v.GetValue<int32_t>();
+	};
+
+	for (idx_t i = 0; i < blocks.size(); i++) {
+		if (!is_block(i) || !str_field(i, BlockTypes::CONTENT_IDX).empty()) {
+			// A parent already carrying content cannot adopt the text without one of
+			// the two being silently dropped.
+			continue;
+		}
+		int32_t parent_level = level_of(i);
+		if (parent_level < 1) {
+			continue;
+		}
+
+		idx_t j = i + 1;
+		if (j >= blocks.size() || !is_block(j) || level_of(j) != parent_level + 1 ||
+		    str_field(j, BlockTypes::ELEMENT_TYPE_IDX) != BlockTypes::TYPE_PLAIN) {
+			continue;
+		}
+
+		// The plain's own inline children sit deeper than it does; skip past them to
+		// find what comes next at the plain's level.
+		idx_t k = j + 1;
+		while (k < blocks.size() && level_of(k) > parent_level + 1) {
+			k++;
+		}
+		if (k < blocks.size() && level_of(k) == parent_level + 1) {
+			// A block sibling. The text has somewhere it must stay, so `plain` earns
+			// its keep here -- this is the case the type exists for.
+			continue;
+		}
+
+		auto plain = StructValue::GetChildren(blocks[j]);
+		if (!plain[BlockTypes::ATTRIBUTES_IDX].IsNull() &&
+		    !MapValue::GetChildren(plain[BlockTypes::ATTRIBUTES_IDX]).empty()) {
+			// Pandoc's Plain carries no Attr, so this never fires for this reader. It is
+			// here so a producer that DOES attach attributes loses the collapse rather
+			// than the attributes: a visible extra element beats a silent drop.
+			continue;
+		}
+
+		auto parent = StructValue::GetChildren(blocks[i]);
+		parent[BlockTypes::CONTENT_IDX] = plain[BlockTypes::CONTENT_IDX];
+		parent[BlockTypes::ENCODING_IDX] = plain[BlockTypes::ENCODING_IDX];
+		blocks[i] = Value::STRUCT(BlockTypes::DuckBlockType(), std::move(parent));
+
+		// The plain's inlines become the parent's, one level shallower. Level is
+		// structural depth in a depth-first ordering, so removing an element from the
+		// chain MUST move everything below it up -- leaving a gap would break the one
+		// invariant the whole tree is reconstructed from.
+		for (idx_t d = j + 1; d < k; d++) {
+			auto child = StructValue::GetChildren(blocks[d]);
+			child[BlockTypes::LEVEL_IDX] = Value(level_of(d) - 1);
+			blocks[d] = Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child));
+		}
+		blocks.erase(blocks.begin() + j);
+
+		// No step-back: the parent now carries content, so it can never itself be the
+		// lone plain child of ITS parent, and element_order need only stay unique and
+		// non-negative -- the gap the erase leaves is not a defect.
+	}
+}
+
 void PandocBlockConvert::ConvertPandocAstToBlocks(const string &json, vector<Value> &blocks) {
 	if (json.empty()) {
 		return;
@@ -839,6 +936,8 @@ void PandocBlockConvert::ConvertPandocAstToBlocks(const string &json, vector<Val
 	} else if (yyjson_is_obj(blocks_val)) {
 		ProcessPandocBlockVal(blocks_val, order, blocks, 1, 0);
 	}
+
+	CollapseLonePlainIntoParent(blocks);
 
 	// Document metadata, AFTER the blocks so blocks[1] still points at the first
 	// content block. Previously dropped entirely: title, tags, author and draft all
@@ -995,24 +1094,11 @@ static yyjson_mut_val *ConvertUnhandledChildToPandocVal(yyjson_mut_doc *doc, con
 	yyjson_mut_val *fc_arr = yyjson_mut_arr(doc);
 	yyjson_mut_arr_add_val(fc_arr, CreatePandocAttrVal(doc, child, child_type));
 	yyjson_mut_val *fb_blocks = yyjson_mut_arr(doc);
-	if (!content.empty() || !inline_children.empty()) {
-		yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
-		yyjson_mut_obj_add_str(doc, para_obj, "t", "Plain");
-		if (!inline_children.empty()) {
-			idx_t inl_end = 0;
-			yyjson_mut_obj_add_val(
-			    doc, para_obj, "c",
-			    PandocInlineConvert::ConvertDbInlinesToPandocVal(doc, inline_children, 0, child_level + 1, inl_end, 1));
-		} else {
-			yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
-			yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
-			yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
-			yyjson_mut_obj_add_strncpy(doc, str_obj, "c", content.data(), content.size());
-			yyjson_mut_arr_add_val(inl_arr, str_obj);
-			yyjson_mut_obj_add_val(doc, para_obj, "c", inl_arr);
-		}
-		yyjson_mut_arr_add_val(fb_blocks, para_obj);
-	}
+	// The element's own content is NOT written here. The delegated walk below writes
+	// it, because under SPEC 6.0 "a container carrying content emits a Plain" is one
+	// rule that belongs in one place -- and while this function had its own copy of
+	// it, the two both fired and every unhandled child came out with its text twice.
+	//
 	// The child's OWN descendants. Without this the fallback kept an element's own
 	// text and dropped everything below it -- a blockquote inside a list item came
 	// through as an empty Div and its quoted paragraph vanished, the same silent
@@ -1326,6 +1412,43 @@ static void ConvertContainerChildrenToPandocVal(yyjson_mut_doc *doc, const vecto
                                                 int32_t parent_level, idx_t depth, yyjson_mut_val *target_arr,
                                                 yyjson_mut_val *switch_arr, const char *switch_type) {
 	yyjson_mut_val *child_blocks_arr = target_arr;
+
+	// SPEC 6.0, the export half of CollapseLonePlainIntoParent. A container carrying its
+	// own `content` HAS a single text child, and Pandoc's encoding of that is a lone
+	// `Plain` -- so write one back. Without this the read side's narrowing of `plain`
+	// silently DESTROYS text: `Div[Plain[x]]` read to `div(content='x')` exported as an
+	// empty `Div[]`, because every child of this walk is found by level and a container
+	// that owns no children has none to find.
+	//
+	// Emitted here rather than in each container's converter so Div, BlockQuote, Figure,
+	// Section and anything added later get it from one place -- the same reason the walk
+	// itself is shared.
+	//
+	// `Plain` and not `Para`: content on the container is the tight shape by definition,
+	// and a container whose text is a paragraph has a `paragraph` CHILD instead, which
+	// this walk emits as `Para` further down. That pair is what carries tight-vs-loose
+	// now that `plain` no longer appears in leaf position.
+	{
+		auto own_content = GetElementStringField(blocks_list[start_idx], BlockTypes::CONTENT_IDX);
+		if (!own_content.empty()) {
+			yyjson_mut_val *plain_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, plain_obj, "t", "Plain");
+			idx_t inl_end = 0;
+			yyjson_mut_val *inl_arr = PandocInlineConvert::ConvertDbInlinesToPandocVal(
+			    doc, blocks_list, start_idx + 1, parent_level + 1, inl_end, depth + 1);
+			if (!inl_arr || yyjson_mut_arr_size(inl_arr) == 0) {
+				// No inline children, so the text lives only in `content`.
+				inl_arr = yyjson_mut_arr(doc);
+				yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+				yyjson_mut_obj_add_strncpy(doc, str_obj, "c", own_content.data(), own_content.size());
+				yyjson_mut_arr_add_val(inl_arr, str_obj);
+			}
+			yyjson_mut_obj_add_val(doc, plain_obj, "c", inl_arr);
+			yyjson_mut_arr_add_val(child_blocks_arr, plain_obj);
+		}
+	}
+
 	idx_t j = start_idx + 1;
 	while (j < blocks_list.size()) {
 		auto &child = blocks_list[j];
@@ -1738,7 +1861,12 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			}
 			yyjson_mut_arr_add_val(blocks_arr, bq_obj);
 			block_idx++;
-		} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE && HasBlockChildren(blocks_list, block_idx)) {
+		} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE &&
+		           (HasBlockChildren(blocks_list, block_idx) || !content.empty())) {
+			// `|| !content.empty()` is 6.0: a quote carrying its own text has a single
+			// text child, so it goes through the shared walk, which writes that text back
+			// as `Plain`. The hand-rolled branch below wrote `Para` unconditionally, which
+			// downgraded `BlockQuote[Plain]` on every round trip -- write-only in the small.
 			int32_t quote_level = GetElementLevel(block);
 			yyjson_mut_arr_add_val(blocks_arr,
 			                       ConvertBlockquoteToPandocVal(doc, blocks_list, block_idx, quote_level, 1));
@@ -1930,6 +2058,18 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			auto src = GetElementAttribute(block, "src");
 			auto alt = GetElementAttribute(block, "alt");
 			auto title = GetElementAttribute(block, "title");
+			if (alt.empty()) {
+				// An image's alt text IS its content under the vocabulary's content rule,
+				// and this read only the attribute. Our own reader happens to write the alt
+				// into BOTH places, so a round trip through this repo looked clean while a
+				// producer that put the alt only where the rule says to put it lost it --
+				// silently, since an Image with an empty alt is still a valid Image.
+				//
+				// Two copies of one fact, checked against each other by the one party that
+				// writes both: that pair cannot detect its own disagreement, which is why
+				// this needed a sweep over hand-built blocks rather than a round trip.
+				alt = content;
+			}
 
 			yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, para_obj, "t", "Para");

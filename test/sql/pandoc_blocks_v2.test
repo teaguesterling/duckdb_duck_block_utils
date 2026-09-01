@@ -1128,11 +1128,14 @@ SELECT b.element_type, coalesce(b.attributes['list_type'],'-'), coalesce(b.attri
 FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')) AS b);
 ----
 list	definition	-	(empty)
-list_item	-	term	(empty)
-plain	-	-	term
-list_item	-	definition	(empty)
-plain	-	-	def
+list_item	-	term	term
+list_item	-	definition	def
 
+# The term and the definition sit in the list_item's own `content` -- SPEC 6.0.
+# 5.0 gave each a `plain` child, which meant a container with a single text child
+# had two possible shapes depending on who built it. `plain` is now only for text
+# that has nowhere else to live: alongside block siblings, or at the top level.
+#
 # DISCRIMINATING: a definition list must be a LIST but must NOT be an ordinary
 # bullet list. list_type is what carries that, and a consumer reading only
 # `ordered` sees 'false' for both -- which is exactly why a boolean could not grow.
@@ -1156,18 +1159,26 @@ SELECT pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"
 ----
 text	true
 
-# The term is reachable as a CHILD rather than by grepping a JSON blob.
-query I
-SELECT pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')[3].content;
-----
-term
-
-# ...and so is the definition, as its own list_item's child.
+# The term and definition are reachable as STRUCTURE rather than by grepping a
+# JSON blob -- keyed by role, not by position. The earlier version indexed [3],
+# [4] and [5], which asserts the layout rather than the reachability it is named
+# for, and duly broke on a shape change that reached the text just fine.
 query II
-SELECT pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')[4].attributes['role'],
-       pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')[5].content;
+SELECT (SELECT b.content FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')) AS b) WHERE b.attributes['role'] = 'term'),
+       (SELECT b.content FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')) AS b) WHERE b.attributes['role'] = 'definition');
 ----
-definition	def
+term	def
+
+# DISCRIMINATING: both roles must be present and DISTINCT. Asserting only that
+# 'term' is somewhere in the output passes for a reader that emits the term twice
+# and loses the definition entirely.
+query III
+SELECT count(*) FILTER (WHERE b.attributes['role'] = 'term'),
+       count(*) FILTER (WHERE b.attributes['role'] = 'definition'),
+       count(*) FILTER (WHERE b.element_type = 'plain')
+FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')) AS b);
+----
+1	1	0
 
 # Round trip is byte-identical: term/definition items pair back into
 # DefinitionList's [([Inline],[[Block]])].
@@ -1372,14 +1383,29 @@ true
 # found here while verifying their report.
 # ============================================================================
 
-# list -> list_item -> the item's own blocks. No JSON, no opaque content.
-query IIII
-SELECT b.element_type, b.kind, coalesce(b.level::VARCHAR,'NULL'), b.encoding
+# list -> list_item -> the item's own text. No JSON, no opaque content.
+#
+# SPEC 6.0: a TIGHT item's text sits in the item's own `content`, because a lone
+# Pandoc `Plain` IS the single text child v1's content rule describes. 5.0 gave
+# it a `plain` child instead, which meant `<li>text</li>` and `<p>text</p>` --
+# the same situation -- had different shapes. A LOOSE item still has a
+# `paragraph` child, and that pair is what carries tight-vs-loose now.
+query IIIII
+SELECT b.element_type, b.kind, coalesce(b.level::VARCHAR,'NULL'), b.encoding, coalesce(b.content,'')
 FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"alpha"}]}]]}]}')) AS b);
 ----
-list	block	1	text
-list_item	block	2	text
-plain	block	3	text
+list	block	1	text	(empty)
+list_item	block	2	text	alpha
+
+# DISCRIMINATING against the shape change itself: the LOOSE item must still grow
+# a child, or "tight and loose look the same" would pass the assertion above.
+query IIIII
+SELECT b.element_type, b.kind, coalesce(b.level::VARCHAR,'NULL'), b.encoding, coalesce(b.content,'')
+FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"alpha"}]}]]}]}')) AS b);
+----
+list	block	1	text	(empty)
+list_item	block	2	text	(empty)
+paragraph	block	3	text	alpha
 
 # DISCRIMINATING: item COUNT was already right while every item was blank, so
 # counting items would have passed against the defect. The property is that a
@@ -1463,11 +1489,21 @@ SELECT regexp_replace(duck_blocks_render_ansi(pandoc_ast_to_blocks('{"pandoc-api
 ----
 true
 
-# Builder-shaped quotes keep working -- both shapes legal.
-query I
-SELECT duck_blocks_to_pandoc_blocks(duck_block_blockquote('builder quote'))::VARCHAR = '[{"t":"BlockQuote","c":[{"t":"Para","c":[{"t":"Str","c":"builder quote"}]}]}]';
+# Builder-shaped quotes keep working -- both shapes legal, and under SPEC 6.0 the
+# two shapes now MEAN the two Pandoc constructors:
+#
+#   duck_block_blockquote('q')                   -> BlockQuote[Plain]  (single text child)
+#   duck_block_blockquote([duck_block_paragraph]) -> BlockQuote[Para]
+#
+# The string form used to emit Para unconditionally, which made `BlockQuote[Plain]`
+# WRITE-ONLY: it read back fine and exported as Para, so a round trip downgraded it
+# with nothing to see. Both survive now, which is why this asserts the PAIR -- the
+# old single assertion passed while one of the two constructors was unreachable.
+query II
+SELECT duck_blocks_to_pandoc_blocks(duck_block_blockquote('builder quote'))::VARCHAR = '[{"t":"BlockQuote","c":[{"t":"Plain","c":[{"t":"Str","c":"builder quote"}]}]}]',
+       duck_blocks_to_pandoc_blocks(duck_block_blockquote([duck_block_paragraph('builder quote')]))::VARCHAR = '[{"t":"BlockQuote","c":[{"t":"Para","c":[{"t":"Str","c":"builder quote"}]}]}]';
 ----
-true
+true	true
 
 # ============================================================================
 # EXPORT BRANCHES FOR deflist AND lineblock.
@@ -1874,6 +1910,17 @@ SELECT count(*) FROM (
 #
 # So an item can hold block children and still be tight. The rule stands as
 # written: `plain` is about the run, not about its container.
+#
+# THIS CASE IS THE SPEC 6.0 RULE IN BOTH DIRECTIONS AT ONCE, which is why it is
+# worth reading the expected rows carefully:
+#
+#   the OUTER item keeps its `plain`  -- the run has a nested `list` SIBLING, so
+#                                       the item's content cannot hold it
+#   the INNER item collapses to content -- the run is the item's only child
+#
+# One rule, two outcomes, decided by what is beside the run rather than by which
+# element_type is above it. A reader that special-cased list_item would get one
+# of these two wrong.
 # ============================================================================
 
 query IIII
@@ -1884,8 +1931,7 @@ list	1	(empty)	block
 list_item	2	(empty)	block
 plain	3	outer	block
 list	3	(empty)	block
-list_item	4	(empty)	block
-plain	5	inner	block
+list_item	4	inner	block
 
 # DISCRIMINATING: the LOOSE spelling of the same document must differ, and only
 # in the item's own run. A rule keyed on "the item has block children" would make
@@ -2013,3 +2059,34 @@ SELECT duck_blocks_render_ansi([{'kind':'block','element_type':'raw','content':'
        duck_blocks_to_text([{'kind':'block','element_type':'raw','content':'<script>x</script>','level':1,'encoding':'html','attributes':MAP{'format':'html'},'element_order':0}::duck_block]) LIKE '%script%';
 ----
 true	false
+
+# ============================================================================
+# AN IMAGE'S ALT TEXT IS ITS CONTENT.
+#
+# The exporter read only attributes['alt']. This reader writes the alt into BOTH
+# `content` and that attribute, so a round trip through this repo looked clean
+# while a producer following the vocabulary's content rule -- put a single text
+# child in `content` -- lost the alt silently, an Image with an empty alt being
+# a perfectly valid Image.
+#
+# Two copies of one fact, checked against each other by the one party that writes
+# both. That pair cannot detect its own disagreement, which is why it took a sweep
+# over HAND-BUILT blocks (test/check_roundtrip_sweep.py, content arm) rather than
+# a round trip to find.
+# ============================================================================
+
+query I
+SELECT duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'image','content':'alt words','level':1,'encoding':'text','attributes':MAP{'src':'i.png'},'element_order':0}::duck_block])::VARCHAR
+     = '[{"t":"Para","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"alt words"}],["i.png",""]]}]}]';
+----
+true
+
+# DISCRIMINATING: the fallback must not OVERRIDE an explicit alt. If it did, a
+# producer that deliberately gave different alt text and caption would silently
+# get the caption -- the assertion above passes either way, since both copies say
+# the same thing whenever only one is set.
+query I
+SELECT duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'image','content':'from content','level':1,'encoding':'text','attributes':MAP{'src':'i.png','alt':'from attr'},'element_order':0}::duck_block])::VARCHAR
+     LIKE '%from attr%';
+----
+true

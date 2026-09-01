@@ -403,3 +403,59 @@ SELECT (SELECT count(*) FROM (SELECT unnest(duck_blocks_lint([{'kind':'block','e
        (SELECT count(*) FROM (SELECT unnest(duck_blocks_lint(duck_block_heading(2,'T'))) AS w));
 ----
 0	0
+
+# ============================================================================
+# SPEC 6.0: `plain` in leaf position.
+#
+# A lint rather than an error -- the 5.0 shape still converts and still renders,
+# so data written against it stays readable. But it is the shape where a container
+# with a single text child has TWO representations, which is what every version
+# since 2.0 has existed to remove, and four extensions vendor this vocabulary.
+# They need something that OBJECTS. The `level` drift got a year of prose in a
+# spec document and no check, and that is precisely why it drifted for a year.
+# ============================================================================
+
+# FIRES on the 5.0 shape: list_item > plain, the plain being the only child.
+query I
+SELECT list_bool_or(list_transform(duck_blocks_lint([
+  {'kind':'block','element_type':'list','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'list_item','content':NULL,'level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'plain','content':'x','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+]), w -> w.message LIKE '%only child of `list_item`%'));
+----
+true
+
+# SILENT on the 6.0 shape. A lint that fires on the shape it is asking for would
+# be worse than none -- it trains people to mute it.
+query I
+SELECT len(duck_blocks_lint([
+  {'kind':'block','element_type':'list','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'list_item','content':'x','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block
+]));
+----
+0
+
+# SILENT where `plain` is CORRECT: the run has a block sibling, so the container's
+# content cannot hold it. This is the assertion that stops the lint from simply
+# meaning "there is a plain here", which would fire on every legitimate use.
+#
+# The negative is only evidence because the positive control is two assertions up:
+# the SAME predicate on the same lint returns true for the 5.0 shape. Without that
+# pairing, `coalesce(..., false)` here would also pass for a lint that never fires
+# at all -- which is the assertion shape this repo has spent a week finding.
+query I
+SELECT coalesce(list_bool_or(list_transform(duck_blocks_lint([
+  {'kind':'block','element_type':'section','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'plain','content':'Lead','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'heading','content':'H','level':2,'encoding':'text','attributes':MAP{'heading_level':'2'},'element_order':2}::duck_block
+]), w -> w.message LIKE '%only child%')), false);
+----
+false
+
+# SILENT at the top level, where the document root has no content field to hold it.
+query I
+SELECT len(duck_blocks_lint([
+  {'kind':'block','element_type':'plain','content':'x','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block
+]));
+----
+0

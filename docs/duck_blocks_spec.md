@@ -1,6 +1,9 @@
 # Duck Blocks Canonical Specification
 
-**Version:** 0.4.0
+**Version:** 6.0 — this MUST equal `duck_block_spec_version()`, and
+`test/check_spec_alignment.py` fails if it does not. It read `0.4.0` from v1.0.0
+through 2026-08-31 while the shipped value moved to 6.0, so a reader trusting the
+document disagreed with every consumer asserting the function.
 **Status:** Canonical (Unified duck_block type, heading_level attribute)
 
 This document defines the canonical representation for duck_blocks - structured document elements for DuckDB. Extensions that produce or consume duck_blocks (markdown, webbed, etc.) MUST conform to this specification.
@@ -9,11 +12,15 @@ This document defines the canonical representation for duck_blocks - structured 
 
 ### duck_block (Unified Type)
 
-Both block-level and inline elements use the same unified type, distinguished by the `kind` field:
+Block-level elements, inline elements and metadata values all use the same unified
+type, distinguished by the `kind` field. `value` models a document's metadata tree
+(Pandoc's `MetaValue`); those elements are appended AFTER the blocks, so consumers
+must filter on `kind` rather than index blindly. The authoritative list is
+`duck_block_kind_names()`.
 
 ```sql
 STRUCT(
-    kind          VARCHAR,                      -- 'block' or 'inline'
+    kind          VARCHAR,                      -- 'block', 'inline' or 'value'
     element_type  VARCHAR,                      -- Element type identifier
     content       VARCHAR,                      -- Text content (see Content Rules)
     level         INTEGER,                      -- Structural nesting depth (NOT heading level)
@@ -495,10 +502,8 @@ definitions are `list_item`s distinguished by `attributes['role']`:
 
 ```
 list         list_type='definition'
-  list_item  role='term'
-    plain    "the term"
-  list_item  role='definition'
-    plain    "the definition"
+  list_item  role='term'        content="the term"
+  list_item  role='definition'  content="the definition"
 ```
 
 Zero new types. This is the extensibility `list_type` was made canonical FOR — a
@@ -514,25 +519,73 @@ nothing emits it.
 ### `plain` vs `paragraph`
 
 `plain` is a block-level run of text that is **not** a paragraph. It is Pandoc's
-`Plain` constructor, and in HTML it is text not wrapped in a `<p>`:
+`Plain` constructor, and in HTML it is text not wrapped in a `<p>`.
+
+**As of spec 6.0, `plain` appears only where the text has nowhere else to live.**
+The container's `content` is the first home for a single text child — that is v1's
+content rule and it has never changed — so `plain` is what you use when that home is
+taken or does not exist. There are exactly two such places:
 
 ```
-<li>tight item</li>          list_item > plain
+<section>Lead<h2>H</h2></section>    section > plain("Lead") + heading
+                                     the run has a block SIBLING, so the
+                                     container's content cannot hold it
+
+Plain at the top of a document       plain
+                                     the document root has no content field
+```
+
+Everywhere else, a lone text run is the container's own content:
+
+```
+<li>tight item</li>          list_item  content="tight item"
 <li><p>loose item</p></li>   list_item > paragraph
-<td>cell</td>                cell content with no paragraph
-<dd>definition</dd>          definition with no paragraph
+<td>cell</td>                cell       content="cell"
+<dd>definition</dd>          list_item  role='definition'  content="definition"
+<div>bare text</div>         div        content="bare text"
+<blockquote>q</blockquote>   blockquote content="q"
 ```
 
-It behaves exactly like `paragraph` — same either/or content rule, same children —
-and differs only in what it means and what it exports to. A renderer that treats an
-unknown `plain` as a paragraph degrades gracefully: the cost of ignoring it is
-spacing, not content.
+Spec 5.0 shipped the first column as `list_item > plain(...)`, which gave a
+container with a single text child **two** legal shapes depending on which producer
+built it. Collapsing that back to one is the whole point of every version since 2.0.
+
+**Tight vs loose survives this, and needs no attribute.** The two shapes above are
+exactly Pandoc's two constructors:
+
+| duck_block shape | Pandoc | markdown |
+|---|---|---|
+| `list_item` with `content` | `Plain` | tight item |
+| `list_item` > `paragraph` child | `Para` | loose item |
+
+This was measured on the exporter before the rule changed, not assumed: it already
+emitted `Plain` for a content-carrying item and `Para` for a paragraph child, so
+narrowing `plain` cost nothing on the export side.
+
+**The rule is about the RUN, not about its container.** Decide by what sits beside
+the run, never by which `element_type` is above it. A nested list makes this visible
+in both directions at once:
+
+```
+- outer          list                        the outer item's run has a `list`
+  - inner          list_item                 sibling, so it keeps its `plain`
+                     plain      "outer"
+                     list                    the inner item's run is alone,
+                       list_item  "inner"    so it becomes content
+```
+
+A consumer that special-cased `list_item` would get one of those two wrong.
 
 **Why a type and not an attribute.** Pandoc has had this distinction all along and
 this reader collapsed both constructors onto `paragraph`, which is how tight-vs-loose
 list items were being lost — and lost independently in webbed, by a different
 mechanism, with neither reader aware. The gap was a constructor we failed to
 represent, not a variation we failed to annotate.
+
+**Migrating from 5.0.** A consumer that reads a container's `content` needs no
+change — that has been required since v1. A consumer that walks for a `plain` child
+must also read `content`, and one that WRITES `list_item > plain` should write the
+content instead; the old shape still converts, but it is no longer what readers emit.
 
 **Leaf types are unchanged by 2.0, and keep their either/or.** `paragraph`,
 `heading`, `code` and `raw` carry text in `content` **when that text is a single

@@ -253,7 +253,11 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 		int32_t pending_empty_order = 0;
 		int32_t pending_empty_depth = 0;
 
-		for (auto &block : blocks_list) {
+		// Indexed rather than a range-for: the 6.0 `plain` lint below has to look at the
+		// element BEFORE this one and at the one after, because whether a text run is an
+		// only child is not knowable from the run itself.
+		for (idx_t j = 0; j < blocks_list.size(); j++) {
+			auto &block = blocks_list[j];
 			if (block.IsNull()) {
 				continue;
 			}
@@ -435,6 +439,55 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				pending_empty_type = element_type;
 				pending_empty_order = element_order;
 				pending_empty_depth = pe_null ? 1 : GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
+			}
+
+			// SPEC 6.0: a `plain` that is the ONLY child of a container whose own content
+			// is empty. That text belongs in the container's `content` -- v1's content
+			// rule, which says content is populated iff the container has a single text
+			// child, and a lone `plain` IS one.
+			//
+			// Emitted as a lint rather than an error: the 5.0 shape still converts and
+			// still renders, so data written against it is readable. But it is the shape
+			// where a container with a single text child has TWO representations, which
+			// is what every spec version since 2.0 has existed to remove -- and the four
+			// extensions vendoring this vocabulary need something that OBJECTS rather
+			// than a paragraph of prose in a spec document. The `level` drift got a year
+			// of prose and no check, and that is exactly why it drifted.
+			if (element_type == BlockTypes::TYPE_PLAIN && block_kind == BlockTypes::KIND_BLOCK && j > 0) {
+				auto &parent = blocks_list[j - 1];
+				const int32_t plain_level = GetElementIntField(block, BlockTypes::LEVEL_IDX, -1);
+				if (!parent.IsNull() && GetElementStringField(parent, BlockTypes::KIND_IDX) == BlockTypes::KIND_BLOCK &&
+				    GetElementStringField(parent, BlockTypes::CONTENT_IDX).empty() && plain_level > 1 &&
+				    GetElementIntField(parent, BlockTypes::LEVEL_IDX, -1) == plain_level - 1) {
+					// Only a child, or does it have a block sibling? A sibling is what
+					// makes `plain` correct, so the lint must look before it fires.
+					bool has_block_sibling = false;
+					for (idx_t k = j + 1; k < blocks_list.size(); k++) {
+						if (blocks_list[k].IsNull()) {
+							continue;
+						}
+						const int32_t k_level = GetElementIntField(blocks_list[k], BlockTypes::LEVEL_IDX, -1);
+						if (k_level > plain_level) {
+							continue; // the plain's own inlines
+						}
+						if (GetElementStringField(blocks_list[k], BlockTypes::KIND_IDX) == BlockTypes::KIND_BLOCK) {
+							has_block_sibling = (k_level == plain_level);
+						}
+						break;
+					}
+					if (!has_block_sibling) {
+						child_list_t<Value> warning_values;
+						warning_values.push_back(make_pair("severity", Value("warning")));
+						warning_values.push_back(make_pair(
+						    "message", Value("`plain` is the only child of `" +
+						                     GetElementStringField(parent, BlockTypes::ELEMENT_TYPE_IDX) +
+						                     "`; its text belongs in that element's `content` (spec 6.0). `plain` is "
+						                     "for a text run that has nowhere else to live -- beside block siblings, "
+						                     "or at the top level.")));
+						warning_values.push_back(make_pair("element_order", Value(element_order)));
+						warnings.push_back(Value::STRUCT(std::move(warning_values)));
+					}
+				}
 			}
 
 			// Check for code blocks without language

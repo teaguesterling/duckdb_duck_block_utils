@@ -91,6 +91,33 @@ def main() -> int:
     print(f"  build reports {len(actual)} element types; spec documents {len(documented)}")
 
     failed = False
+
+    # The spec doc's own Version header against the shipped SPEC_VERSION. These are two
+    # copies of one fact, and they disagreed from v1.0.0 until 2026-08-31: the header
+    # read 0.4.0 while consumers asserted duck_block_spec_version(), which had moved
+    # five majors. Nothing compared them, so a peer reading the document to decide what
+    # to implement was reading a number no code had produced in months.
+    ver = subprocess.run(
+        [str(duckdb), "-noheader", "-list", "-c", "SELECT duck_block_spec_version();"],
+        capture_output=True,
+        text=True,
+    )
+    shipped = ver.stdout.strip() if ver.returncode == 0 else ""
+    m = re.search(r"^\*\*Version:\*\*\s*([0-9]+\.[0-9]+)", SPEC.read_text(), re.M)
+    header = m.group(1) if m else None
+    if not shipped:
+        failed = True
+        print("\nFAIL: could not read duck_block_spec_version()")
+    elif header is None:
+        failed = True
+        print("\nFAIL: the spec document has no parseable `**Version:** MAJOR.MINOR` header.")
+        print("      A consumer deciding what to implement reads that line.")
+    elif header != shipped:
+        failed = True
+        print(f"\nFAIL: the spec document says version {header}; the build ships {shipped}.")
+        print("      Whichever is right, they cannot both be published. Update the header.")
+    else:
+        print(f"  spec version {shipped} agrees between the document and the build")
     if undocumented:
         failed = True
         print("\nFAIL: the build has element types the spec does not document:")
