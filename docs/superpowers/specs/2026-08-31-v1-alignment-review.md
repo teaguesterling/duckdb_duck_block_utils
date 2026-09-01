@@ -26,6 +26,46 @@ from, and they are what four extensions implemented.
 
 Nothing to pull back here. 3.0 is the v1-faithful reading.
 
+## Checked against the LATEST v1 tag, not just v1.0.0
+
+Teague: "make sure to look at the most recent tag, to make sure there were no bugfixes
+since v1.0.0." Done. Ten tags, v1.0.0 (2026-01-02) through v1.6.1 (2026-08-30), 47 commits.
+
+**The spec document is BYTE-IDENTICAL across the whole v1 line.** `git diff v1.0.0 v1.6.1 --
+docs/duck_blocks_spec.md` is empty. So there were no spec bugfixes to miss, and the review
+above covers the shipped v1.6.1 contract, not a superseded draft.
+
+The CODE moved, though, and three of those commits land in exactly what changed this
+session. All verified still holding at `87a3254`:
+
+| commit | fixed | still holds |
+|---|---|---|
+| `80545cd` | `li('text')` — list item with simple string content — converting to Pandoc; previously only items with inline children converted and string content was LOST | ✅ `[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"simple text"}]}]]}]` |
+| `d848846` | OrderedList format, and **checking both `list_type` and `ordered`** | ✅ both spellings export to OrderedList |
+| `e24a885` | nested level preservation at arbitrary depth — overloads were flattening every child to level 2 | ✅ `paragraph@1 > bold@2 > italic@3 > strikethrough@4` |
+| `921729c` | blockquote conversion using inline children | ✅ |
+| `8145df6` | table conversion preserving full content | ✅ round trip byte-identical |
+| `111b42b` | nested list conversion | ✅ |
+| `ddb02eb` | rich inline content through lists | ✅ |
+| `12898dd` | `LIST(LIST(duck_block))` overloads | ✅ both registered |
+| `0263b0e` (v1.5.0, newest) | headings/toc/to_text falling back to inline children; Code and Math surviving as structured children; Link/Image alt inlines not lost | ✅ all three |
+
+**Two of these are evidence FOR the restorations rather than against them.**
+
+`80545cd` explicitly fixed a list item carrying its text in `content` so that it exports —
+which means v1's content rule was load-bearing in shipped code, not merely documented. The
+2.0 broadening that replaced it was the anomaly, and panduck reports the same independently:
+their fix for the tight/loose ruling was DELETING a branch added this morning, because their
+reader already implemented v1's rule before any of today's churn.
+
+`d848846` established reading BOTH `list_type` and `ordered` in v1.1.0, back in January. So
+the dual name is v1-era and long-tolerated; declaring `ordered` canonical formalises what
+the exporter already did rather than inventing a rule.
+
+`e24a885` is the level one, and it points the same way as the type definition: the v1 line
+was actively fixing bugs where levels FAILED to preserve relative depth. A codebase spending
+commits on depth preservation is not one that believed depth was optional.
+
 ## The heading fallback: a deliberate reversal of v1, and it should be recorded as one
 
 v1.0 lines 55-57:
@@ -109,11 +149,34 @@ That is why the fix is not "be more careful" but "make the checker able to objec
 validator never inspected `level` at all, so no amount of care would have surfaced the
 disagreement.
 
+## Open: tight vs loose list items
+
+Discovered while ruling on panduck's question. Pandoc encodes the tight/loose list
+distinction as `Plain` vs `Para` inside a list item; **this reader maps both to
+`paragraph`**, so the distinction is lost. webbed loses it independently by a different
+mechanism — `ListItemsToJson` flattens every item to its text, so the `<p>` vanishes before
+anything downstream sees it.
+
+Two readers, two mechanisms, same loss, neither aware. That is the argument for putting the
+answer in the vocabulary rather than in either reader: a per-reader fix has each inventing
+its own representation, which is the divergence 2.0 and 3.0 exist to kill.
+
+**Recommendation: an ATTRIBUTE, not a new element_type.** The parallel to `heading_level`
+is the weaker half of the argument — precedent alone would equally justify minting a type.
+The stronger half is panduck's: an attribute is invisible to a consumer that does not look
+for it, so a renderer ignoring it produces slightly wrong SPACING rather than wrong content.
+That is the correct failure mode for this distinction specifically, and it would not be for
+one where ignoring it changes meaning.
+
+Not acted on — minting vocabulary immediately before an external release rename is Teague's
+call, not mine.
+
 ## External release naming
 
-The v1.0 tag ships a spec whose own header reads `**Version:** 0.4.0` — so the doc version
-and the release tag have never matched in this repo. The extension releases are `v1.0.0`
-through `v1.6.1`; `SPEC_VERSION` is a separate axis that reached 3.0 today.
+The v1.0 tag ships a spec whose own header reads `**Version:** 0.4.0`, and it still reads
+that at v1.6.1 — so the doc version and the release tag have never matched in this repo.
+The extension releases are `v1.0.0` through `v1.6.1`; `SPEC_VERSION` is a separate axis
+that reached 3.0 today.
 
 "3.0" is the internal code name. The external name is undecided and is Teague's.
 Whatever it is, the two axes should be named distinctly enough that a consumer asserting
