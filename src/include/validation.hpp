@@ -11,15 +11,15 @@ public:
 	static void Register(ExtensionLoader &loader);
 
 private:
-	// db_blocks_validate(blocks LIST(duck_block)) -> STRUCT(valid BOOLEAN, errors LIST(STRUCT))
+	// duck_blocks_validate(blocks LIST(duck_block)) -> STRUCT(valid BOOLEAN, errors LIST(STRUCT))
 	// Validate blocks against schema requirements
 	static void DbBlocksValidateFun(DataChunk &args, ExpressionState &state, Vector &result);
 
-	// db_blocks_lint(blocks LIST(duck_block)) -> LIST(STRUCT(severity, message, element_order))
+	// duck_blocks_lint(blocks LIST(duck_block)) -> LIST(STRUCT(severity, message, element_order))
 	// Check for best practices and common issues
 	static void DbBlocksLintFun(DataChunk &args, ExpressionState &state, Vector &result);
 
-	// db_blocks_structure(blocks LIST(duck_block)) -> STRUCT(block_count, inline_count, heading_count, ...)
+	// duck_blocks_structure(blocks LIST(duck_block)) -> STRUCT(block_count, inline_count, heading_count, ...)
 	// Get document structure summary
 	static void DbBlocksStructureFun(DataChunk &args, ExpressionState &state, Vector &result);
 };

@@ -782,13 +782,13 @@ void PandocInlineConvert::Register(ExtensionLoader &loader) {
 	loader.RegisterFunction(ScalarFunction("pandoc_inlines_to_db_inlines", {LogicalType::VARCHAR}, duck_block_list_type,
 	                                       PandocInlinesToDbInlinesFun));
 
-	// db_inlines_to_pandoc(LIST(duck_block)) -> VARCHAR (JSON)
-	loader.RegisterFunction(
-	    ScalarFunction("db_inlines_to_pandoc", {duck_block_list_type}, LogicalType::VARCHAR, DbInlinesToPandocFun));
+	// duck_blocks_inlines_to_pandoc(LIST(duck_block)) -> VARCHAR (JSON)
+	loader.RegisterFunction(ScalarFunction("duck_blocks_inlines_to_pandoc", {duck_block_list_type},
+	                                       LogicalType::VARCHAR, DbInlinesToPandocFun));
 
-	// db_inlines_to_pandoc(LIST(LIST(duck_block))) -> VARCHAR (JSON) - auto-flattening
-	loader.RegisterFunction(ScalarFunction("db_inlines_to_pandoc", {duck_block_nested_list_type}, LogicalType::VARCHAR,
-	                                       DbInlinesToPandocNestedFun));
+	// duck_blocks_inlines_to_pandoc(LIST(LIST(duck_block))) -> VARCHAR (JSON) - auto-flattening
+	loader.RegisterFunction(ScalarFunction("duck_blocks_inlines_to_pandoc", {duck_block_nested_list_type},
+	                                       LogicalType::VARCHAR, DbInlinesToPandocNestedFun));
 
 	// pandoc_inlines_to_text(json VARCHAR) -> VARCHAR
 	loader.RegisterFunction(

@@ -84,7 +84,7 @@ void BlockTypes::Register(ExtensionLoader &loader) {
 ### Simple Scalar (single block → single block)
 
 ```cpp
-// Pattern for atomic constructors like db_heading()
+// Pattern for atomic constructors like duck_block_heading()
 void DocHeadingFun(DataChunk &args, ExpressionState &state, Vector &result) {
     auto &content_vec = args.data[0];
     auto &level_vec = args.data[1];
@@ -109,9 +109,9 @@ void DocHeadingFun(DataChunk &args, ExpressionState &state, Vector &result) {
 void RegisterBuilderFunctions(ExtensionLoader &loader) {
     auto doc_block_type = BlockTypes::DocBlockType();
 
-    // db_heading(content, level) -> doc_block
+    // duck_block_heading(content, level) -> doc_block
     auto heading_func = ScalarFunction(
-        "db_heading",
+        "duck_block_heading",
         {LogicalType::VARCHAR, LogicalType::INTEGER},
         doc_block_type,
         DocHeadingFun
@@ -123,7 +123,7 @@ void RegisterBuilderFunctions(ExtensionLoader &loader) {
 ### LIST-returning Scalar (for manipulation functions)
 
 ```cpp
-// Pattern for functions like db_blocks_filter
+// Pattern for functions like duck_blocks_filter
 void DocBlocksFilterFun(DataChunk &args, ExpressionState &state, Vector &result) {
     auto &blocks_vec = args.data[0];  // LIST(doc_block)
     auto &types_vec = args.data[1];   // LIST(VARCHAR)
@@ -157,29 +157,29 @@ void DocBlocksFilterFun(DataChunk &args, ExpressionState &state, Vector &result)
 
 **Issue**: DuckDB doesn't support true variadic functions. The API shows:
 ```sql
-db_document(child1, child2, child3, ...)  -- Not directly possible
+duck_blocks_document(child1, child2, child3, ...)  -- Not directly possible
 ```
 
 **Solution**: Use LIST parameter with SQL-side array construction:
 
 ```sql
 -- Actual API
-db_document([
-    db_heading('Title', 1),
-    db_paragraph('Content'),
-    db_section('Intro', 2, [...])
+duck_blocks_document([
+    duck_block_heading('Title', 1),
+    duck_block_paragraph('Content'),
+    duck_block_section('Intro', 2, [...])
 ])
 
 -- Or use helper that flattens nested lists
-db_assemble([
-    db_heading('Title', 1),
-    db_section('Intro', 2, [...])  -- Returns LIST, gets flattened
+duck_blocks_assemble([
+    duck_block_heading('Title', 1),
+    duck_block_section('Intro', 2, [...])  -- Returns LIST, gets flattened
 ])
 ```
 
 **Implementation**:
 ```cpp
-// db_assemble takes LIST(doc_block | LIST(doc_block)) and flattens
+// duck_blocks_assemble takes LIST(doc_block | LIST(doc_block)) and flattens
 void DocAssembleFun(DataChunk &args, ExpressionState &state, Vector &result) {
     auto &input_vec = args.data[0];  // LIST of blocks or nested lists
 
@@ -220,7 +220,7 @@ void FlattenBlocks(const Value &input, vector<Value> &output, int &order) {
 -- Use format strings instead of lambdas
 SELECT * FROM db_from_rows(
     (SELECT name, bio FROM people),
-    template := 'db_section({name}, 2, db_paragraph({bio}))'
+    template := 'duck_block_section({name}, 2, duck_block_paragraph({bio}))'
 );
 ```
 **Drawback**: Complex to parse/evaluate safely
@@ -229,7 +229,7 @@ SELECT * FROM db_from_rows(
 ```sql
 -- User defines a macro, we call it per row
 CREATE MACRO person_to_doc(name, bio) AS
-    db_section(name, 2, db_paragraph(bio));
+    duck_block_section(name, 2, duck_block_paragraph(bio));
 
 SELECT * FROM db_from_rows(
     (SELECT name, bio FROM people),
@@ -247,8 +247,8 @@ SELECT * FROM db_from_rows(
 ### Option D: Skip Lambda API, Use SQL Patterns
 ```sql
 -- Instead of db_from_rows, users write:
-SELECT db_assemble(list(
-    db_section(name, 2, [db_paragraph(bio)])
+SELECT duck_blocks_assemble(list(
+    duck_block_section(name, 2, [duck_block_paragraph(bio)])
 )) FROM people;
 ```
 **Recommendation**: Start with Option D (pure SQL patterns). Add Option B (macro support) if there's demand.
@@ -277,16 +277,16 @@ SELECT db_assemble(list(
 **Recommendation**: Provide both - strict versions that throw, and `try_*` versions that return NULL/error struct.
 
 ### 3. Table Function vs Scalar for Extraction
-**Question**: Should `db_blocks_headings()` be a table function or scalar returning LIST?
+**Question**: Should `duck_blocks_headings()` be a table function or scalar returning LIST?
 
 **Scalar (current design)**:
 ```sql
-SELECT unnest(db_blocks_headings(blocks)) FROM docs;
+SELECT unnest(duck_blocks_headings(blocks)) FROM docs;
 ```
 
 **Table function**:
 ```sql
-SELECT * FROM db_blocks_headings((SELECT blocks FROM docs WHERE id = 1));
+SELECT * FROM duck_blocks_headings((SELECT blocks FROM docs WHERE id = 1));
 ```
 
 **Recommendation**: Scalar returning LIST is more composable. Users can `unnest()` when needed.
@@ -329,23 +329,23 @@ src/
 3. Core tests
 
 ### Phase 2: Builders (Atomic)
-1. `db_heading`, `db_paragraph`, `db_code`, `db_list_block`, `db_table_block`
-2. `db_hr`, `db_metadata`, `db_image`, `db_raw`
+1. `duck_block_heading`, `duck_block_paragraph`, `duck_block_code`, `duck_block_list_block`, `db_table_block`
+2. `duck_block_hr`, `duck_block_metadata`, `duck_block_image`, `duck_block_raw`
 
 ### Phase 3: Builders (Assembly)
-1. `db_assemble` with flattening logic
-2. `db_section` (heading + children)
-3. `db_rebase_levels`, `db_with_toc`
+1. `duck_blocks_assemble` with flattening logic
+2. `duck_block_section` (heading + children)
+3. `duck_blocks_rebase_levels`, `db_with_toc`
 
 ### Phase 4: Extraction
-1. `db_blocks_to_text`
-2. `db_blocks_headings`, `db_blocks_toc`
-3. `db_blocks_code_blocks`, `db_blocks_links`
+1. `duck_blocks_to_text`
+2. `duck_blocks_headings`, `duck_blocks_toc`
+3. `duck_blocks_code_blocks`, `duck_blocks_links`
 
 ### Phase 5: Validation
-1. `db_blocks_validate`
-2. `db_blocks_lint`
-3. `db_blocks_stats`
+1. `duck_blocks_validate`
+2. `duck_blocks_lint`
+3. `duck_blocks_stats`
 
 ### Phase 6: Pandoc AST
 1. `pandoc_ast_to_blocks` (JSON parsing)
@@ -365,7 +365,7 @@ require duck_block_utils
 
 # Test filter
 query I
-SELECT len(db_blocks_filter(
+SELECT len(duck_blocks_filter(
     [
         {'block_type': 'heading', 'content': 'Title', 'level': 1, 'encoding': 'text', 'attributes': MAP{}, 'block_order': 0},
         {'block_type': 'paragraph', 'content': 'Text', 'level': NULL, 'encoding': 'text', 'attributes': MAP{}, 'block_order': 1}

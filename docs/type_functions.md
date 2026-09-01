@@ -154,7 +154,7 @@ duck_block_valid(elem duck_block) → BOOLEAN
 
 **Example:**
 ```sql
-SELECT duck_block_valid(db_heading('Title', 1));
+SELECT duck_block_valid(duck_block_heading('Title', 1));
 -- Returns: true
 
 SELECT duck_block_valid(duck_block('invalid_type', 'content'));
@@ -281,10 +281,10 @@ duck_block_attr(block duck_block, key VARCHAR) → VARCHAR
 
 **Example:**
 ```sql
-SELECT duck_block_attr(db_code('x=1', 'python'), 'language');
+SELECT duck_block_attr(duck_block_code('x=1', 'python'), 'language');
 -- Returns: 'python'
 
-SELECT duck_block_attr(db_link('Click', 'https://example.com'), 'href');
+SELECT duck_block_attr(duck_block_link('Click', 'https://example.com'), 'href');
 -- Returns: 'https://example.com'
 ```
 
@@ -312,7 +312,7 @@ duck_block_set_order(block duck_block, new_order INTEGER) → duck_block
 
 **Example:**
 ```sql
-SELECT duck_block_set_order(db_heading('Title', 1), 42);
+SELECT duck_block_set_order(duck_block_heading('Title', 1), 42);
 -- Returns heading with element_order=42
 ```
 
@@ -334,7 +334,7 @@ duck_block_set_content(block duck_block, new_content VARCHAR) → duck_block
 
 **Example:**
 ```sql
-SELECT duck_block_set_content(db_heading('Old', 1), 'New');
+SELECT duck_block_set_content(duck_block_heading('Old', 1), 'New');
 -- Returns heading with content='New'
 ```
 
@@ -356,7 +356,7 @@ duck_block_set_level(block duck_block, new_level INTEGER) → duck_block
 
 **Example:**
 ```sql
-SELECT duck_block_set_level(db_heading('Title', 1), 2);
+SELECT duck_block_set_level(duck_block_heading('Title', 1), 2);
 -- Returns heading with level=2
 ```
 

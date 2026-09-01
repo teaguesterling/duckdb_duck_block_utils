@@ -74,7 +74,7 @@ If using a Markdown parsing extension, convert parsed blocks:
 
 ```sql
 -- Assuming markdown extension returns similar struct
-SELECT db_assemble(list(
+SELECT duck_blocks_assemble(list(
     to_duck_block(parsed_block)
 ))
 FROM markdown_parse(my_markdown_text);
@@ -121,7 +121,7 @@ WITH parsed AS (
     SELECT json_each.value as item
     FROM json_each(my_json_array)
 )
-SELECT db_assemble(list(
+SELECT duck_blocks_assemble(list(
     duck_block(
         item->>'type',
         item->>'content',
@@ -156,16 +156,16 @@ The `duck_block` structure is designed to be compatible with Pandoc's AST. Here'
 
 ```sql
 -- Assuming Pandoc JSON AST structure
-SELECT db_assemble(list(
+SELECT duck_blocks_assemble(list(
     CASE block->>'t'
-        WHEN 'Header' THEN db_heading(
+        WHEN 'Header' THEN duck_block_heading(
             pandoc_inlines_to_text(block->'c'->2),
             (block->'c'->0)::INTEGER
         )
-        WHEN 'Para' THEN db_paragraph(
+        WHEN 'Para' THEN duck_block_paragraph(
             pandoc_inlines_to_text(block->'c')
         )
-        WHEN 'CodeBlock' THEN db_code(
+        WHEN 'CodeBlock' THEN duck_block_code(
             block->'c'->1,
             block->'c'->0->1->0
         )
@@ -194,7 +194,7 @@ CREATE TABLE document_elements (
 );
 
 -- Reconstruct document
-SELECT db_assemble(list(
+SELECT duck_blocks_assemble(list(
     duck_block(
         element_type,
         content,
@@ -252,7 +252,7 @@ WITH current_elements AS (
         AND event_type != 'delete'
     ORDER BY element_order, timestamp DESC
 )
-SELECT db_assemble(list(
+SELECT duck_blocks_assemble(list(
     to_duck_block(json_to_struct(element_data))
     ORDER BY element_order
 ))
@@ -280,8 +280,8 @@ SELECT json_object(
     'stats', (
         SELECT json_object(
             'block_count', len(blocks),
-            'heading_count', len(db_blocks_headings(blocks)),
-            'word_count', array_length(string_split(db_blocks_to_text(blocks), ' '))
+            'heading_count', len(duck_blocks_headings(blocks)),
+            'word_count', array_length(string_split(duck_blocks_to_text(blocks), ' '))
         )
     )
 )

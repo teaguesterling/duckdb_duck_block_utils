@@ -17,9 +17,9 @@
 // and say so. Consumers should assert agreement at test time rather than
 // trusting a synced submodule:
 //
-//     SELECT db_block_kinds();        -- ['block', 'inline', 'value']
-//     SELECT db_block_types();        -- every element_type name
-//     SELECT db_block_spec_version();
+//     SELECT duck_block_kind_names();        -- ['block', 'inline', 'value']
+//     SELECT duck_block_type_names();        -- every element_type name
+//     SELECT duck_block_spec_version();
 //
 // See docs/duck_blocks_spec.md for what each name means.
 // ============================================================================
@@ -105,7 +105,7 @@ struct DuckBlockVocabulary {
 	// Physical, NOT semantic: a table of contents and a section slicer must
 	// IGNORE pages, which is precisely what they cannot do when a reader fakes
 	// them as headings.
-	static constexpr const char *TYPE_PAGE = "page";
+	static constexpr const char *TYPE_PAGE = "page_break";
 	static constexpr const char *TYPE_LINEBLOCK = "lineblock";
 	static constexpr const char *TYPE_DEFLIST = "deflist";
 	static constexpr const char *TYPE_FIGURE = "figure";

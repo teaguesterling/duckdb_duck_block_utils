@@ -52,12 +52,12 @@ def main() -> int:
         return 0
 
     proc = subprocess.run(
-        [str(duckdb), "-noheader", "-list", "-c", "SELECT unnest(db_block_types());"],
+        [str(duckdb), "-noheader", "-list", "-c", "SELECT unnest(duck_block_type_names());"],
         capture_output=True,
         text=True,
     )
     if proc.returncode != 0:
-        print("FAIL: could not read db_block_types()\n" + proc.stderr.strip())
+        print("FAIL: could not read duck_block_type_names()\n" + proc.stderr.strip())
         return 1
     actual = {line.strip() for line in proc.stdout.splitlines() if line.strip()}
 
@@ -72,7 +72,7 @@ def main() -> int:
     undocumented = sorted(actual - documented)
     stale = sorted(documented - actual)
 
-    print(f"Checking {SPEC.relative_to(REPO)} against db_block_types()")
+    print(f"Checking {SPEC.relative_to(REPO)} against duck_block_type_names()")
     print(f"  build reports {len(actual)} element types; spec documents {len(documented)}")
 
     failed = False

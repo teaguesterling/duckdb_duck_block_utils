@@ -37,7 +37,7 @@ private:
 	// Converts nested Pandoc inline JSON to flat duck_block inline rows
 	static void PandocInlinesToDbInlinesFun(DataChunk &args, ExpressionState &state, Vector &result);
 
-	// db_inlines_to_pandoc(LIST(duck_block)) -> JSON
+	// duck_blocks_inlines_to_pandoc(LIST(duck_block)) -> JSON
 	// Converts flat duck_block inline rows back to nested Pandoc inline JSON
 	static void DbInlinesToPandocFun(DataChunk &args, ExpressionState &state, Vector &result);
 

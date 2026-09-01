@@ -26,17 +26,17 @@ PRAGMA duck_block_doc_macros;
 # ============================================================================
 
 query I
-SELECT count(*) > 0 FROM db_toc(parse_markdown_to_duck_blocks('# A' || chr(10) || chr(10) || '## B'));
+SELECT count(*) > 0 FROM duck_blocks_toc_rows(parse_markdown_to_duck_blocks('# A' || chr(10) || chr(10) || '## B'));
 ----
 true
 
 query T
-SELECT title FROM db_toc(parse_markdown_to_duck_blocks('# Overview' || chr(10) || chr(10) || 'body')) WHERE title = 'Overview';
+SELECT title FROM duck_blocks_toc_rows(parse_markdown_to_duck_blocks('# Overview' || chr(10) || chr(10) || 'body')) WHERE title = 'Overview';
 ----
 Overview
 
 query I
-SELECT db_get_section(parse_markdown_to_duck_blocks(
+SELECT duck_blocks_get_section(parse_markdown_to_duck_blocks(
   '# A' || chr(10) || chr(10) || 'body a' || chr(10) || chr(10) || '# B' || chr(10) || chr(10) || 'body b'), 'A')
   LIKE '%body a%';
 ----
@@ -44,14 +44,14 @@ true
 
 # the slice stops at the next same-level heading
 query I
-SELECT db_get_section(parse_markdown_to_duck_blocks(
+SELECT duck_blocks_get_section(parse_markdown_to_duck_blocks(
   '# A' || chr(10) || chr(10) || 'body a' || chr(10) || chr(10) || '# B' || chr(10) || chr(10) || 'body b'), 'A')
   LIKE '%body b%';
 ----
 false
 
 query I
-SELECT count(*) > 0 FROM db_sections_like(parse_markdown_to_duck_blocks(
+SELECT count(*) > 0 FROM duck_blocks_sections_like(parse_markdown_to_duck_blocks(
   '# A' || chr(10) || chr(10) || 'findme'), 'findme');
 ----
 true
@@ -59,14 +59,14 @@ true
 # doc_search honours output_format now -- the old inlined CASE silently fell
 # back to text for every format except text and ansi
 query I
-SELECT content LIKE '%pandoc-api-version%' FROM db_sections_like(parse_markdown_to_duck_blocks(
+SELECT content LIKE '%pandoc-api-version%' FROM duck_blocks_sections_like(parse_markdown_to_duck_blocks(
   '# A' || chr(10) || chr(10) || 'findme'), 'findme', output_format := 'pandoc') LIMIT 1;
 ----
 true
 
 # and an unsupported one raises rather than quietly returning text
 statement error
-SELECT content FROM db_sections_like(parse_markdown_to_duck_blocks(
+SELECT content FROM duck_blocks_sections_like(parse_markdown_to_duck_blocks(
   '# A' || chr(10) || chr(10) || 'findme'), 'findme', output_format := 'md');
 ----
 unsupported output_format
@@ -86,31 +86,31 @@ SELECT count(*) FROM profile_table('SELECT 100 AS num, ''val'' AS str');
 # ============================================================================
 
 statement error
-SELECT doc_render(db_paragraph('x'), 'text');
+SELECT doc_render(duck_block_paragraph('x'), 'text');
 ----
 Catalog Error
 
 # the direct calls it wrapped are the API
 query I
-SELECT db_blocks_to_text(db_paragraph([db_text('hello '), db_bold('world')]));
+SELECT duck_blocks_to_text(duck_block_paragraph([duck_block_text('hello '), duck_block_bold('world')]));
 ----
 hello world
 
 query I
-SELECT db_blocks_render_ansi(db_paragraph('T')) LIKE '%T%';
+SELECT duck_blocks_render_ansi(duck_block_paragraph('T')) LIKE '%T%';
 ----
 true
 
 # the section macros keep output_format, with the CASE inlined
 query I
-SELECT db_get_section(parse_markdown_to_duck_blocks(
+SELECT duck_blocks_get_section(parse_markdown_to_duck_blocks(
   '# A' || chr(10) || chr(10) || 'body a'), 'A', output_format := 'pandoc')
   LIKE '%pandoc-api-version%';
 ----
 true
 
 statement error
-SELECT db_get_section(parse_markdown_to_duck_blocks('# A'), 'A', output_format := 'md');
+SELECT duck_blocks_get_section(parse_markdown_to_duck_blocks('# A'), 'A', output_format := 'md');
 ----
 unsupported output_format
 
@@ -148,7 +148,7 @@ Catalog Error
 
 # ...and the doc_* query macros are renamed to db_*, freeing the doc_ prefix
 statement error
-SELECT count(*) FROM doc_toc(db_paragraph('x'));
+SELECT count(*) FROM doc_toc(duck_block_paragraph('x'));
 ----
 Catalog Error
 
@@ -159,29 +159,29 @@ SELECT count(*) FROM profile_table('SELECT 1 AS a');
 1
 
 query I
-SELECT db_ensure_extension('json');
+SELECT duck_block_ensure_extension('json');
 ----
 true
 
 # ============================================================================
-# REGRESSION: db_section is a BUILDER (six C++ overloads, title+level+children).
-# Naming the section-slicing macro db_section shadowed all six, so running the
-# pragma broke the builder. The query macro is db_get_section.
+# REGRESSION: duck_block_section is a BUILDER (six C++ overloads, title+level+children).
+# Naming the section-slicing macro duck_block_section shadowed all six, so running the
+# pragma broke the builder. The query macro is duck_blocks_get_section.
 # ============================================================================
 
 query I
-SELECT db_section('Title', 2)[1].element_type;
+SELECT duck_block_section('Title', 2)[1].element_type;
 ----
 heading
 
 query I
-SELECT db_section('Title', 2)[1].attributes['heading_level'];
+SELECT duck_block_section('Title', 2)[1].attributes['heading_level'];
 ----
 2
 
 # ...and the two coexist: builder and query macro, different names, both live
 query I
-SELECT db_get_section(parse_markdown_to_duck_blocks(
+SELECT duck_blocks_get_section(parse_markdown_to_duck_blocks(
   '# A' || chr(10) || chr(10) || 'body a'), 'A') LIKE '%body a%';
 ----
 true

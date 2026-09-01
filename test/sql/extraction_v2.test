@@ -5,191 +5,191 @@
 require duck_block_utils
 
 # ============================================================================
-# db_blocks_to_text Tests
+# duck_blocks_to_text Tests
 # ============================================================================
 
 # Test basic text extraction - verify it contains expected content
 query I
-SELECT length(db_blocks_to_text(db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph('Hello world'),
-    db_paragraph('Second paragraph')
+SELECT length(duck_blocks_to_text(duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Hello world'),
+    duck_block_paragraph('Second paragraph')
 ]))) > 0;
 ----
 true
 
 # Test text includes all blocks
 query I
-SELECT db_blocks_to_text(db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph('Hello world'),
-    db_paragraph('Second paragraph')
+SELECT duck_blocks_to_text(duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Hello world'),
+    duck_block_paragraph('Second paragraph')
 ])) LIKE '%Title%Hello world%Second paragraph%';
 ----
 true
 
 # Test with custom separator
 query I
-SELECT db_blocks_to_text(db_assemble([
-    db_paragraph('Line 1'),
-    db_paragraph('Line 2')
+SELECT duck_blocks_to_text(duck_blocks_assemble([
+    duck_block_paragraph('Line 1'),
+    duck_block_paragraph('Line 2')
 ]), ' | ');
 ----
 Line 1 | Line 2
 
 # Test that hr blocks are skipped
 query I
-SELECT db_blocks_to_text(db_assemble([
-    db_paragraph('Before'),
-    db_hr(),
-    db_paragraph('After')
+SELECT duck_blocks_to_text(duck_blocks_assemble([
+    duck_block_paragraph('Before'),
+    duck_block_hr(),
+    duck_block_paragraph('After')
 ])) LIKE '%Before%After%';
 ----
 true
 
 # Test that raw blocks are skipped
 query I
-SELECT db_blocks_to_text(db_assemble([
-    db_paragraph('Text'),
-    db_raw('<div>html</div>')
+SELECT duck_blocks_to_text(duck_blocks_assemble([
+    duck_block_paragraph('Text'),
+    duck_block_raw('<div>html</div>')
 ])) = 'Text';
 ----
 true
 
 # Test empty result for empty list
 query I
-SELECT db_blocks_to_text([]) = '';
+SELECT duck_blocks_to_text([]) = '';
 ----
 true
 
 # ============================================================================
-# db_blocks_headings Tests
+# duck_blocks_headings Tests
 # ============================================================================
 
 # Test extracting headings
 query I
-SELECT len(db_blocks_headings(db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph('Text'),
-    db_heading(2, 'Section 1'),
-    db_paragraph('More text'),
-    db_heading(2, 'Section 2')
+SELECT len(duck_blocks_headings(duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Text'),
+    duck_block_heading(2, 'Section 1'),
+    duck_block_paragraph('More text'),
+    duck_block_heading(2, 'Section 2')
 ])));
 ----
 3
 
 # Test heading structure - level
 query I
-SELECT db_blocks_headings(db_heading(1, 'Title'))[1].level;
+SELECT duck_blocks_headings(duck_block_heading(1, 'Title'))[1].level;
 ----
 1
 
 # Test heading structure - title
 query I
-SELECT db_blocks_headings(db_heading(2, 'My Title'))[1].title;
+SELECT duck_blocks_headings(duck_block_heading(2, 'My Title'))[1].title;
 ----
 My Title
 
 # Test heading structure - element_order
 query I
-SELECT db_blocks_headings(db_assemble([
-    db_heading(1, 'First'),
-    db_paragraph('Text'),
-    db_heading(2, 'Second')
+SELECT duck_blocks_headings(duck_blocks_assemble([
+    duck_block_heading(1, 'First'),
+    duck_block_paragraph('Text'),
+    duck_block_heading(2, 'Second')
 ]))[2].element_order;
 ----
 2
 
 # Test non-headings are excluded
 query I
-SELECT len(db_blocks_headings(db_assemble([
-    db_paragraph('Text'),
-    db_code('py', 'code'),
-    db_hr()
+SELECT len(duck_blocks_headings(duck_blocks_assemble([
+    duck_block_paragraph('Text'),
+    duck_block_code('py', 'code'),
+    duck_block_hr()
 ])));
 ----
 0
 
 # ============================================================================
-# db_blocks_code_blocks Tests
+# duck_blocks_code_blocks Tests
 # ============================================================================
 
 # Test extracting code blocks
 query I
-SELECT len(db_blocks_code_blocks(db_assemble([
-    db_paragraph('Intro'),
-    db_code('python', 'print(1)'),
-    db_paragraph('More text'),
-    db_code('bash', 'echo "hi"')
+SELECT len(duck_blocks_code_blocks(duck_blocks_assemble([
+    duck_block_paragraph('Intro'),
+    duck_block_code('python', 'print(1)'),
+    duck_block_paragraph('More text'),
+    duck_block_code('bash', 'echo "hi"')
 ])));
 ----
 2
 
 # Test code block structure - language
 query I
-SELECT db_blocks_code_blocks(db_code('python', 'x=1'))[1].language;
+SELECT duck_blocks_code_blocks(duck_block_code('python', 'x=1'))[1].language;
 ----
 python
 
 # Test code block structure - content
 query I
-SELECT db_blocks_code_blocks(db_code('py', 'print("hello")'))[1].content;
+SELECT duck_blocks_code_blocks(duck_block_code('py', 'print("hello")'))[1].content;
 ----
 print("hello")
 
 # Test code without language
 query I
-SELECT db_blocks_code_blocks(db_code('plain code'))[1].language;
+SELECT duck_blocks_code_blocks(duck_block_code('plain code'))[1].language;
 ----
 (empty)
 
 # Test non-code blocks are excluded
 query I
-SELECT len(db_blocks_code_blocks(db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph('Text')
+SELECT len(duck_blocks_code_blocks(duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Text')
 ])));
 ----
 0
 
 # ============================================================================
-# db_blocks_stats Tests
+# duck_blocks_stats Tests
 # ============================================================================
 
 # Test stats aggregation
 query I
-SELECT len(db_blocks_stats(db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph('Text'),
-    db_paragraph('More text'),
-    db_code('py', 'x=1')
+SELECT len(duck_blocks_stats(duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Text'),
+    duck_block_paragraph('More text'),
+    duck_block_code('py', 'x=1')
 ])));
 ----
 3
 
 # Test stats counts correctly
 query I
-SELECT db_blocks_stats(db_assemble([
-    db_paragraph('A'),
-    db_paragraph('BB'),
-    db_paragraph('CCC')
+SELECT duck_blocks_stats(duck_blocks_assemble([
+    duck_block_paragraph('A'),
+    duck_block_paragraph('BB'),
+    duck_block_paragraph('CCC')
 ]))[1].count;
 ----
 3
 
 # Test total content length
 query I
-SELECT db_blocks_stats(db_assemble([
-    db_paragraph('A'),
-    db_paragraph('BB'),
-    db_paragraph('CCC')
+SELECT duck_blocks_stats(duck_blocks_assemble([
+    duck_block_paragraph('A'),
+    duck_block_paragraph('BB'),
+    duck_block_paragraph('CCC')
 ]))[1].total_content_length;
 ----
 6
 
 # Test empty list returns empty stats
 query I
-SELECT len(db_blocks_stats([]));
+SELECT len(duck_blocks_stats([]));
 ----
 0
 
@@ -199,132 +199,132 @@ SELECT len(db_blocks_stats([]));
 
 # Test extracting headings from a complex document
 query I
-SELECT len(db_blocks_headings(db_assemble([
-    db_metadata('title: Test'),
-    db_heading(1, 'Introduction'),
-    db_paragraph('Welcome'),
-    db_heading(2, 'Chapter 1'),
-    db_paragraph('Content'),
-    db_heading(2, 'Chapter 2'),
-    db_code('py', 'example')
+SELECT len(duck_blocks_headings(duck_blocks_assemble([
+    duck_block_metadata('title: Test'),
+    duck_block_heading(1, 'Introduction'),
+    duck_block_paragraph('Welcome'),
+    duck_block_heading(2, 'Chapter 1'),
+    duck_block_paragraph('Content'),
+    duck_block_heading(2, 'Chapter 2'),
+    duck_block_code('py', 'example')
 ])));
 ----
 3
 
 # Test text extraction from assembled document
 query I
-SELECT length(db_blocks_to_text(db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph('Hello'),
-    db_paragraph('World')
+SELECT length(duck_blocks_to_text(duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Hello'),
+    duck_block_paragraph('World')
 ]))) > 0;
 ----
 true
 
 # ============================================================================
-# db_blocks_toc Tests
+# duck_blocks_toc Tests
 # ============================================================================
 
 # Test TOC generation from headings
 query I
-SELECT len(db_blocks_toc(db_assemble([
-    db_heading(1, 'Introduction'),
-    db_paragraph('Text'),
-    db_heading(2, 'Chapter 1'),
-    db_heading(3, 'Section 1.1'),
-    db_heading(2, 'Chapter 2')
+SELECT len(duck_blocks_toc(duck_blocks_assemble([
+    duck_block_heading(1, 'Introduction'),
+    duck_block_paragraph('Text'),
+    duck_block_heading(2, 'Chapter 1'),
+    duck_block_heading(3, 'Section 1.1'),
+    duck_block_heading(2, 'Chapter 2')
 ])));
 ----
 4
 
 # Test TOC entry structure - level
 query I
-SELECT db_blocks_toc(db_heading(1, 'Title'))[1].level;
+SELECT duck_blocks_toc(duck_block_heading(1, 'Title'))[1].level;
 ----
 1
 
 # Test TOC entry structure - title
 query I
-SELECT db_blocks_toc(db_heading(2, 'My Section'))[1].title;
+SELECT duck_blocks_toc(duck_block_heading(2, 'My Section'))[1].title;
 ----
 My Section
 
 # Test TOC entry structure - indent (relative to min level)
 query I
-SELECT db_blocks_toc(db_assemble([
-    db_heading(2, 'Chapter'),
-    db_heading(3, 'Section')
+SELECT duck_blocks_toc(duck_blocks_assemble([
+    duck_block_heading(2, 'Chapter'),
+    duck_block_heading(3, 'Section')
 ]))[1].indent;
 ----
 0
 
 query I
-SELECT db_blocks_toc(db_assemble([
-    db_heading(2, 'Chapter'),
-    db_heading(3, 'Section')
+SELECT duck_blocks_toc(duck_blocks_assemble([
+    duck_block_heading(2, 'Chapter'),
+    duck_block_heading(3, 'Section')
 ]))[2].indent;
 ----
 1
 
 # Test empty list returns empty TOC
 query I
-SELECT len(db_blocks_toc([]));
+SELECT len(duck_blocks_toc([]));
 ----
 0
 
 # Test TOC with only paragraphs returns empty
 query I
-SELECT len(db_blocks_toc(db_assemble([db_paragraph('Text'), db_paragraph('More')])));
+SELECT len(duck_blocks_toc(duck_blocks_assemble([duck_block_paragraph('Text'), duck_block_paragraph('More')])));
 ----
 0
 
 # ============================================================================
-# db_blocks_links Tests
+# duck_blocks_links Tests
 # ============================================================================
 
 # Test extracting links from inline link elements
 query I
-SELECT len(db_blocks_links(db_assemble([
-    db_link('https://example.com', 'Click here'),
-    db_paragraph('Text'),
-    db_link('https://test.com', 'Another link')
+SELECT len(duck_blocks_links(duck_blocks_assemble([
+    duck_block_link('https://example.com', 'Click here'),
+    duck_block_paragraph('Text'),
+    duck_block_link('https://test.com', 'Another link')
 ])));
 ----
 2
 
 # Test link structure - href
 query I
-SELECT db_blocks_links(db_link('https://example.com', 'Click'))[1].href;
+SELECT duck_blocks_links(duck_block_link('https://example.com', 'Click'))[1].href;
 ----
 https://example.com
 
 # Test link structure - text
 query I
-SELECT db_blocks_links(db_link('https://example.com', 'Click me'))[1].text;
+SELECT duck_blocks_links(duck_block_link('https://example.com', 'Click me'))[1].text;
 ----
 Click me
 
 # Test extracting images as links
 query I
-SELECT len(db_blocks_links(db_inline_image('/path/to/img.png', 'Alt text')));
+SELECT len(duck_blocks_links(duck_block_inline_image('/path/to/img.png', 'Alt text')));
 ----
 1
 
 # Test image link href is src
 query I
-SELECT db_blocks_links(db_inline_image('/img.png', 'Alt'))[1].href;
+SELECT duck_blocks_links(duck_block_inline_image('/img.png', 'Alt'))[1].href;
 ----
 /img.png
 
 # Test empty list returns no links
 query I
-SELECT len(db_blocks_links([]));
+SELECT len(duck_blocks_links([]));
 ----
 0
 
 # Test paragraphs without links return empty
 query I
-SELECT len(db_blocks_links(db_assemble([db_paragraph('Just text'), db_heading(1, 'Title')])));
+SELECT len(duck_blocks_links(duck_blocks_assemble([duck_block_paragraph('Just text'), duck_block_heading(1, 'Title')])));
 ----
 0
 
@@ -354,86 +354,86 @@ CREATE MACRO webbed_h2() AS ([
 
 # Title falls back to the inline children (was '')
 query I
-SELECT db_blocks_headings(webbed_h2())[1].title;
+SELECT duck_blocks_headings(webbed_h2())[1].title;
 ----
 The mrconfig format
 
 # The heading level still comes from the heading_level attribute
 query I
-SELECT db_blocks_headings(webbed_h2())[1].level;
+SELECT duck_blocks_headings(webbed_h2())[1].level;
 ----
 2
 
 # Inline children are not mistaken for headings of their own
 query I
-SELECT len(db_blocks_headings(webbed_h2()));
+SELECT len(duck_blocks_headings(webbed_h2()));
 ----
 1
 
-# db_blocks_toc gets the same fallback (was a blank TOC line)
+# duck_blocks_toc gets the same fallback (was a blank TOC line)
 query I
-SELECT db_blocks_toc(webbed_h2())[1].title;
+SELECT duck_blocks_toc(webbed_h2())[1].title;
 ----
 The mrconfig format
 
 # Inline children belong to their parent block, so the text joins without a
 # separator between them
 query I
-SELECT db_blocks_to_text(webbed_h2(), ' ');
+SELECT duck_blocks_to_text(webbed_h2(), ' ');
 ----
 The mrconfig format
 
 # Same heading built with this extension's own builders
 query I
-SELECT db_blocks_headings(db_heading(2, [db_text('The '), db_inline_code('mrconfig'), db_text(' format')]))[1].title;
+SELECT duck_blocks_headings(duck_block_heading(2, [duck_block_text('The '), duck_block_inline_code('mrconfig'), duck_block_text(' format')]))[1].title;
 ----
 The mrconfig format
 
 # Nested inline containers contribute their children's text
 query I
-SELECT db_blocks_headings(db_heading(3, [db_text('A '), db_bold([db_text('bold '), db_italic('word')])]))[1].title;
+SELECT duck_blocks_headings(duck_block_heading(3, [duck_block_text('A '), duck_block_bold([duck_block_text('bold '), duck_block_italic('word')])]))[1].title;
 ----
 A bold word
 
 # A populated content field still wins over any children
 query I
-SELECT db_blocks_headings(db_heading(2, 'Plain title'))[1].title;
+SELECT duck_blocks_headings(duck_block_heading(2, 'Plain title'))[1].title;
 ----
 Plain title
 
 # Headings with inline children are still counted and ordered correctly
 query I
-SELECT len(db_blocks_headings(db_assemble([
-    db_heading(1, [db_text('One')]),
-    db_paragraph([db_text('body '), db_inline_code('text')]),
-    db_heading(2, [db_text('Two')])
+SELECT len(duck_blocks_headings(duck_blocks_assemble([
+    duck_block_heading(1, [duck_block_text('One')]),
+    duck_block_paragraph([duck_block_text('body '), duck_block_inline_code('text')]),
+    duck_block_heading(2, [duck_block_text('Two')])
 ])));
 ----
 2
 
 # A paragraph's inline children read as one run of text
 query I
-SELECT db_blocks_to_text(db_paragraph([db_text('Run '), db_inline_code('make install'), db_text(' first.')]));
+SELECT duck_blocks_to_text(duck_block_paragraph([duck_block_text('Run '), duck_block_inline_code('make install'), duck_block_text(' first.')]));
 ----
 Run make install first.
 
 # Whitespace inlines contribute their whitespace
 query I
-SELECT db_blocks_to_text(db_paragraph([db_text('a'), db_space(), db_text('b')]));
+SELECT duck_blocks_to_text(duck_block_paragraph([duck_block_text('a'), duck_block_space(), duck_block_text('b')]));
 ----
 a b
 
 # Blocks are still joined by the separator, inline children are not
 query I
-SELECT db_blocks_to_text(db_assemble([
-    db_paragraph([db_text('first '), db_bold('one')]),
-    db_paragraph([db_text('second '), db_bold('two')])
+SELECT duck_blocks_to_text(duck_blocks_assemble([
+    duck_block_paragraph([duck_block_text('first '), duck_block_bold('one')]),
+    duck_block_paragraph([duck_block_text('second '), duck_block_bold('two')])
 ]), ' | ');
 ----
 first one | second two
 
 # A bare inline run with no parent block is still one unit of text
 query I
-SELECT db_blocks_to_text(db_link('https://example.com', 'Click here'));
+SELECT duck_blocks_to_text(duck_block_link('https://example.com', 'Click here'));
 ----
 Click here

@@ -8,10 +8,10 @@ Practical examples and common patterns for using `duck_block_utils`.
 
 ```sql
 -- Create documentation for each table
-SELECT db_assemble([
-    db_heading(2, table_name),
-    db_paragraph('Columns: ' || column_count::VARCHAR),
-    db_code('sql',
+SELECT duck_blocks_assemble([
+    duck_block_heading(2, table_name),
+    duck_block_paragraph('Columns: ' || column_count::VARCHAR),
+    duck_block_code('sql',
         'SELECT * FROM ' || table_name || ' LIMIT 10;'
     )
 ])
@@ -32,13 +32,13 @@ WITH endpoints AS (
     UNION ALL
     SELECT 'GET /users/:id', 'Get user by ID'
 )
-SELECT db_assemble(list(block ORDER BY ord))
+SELECT duck_blocks_assemble(list(block ORDER BY ord))
 FROM (
-    SELECT 1 as ord, db_heading(1, 'API Reference') as block
+    SELECT 1 as ord, duck_block_heading(1, 'API Reference') as block
     UNION ALL
     SELECT
         row_number() OVER () + 1,
-        db_section(3, endpoint, [db_paragraph(description)])
+        duck_block_section(3, endpoint, [duck_block_paragraph(description)])
     FROM endpoints
 );
 ```
@@ -56,10 +56,10 @@ WITH chapters AS (
     UNION ALL
     SELECT 3, blocks FROM chapter3
 )
-SELECT db_assemble(
+SELECT duck_blocks_assemble(
     list(
-        db_concat(
-            db_section('Chapter ' || chapter_num::VARCHAR, 1, []),
+        duck_blocks_concat(
+            duck_block_section('Chapter ' || chapter_num::VARCHAR, 1, []),
             content
         )
     )
@@ -72,14 +72,14 @@ ORDER BY chapter_num;
 
 ```sql
 -- Main document with embedded subdocuments
-SELECT db_assemble(db_concat(
+SELECT duck_blocks_assemble(duck_blocks_concat(
     flatten([
-        db_heading(1, 'Main Report'),
-        db_paragraph('This report contains multiple sections.')
+        duck_block_heading(1, 'Main Report'),
+        duck_block_paragraph('This report contains multiple sections.')
     ]),
-    db_concat(
-        db_rebase_levels(section1_blocks, 1),  -- h1→h2, h2→h3
-        db_rebase_levels(section2_blocks, 1)
+    duck_blocks_concat(
+        duck_blocks_rebase_levels(section1_blocks, 1),  -- h1→h2, h2→h3
+        duck_blocks_rebase_levels(section2_blocks, 1)
     )
 ));
 ```
@@ -91,7 +91,7 @@ SELECT db_assemble(db_concat(
 ```sql
 SELECT
     repeat('  ', level - 1) || '- ' || title as toc_line
-FROM UNNEST(db_blocks_headings(my_doc)) AS t(level, title, id, element_order)
+FROM UNNEST(duck_blocks_headings(my_doc)) AS t(level, title, id, element_order)
 ORDER BY element_order;
 ```
 
@@ -102,7 +102,7 @@ SELECT
     language,
     content,
     element_order
-FROM UNNEST(db_blocks_code_blocks(my_doc))
+FROM UNNEST(duck_blocks_code_blocks(my_doc))
 WHERE language = 'python';
 ```
 
@@ -114,7 +114,7 @@ SELECT
     count,
     round(avg_content_length, 1) as avg_length,
     total_content_length
-FROM UNNEST(db_blocks_stats(my_doc))
+FROM UNNEST(duck_blocks_stats(my_doc))
 ORDER BY count DESC;
 ```
 
@@ -123,7 +123,7 @@ ORDER BY count DESC;
 ```sql
 SELECT
     array_length(
-        string_split(db_blocks_to_text(my_doc), ' ')
+        string_split(duck_blocks_to_text(my_doc), ' ')
     ) as word_count;
 ```
 
@@ -132,7 +132,7 @@ SELECT
 ### Remove Empty Paragraphs
 
 ```sql
-SELECT db_blocks_reorder(
+SELECT duck_blocks_reorder(
     list_filter(
         my_doc,
         block -> NOT (
@@ -146,13 +146,13 @@ SELECT db_blocks_reorder(
 ### Extract Only Text Content
 
 ```sql
-SELECT db_blocks_filter(my_doc, ['heading', 'paragraph', 'blockquote']);
+SELECT duck_blocks_filter(my_doc, ['heading', 'paragraph', 'blockquote']);
 ```
 
 ### Remove Metadata and Horizontal Rules
 
 ```sql
-SELECT db_blocks_exclude(my_doc, ['metadata', 'hr', 'raw']);
+SELECT duck_blocks_exclude(my_doc, ['metadata', 'hr', 'raw']);
 ```
 
 ### Update All Code Block Languages
@@ -177,7 +177,7 @@ SELECT id, title
 FROM documents
 WHERE EXISTS (
     SELECT 1
-    FROM UNNEST(db_blocks_headings(blocks)) AS h
+    FROM UNNEST(duck_blocks_headings(blocks)) AS h
     WHERE h.title ILIKE '%introduction%'
 );
 ```
@@ -189,7 +189,7 @@ SELECT id, title
 FROM documents
 WHERE EXISTS (
     SELECT 1
-    FROM UNNEST(db_blocks_code_blocks(blocks)) AS c
+    FROM UNNEST(duck_blocks_code_blocks(blocks)) AS c
     WHERE c.language = 'python'
 );
 ```
@@ -200,7 +200,7 @@ WHERE EXISTS (
 SELECT
     id,
     title,
-    len(db_blocks_headings(blocks)) as heading_count
+    len(duck_blocks_headings(blocks)) as heading_count
 FROM documents
 ORDER BY heading_count DESC;
 ```
@@ -215,15 +215,15 @@ WITH sales_data AS (
     FROM sales
     GROUP BY region
 )
-SELECT db_assemble([
-    db_heading(1, 'Sales Report'),
-    db_metadata('generated: ' || current_date::VARCHAR),
-    db_heading(2, 'Summary'),
-    db_paragraph('Total regions: ' || COUNT(*)::VARCHAR),
-    db_heading(2, 'By Region')
+SELECT duck_blocks_assemble([
+    duck_block_heading(1, 'Sales Report'),
+    duck_block_metadata('generated: ' || current_date::VARCHAR),
+    duck_block_heading(2, 'Summary'),
+    duck_block_paragraph('Total regions: ' || COUNT(*)::VARCHAR),
+    duck_block_heading(2, 'By Region')
 ] || list(
-    db_section(3, region, [
-        db_paragraph('Total: $' || total::VARCHAR)
+    duck_block_section(3, region, [
+        duck_block_paragraph('Total: $' || total::VARCHAR)
     ])
 ))
 FROM sales_data;
@@ -232,12 +232,12 @@ FROM sales_data;
 ### Convert Table to Document
 
 ```sql
-SELECT db_assemble([
-    db_heading(1, 'User Directory')
+SELECT duck_blocks_assemble([
+    duck_block_heading(1, 'User Directory')
 ] || list(
-    db_section(2, name, [
-        db_paragraph('Email: ' || email),
-        db_paragraph('Role: ' || role)
+    duck_block_section(2, name, [
+        duck_block_paragraph('Email: ' || email),
+        duck_block_paragraph('Role: ' || role)
     ])
     ORDER BY name
 ))
@@ -251,11 +251,11 @@ FROM users;
 ```sql
 -- Create a paragraph with formatted inline content
 SELECT flatten([
-    db_text('Visit '),
-    db_link('https://example.com', 'our website'),
-    db_text(' or email '),
-    db_link('mailto:support@example.com', 'support@example.com'),
-    db_text('.')
+    duck_block_text('Visit '),
+    duck_block_link('https://example.com', 'our website'),
+    duck_block_text(' or email '),
+    duck_block_link('mailto:support@example.com', 'support@example.com'),
+    duck_block_text('.')
 ]);
 ```
 
@@ -263,8 +263,8 @@ SELECT flatten([
 
 ```sql
 SELECT [
-    db_link(
-        db_inline_image(
+    duck_block_link(
+        duck_block_inline_image(
             'https://github.com/' || repo || '/actions/workflows/ci.yml/badge.svg',
             'CI Status'
         ).content,
@@ -284,7 +284,7 @@ SELECT
     element_type,
     level,
     content
-FROM UNNEST(db_assemble(my_blocks))
+FROM UNNEST(duck_blocks_assemble(my_blocks))
 ORDER BY element_order;
 ```
 
@@ -292,14 +292,14 @@ ORDER BY element_order;
 
 ```sql
 -- Assuming JSON with {type, text, heading_level} structure
-SELECT db_assemble(list(
+SELECT duck_blocks_assemble(list(
     CASE json_data->>'type'
-        WHEN 'heading' THEN db_heading(
+        WHEN 'heading' THEN duck_block_heading(
             (json_data->>'heading_level')::INTEGER,
             json_data->>'text'
         )
-        WHEN 'paragraph' THEN db_paragraph(json_data->>'text')
-        WHEN 'code' THEN db_code(
+        WHEN 'paragraph' THEN duck_block_paragraph(json_data->>'text')
+        WHEN 'code' THEN duck_block_code(
             json_data->>'language',
             json_data->>'text'
         )
@@ -365,7 +365,7 @@ SELECT
     doc_id,
     h.*
 FROM documents,
-LATERAL UNNEST(db_blocks_headings(blocks)) AS h;
+LATERAL UNNEST(duck_blocks_headings(blocks)) AS h;
 
 -- Query headings efficiently
 SELECT * FROM document_headings WHERE doc_id = 123;
@@ -376,7 +376,7 @@ SELECT * FROM document_headings WHERE doc_id = 123;
 ```sql
 -- Add computed columns for common queries
 ALTER TABLE documents ADD COLUMN heading_count INTEGER;
-UPDATE documents SET heading_count = len(db_blocks_headings(blocks));
+UPDATE documents SET heading_count = len(duck_blocks_headings(blocks));
 ```
 
 ## Rendering to the Terminal
@@ -394,14 +394,14 @@ WITH data AS (
     SELECT to_json(list(t))::VARCHAR AS j
     FROM (SELECT job, status FROM job_runs ORDER BY job) t
 )
-SELECT db_blocks_render_ansi(
-    db_heading(1, 'Nightly Run')
-    || db_paragraph([db_text('Pipeline finished with '), db_bold('0 errors'), db_text('.')])
-    || [db_json_to_table_block(j)],
+SELECT duck_blocks_render_ansi(
+    duck_block_heading(1, 'Nightly Run')
+    || duck_block_paragraph([duck_block_text('Pipeline finished with '), duck_block_bold('0 errors'), duck_block_text('.')])
+    || [duck_block_json_to_table(j)],
     72
 ) FROM data;
 
 -- One-liner: pretty-print a query from the shell
 -- duckdb -noheader -list -c "LOAD duck_block_utils; PRAGMA duck_block_render;
---   SELECT rendered FROM db_render_query('SELECT * FROM range(5)');"
+--   SELECT rendered FROM duck_blocks_render_query('SELECT * FROM range(5)');"
 ```

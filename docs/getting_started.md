@@ -17,24 +17,24 @@ LOAD duck_block_utils;
 Let's create a simple document with a heading and some paragraphs:
 
 ```sql
-SELECT db_assemble([
-    db_heading(1, 'Welcome'),
-    db_paragraph('This is my first document.'),
-    db_paragraph('It has multiple paragraphs.')
+SELECT duck_blocks_assemble([
+    duck_block_heading(1, 'Welcome'),
+    duck_block_paragraph('This is my first document.'),
+    duck_block_paragraph('It has multiple paragraphs.')
 ]);
 ```
 
-The `db_assemble` function takes a list of blocks and assigns sequential `element_order` values (0, 1, 2, ...).
+The `duck_blocks_assemble` function takes a list of blocks and assigns sequential `element_order` values (0, 1, 2, ...).
 
 > **Note:** All builder functions follow a "config-first, content-last" pattern.
-> For example: `db_heading(level, content)`, `db_code(language, content)`.
+> For example: `duck_block_heading(level, content)`, `duck_block_code(language, content)`.
 
 ## Understanding duck_block
 
 Both blocks and inlines use the unified `duck_block` type, distinguished by the `kind` field:
 
 ```sql
-SELECT db_heading(1, 'Hello');
+SELECT duck_block_heading(1, 'Hello');
 ```
 
 Output (returns LIST with one element):
@@ -53,9 +53,9 @@ Output (returns LIST with one element):
 You can access fields using dot notation (index first since builders return lists):
 
 ```sql
-SELECT db_heading(1, 'Hello')[1].element_type;  -- 'heading'
-SELECT db_heading(1, 'Hello')[1].attributes['heading_level'];  -- '1'
-SELECT db_heading(1, 'Hello')[1].kind;          -- 'block'
+SELECT duck_block_heading(1, 'Hello')[1].element_type;  -- 'heading'
+SELECT duck_block_heading(1, 'Hello')[1].attributes['heading_level'];  -- '1'
+SELECT duck_block_heading(1, 'Hello')[1].kind;          -- 'block'
 ```
 
 ## Building Rich Documents
@@ -63,13 +63,13 @@ SELECT db_heading(1, 'Hello')[1].kind;          -- 'block'
 ### Code Blocks
 
 ```sql
-SELECT db_code('sql', 'SELECT * FROM users;');
+SELECT duck_block_code('sql', 'SELECT * FROM users;');
 ```
 
 The language is stored in the `attributes` map:
 
 ```sql
-SELECT db_code('python', 'print("hi")')[1].attributes['language'];
+SELECT duck_block_code('python', 'print("hi")')[1].attributes['language'];
 -- Returns: 'python'
 ```
 
@@ -77,28 +77,28 @@ SELECT db_code('python', 'print("hi")')[1].attributes['language'];
 
 ```sql
 -- Unordered list
-SELECT db_list_block(['Item 1', 'Item 2', 'Item 3']);
+SELECT duck_block_list_block(['Item 1', 'Item 2', 'Item 3']);
 
 -- Ordered list
-SELECT db_list_block(true, ['First', 'Second', 'Third']);
+SELECT duck_block_list_block(true, ['First', 'Second', 'Third']);
 
 -- Rich list items with inline content
-SELECT db_list_block([
-    db_list_item([db_link('https://github.com', 'GitHub'), db_text(' - code hosting')]),
-    db_list_item([db_bold('DuckDB'), db_text(' - analytics')])
+SELECT duck_block_list_block([
+    duck_block_list_item([duck_block_link('https://github.com', 'GitHub'), duck_block_text(' - code hosting')]),
+    duck_block_list_item([duck_block_bold('DuckDB'), duck_block_text(' - analytics')])
 ]);
 ```
 
 ### Images
 
 ```sql
-SELECT db_image('/path/to/image.png', 'Alt text', 'Image title');
+SELECT duck_block_image('/path/to/image.png', 'Alt text', 'Image title');
 ```
 
 ### Metadata (YAML Frontmatter)
 
 ```sql
-SELECT db_metadata('title: My Document
+SELECT duck_block_metadata('title: My Document
 author: Jane Doe
 date: 2024-01-15');
 ```
@@ -108,14 +108,14 @@ date: 2024-01-15');
 Inline elements have `kind='inline'` and are used for rich text formatting:
 
 ```sql
-SELECT db_text('Hello world');
+SELECT duck_block_text('Hello world');
 -- Returns: {kind: 'inline', element_type: 'text', content: 'Hello world', level: 1, ...}
 
-SELECT db_link('https://example.com', 'Click here');
+SELECT duck_block_link('https://example.com', 'Click here');
 -- Returns: [{kind: 'inline', element_type: 'link', content: 'Click here',
 --            attributes: {href: 'https://example.com'}, ...}]
 
-SELECT db_bold('Important');
+SELECT duck_block_bold('Important');
 -- Returns: {kind: 'inline', element_type: 'bold', content: 'Important', ...}
 ```
 
@@ -125,63 +125,63 @@ Combine inline elements into arrays:
 
 ```sql
 SELECT [
-    db_text('Click '),
-    db_link('https://example.com', 'here'),
-    db_text(' to learn more about '),
-    db_bold('DuckDB'),
-    db_text('.')
+    duck_block_text('Click '),
+    duck_block_link('https://example.com', 'here'),
+    duck_block_text(' to learn more about '),
+    duck_block_bold('DuckDB'),
+    duck_block_text('.')
 ];
 ```
 
 ## Creating Sections
 
-The `db_section` function creates a heading with child content:
+The `duck_block_section` function creates a heading with child content:
 
 ```sql
-SELECT db_section(1, 'Introduction', [
-    db_paragraph('Welcome to the guide.'),
-    db_paragraph('Let us begin.')
+SELECT duck_block_section(1, 'Introduction', [
+    duck_block_paragraph('Welcome to the guide.'),
+    duck_block_paragraph('Let us begin.')
 ]);
 ```
 
 This returns a list of 3 blocks: the heading plus two paragraphs.
 
-## Generic Containers (db_div)
+## Generic Containers (duck_block_div)
 
 Create containers to group content with optional id/class attributes:
 
 ```sql
 -- Simple container
-SELECT db_div([db_paragraph('Content 1'), db_paragraph('Content 2')]);
+SELECT duck_block_div([duck_block_paragraph('Content 1'), duck_block_paragraph('Content 2')]);
 
 -- Container with id and class
-SELECT db_div('sidebar', 'widget', [
-    db_heading(3, 'Related'),
-    db_list_block(['A', 'B', 'C'])
+SELECT duck_block_div('sidebar', 'widget', [
+    duck_block_heading(3, 'Related'),
+    duck_block_list_block(['A', 'B', 'C'])
 ]);
 ```
 
 ## Combining Documents
 
-### Using db_concat
+### Using duck_blocks_concat
 
 Concatenate two block lists:
 
 ```sql
-SELECT db_assemble(db_concat(
-    db_section(1, 'Part 1', [db_paragraph('Content 1')]),
-    db_section(1, 'Part 2', [db_paragraph('Content 2')])
+SELECT duck_blocks_assemble(duck_blocks_concat(
+    duck_block_section(1, 'Part 1', [duck_block_paragraph('Content 1')]),
+    duck_block_section(1, 'Part 2', [duck_block_paragraph('Content 2')])
 ));
 ```
 
-### Using db_blocks_merge
+### Using duck_blocks_merge
 
 Merge with automatic order adjustment:
 
 ```sql
-SELECT db_blocks_merge(
-    db_heading(1, 'First'),
-    db_heading(1, 'Second')
+SELECT duck_blocks_merge(
+    duck_block_heading(1, 'First'),
+    duck_block_heading(1, 'Second')
 );
 -- First block: element_order=0
 -- Second block: element_order=1
@@ -192,13 +192,13 @@ SELECT db_blocks_merge(
 ### Keep Only Certain Types
 
 ```sql
-SELECT db_blocks_filter(my_doc, ['heading', 'paragraph']);
+SELECT duck_blocks_filter(my_doc, ['heading', 'paragraph']);
 ```
 
 ### Exclude Certain Types
 
 ```sql
-SELECT db_blocks_exclude(my_doc, ['hr', 'raw']);
+SELECT duck_blocks_exclude(my_doc, ['hr', 'raw']);
 ```
 
 ## Extracting Information
@@ -206,9 +206,9 @@ SELECT db_blocks_exclude(my_doc, ['hr', 'raw']);
 ### Get Plain Text
 
 ```sql
-SELECT db_blocks_to_text(flatten([
-    db_heading(1, 'Title'),
-    db_paragraph('Body text here.')
+SELECT duck_blocks_to_text(flatten([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Body text here.')
 ]));
 -- Returns: "Title\n\nBody text here."
 ```
@@ -216,14 +216,14 @@ SELECT db_blocks_to_text(flatten([
 ### Get All Headings
 
 ```sql
-SELECT db_blocks_headings(my_doc);
+SELECT duck_blocks_headings(my_doc);
 -- Returns: [{level: 1, title: 'Title', id: '', element_order: 0}, ...]
 ```
 
 ### Get Document Statistics
 
 ```sql
-SELECT db_blocks_stats(my_doc);
+SELECT duck_blocks_stats(my_doc);
 -- Returns: [{element_type: 'paragraph', count: 5, ...}, ...]
 ```
 
@@ -249,9 +249,9 @@ CREATE TABLE documents (
 INSERT INTO documents VALUES (
     1,
     'My Doc',
-    db_assemble([
-        db_heading(1, 'Introduction'),
-        db_paragraph('Hello world.')
+    duck_blocks_assemble([
+        duck_block_heading(1, 'Introduction'),
+        duck_block_paragraph('Hello world.')
     ])
 );
 ```
@@ -260,13 +260,13 @@ Query document content:
 
 ```sql
 -- Get all headings from all documents
-SELECT id, title, db_blocks_headings(blocks)
+SELECT id, title, duck_blocks_headings(blocks)
 FROM documents;
 
 -- Find documents with code blocks
 SELECT id, title
 FROM documents
-WHERE len(db_blocks_code_blocks(blocks)) > 0;
+WHERE len(duck_blocks_code_blocks(blocks)) > 0;
 ```
 
 ## Adjusting Heading Levels
@@ -276,9 +276,9 @@ When embedding one document inside another, adjust heading levels:
 ```sql
 -- Original subdocument has h1, h2
 -- Embed it as h2, h3 (offset by 1)
-SELECT db_assemble(db_concat(
-    db_heading(1, 'Main Document'),
-    db_rebase_levels(subdoc_blocks, 1)
+SELECT duck_blocks_assemble(duck_blocks_concat(
+    duck_block_heading(1, 'Main Document'),
+    duck_blocks_rebase_levels(subdoc_blocks, 1)
 ));
 ```
 
@@ -287,7 +287,7 @@ SELECT db_assemble(db_concat(
 Check if elements are valid:
 
 ```sql
-SELECT duck_block_valid(db_heading('Title', 1));  -- true
+SELECT duck_block_valid(duck_block_heading('Title', 1));  -- true
 SELECT duck_block_valid(duck_block('invalid', 'x'));  -- false
 ```
 
@@ -314,7 +314,7 @@ Cast strings directly to duck_block (creates text inline):
 
 ```sql
 SELECT 'hello'::duck_block;
--- Equivalent to db_text('hello')
+-- Equivalent to duck_block_text('hello')
 ```
 
 ## Rendering to the Terminal
@@ -328,26 +328,26 @@ not markdown syntax in `content`:
 PRAGMA duck_block_render;
 
 -- Render a document (formatting via structured inline elements)
-SELECT db_render_blocks(
-    db_heading(1, 'Report')
-    || db_paragraph([db_text('All systems '), db_bold('nominal'), db_text('.')])
+SELECT duck_blocks_render(
+    duck_block_heading(1, 'Report')
+    || duck_block_paragraph([duck_block_text('All systems '), duck_block_bold('nominal'), duck_block_text('.')])
 );
 
 -- Render any query as an ANSI table
-SELECT rendered FROM db_render_query('SELECT * FROM my_table LIMIT 10');
+SELECT rendered FROM duck_blocks_render_query('SELECT * FROM my_table LIMIT 10');
 ```
 
 ### Pages with embedded query results
 
-`db_page(title, blocks)` composes a titled page, and `db_query_table(q)` drops a
+`duck_blocks_page(title, blocks)` composes a titled page, and `duck_blocks_query_table(q)` drops a
 query's results in as a table — a dashboard in one expression:
 
 ```sql
-SELECT db_render_blocks(db_page('Sales Report', [
-    db_paragraph('Top rows:'),
-    db_query_table('SELECT * FROM t ORDER BY id'),
-    db_paragraph('Aggregate:'),
-    db_query_table('SELECT count(*) AS n, round(avg(score), 2) AS avg FROM t')
+SELECT duck_blocks_render(duck_blocks_page('Sales Report', [
+    duck_block_paragraph('Top rows:'),
+    duck_blocks_query_table('SELECT * FROM t ORDER BY id'),
+    duck_block_paragraph('Aggregate:'),
+    duck_blocks_query_table('SELECT count(*) AS n, round(avg(score), 2) AS avg FROM t')
 ]));
 ```
 

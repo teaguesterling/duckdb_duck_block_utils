@@ -109,7 +109,7 @@ void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &
 				error_values.push_back(make_pair("element_order", Value(element_order)));
 				error_values.push_back(make_pair("field", Value("kind")));
 				error_values.push_back(
-				    make_pair("message", Value("Invalid kind '" + kind + "'; see db_block_kinds()")));
+				    make_pair("message", Value("Invalid kind '" + kind + "'; see duck_block_kind_names()")));
 				errors.push_back(Value::STRUCT(std::move(error_values)));
 			}
 
@@ -224,7 +224,7 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				// not a specification.
 				//
 				// This is a WARNING rather than a validation error because this
-				// extension's own db_heading() sets level on headings while
+				// extension's own duck_block_heading() sets level on headings while
 				// pandoc_ast_to_blocks() leaves it NULL, so the two disagree today.
 				// Failing validation would reject documents built with the builders.
 				auto &heading_children = StructValue::GetChildren(block);
@@ -400,9 +400,9 @@ void ValidationFunctions::Register(ExtensionLoader &loader) {
 	validate_result_children.push_back(make_pair("errors", error_list_type));
 	auto validate_result_type = LogicalType::STRUCT(std::move(validate_result_children));
 
-	// db_blocks_validate(blocks LIST(duck_block)) -> STRUCT(valid, errors)
+	// duck_blocks_validate(blocks LIST(duck_block)) -> STRUCT(valid, errors)
 	auto validate_func =
-	    ScalarFunction("db_blocks_validate", {duck_block_list_type}, validate_result_type, DbBlocksValidateFun);
+	    ScalarFunction("duck_blocks_validate", {duck_block_list_type}, validate_result_type, DbBlocksValidateFun);
 	loader.RegisterFunction(validate_func);
 
 	// Define warning struct type for lint
@@ -412,8 +412,8 @@ void ValidationFunctions::Register(ExtensionLoader &loader) {
 	warning_struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
 	auto warning_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(warning_struct_children)));
 
-	// db_blocks_lint(blocks LIST(duck_block)) -> LIST(STRUCT)
-	auto lint_func = ScalarFunction("db_blocks_lint", {duck_block_list_type}, warning_list_type, DbBlocksLintFun);
+	// duck_blocks_lint(blocks LIST(duck_block)) -> LIST(STRUCT)
+	auto lint_func = ScalarFunction("duck_blocks_lint", {duck_block_list_type}, warning_list_type, DbBlocksLintFun);
 	loader.RegisterFunction(lint_func);
 
 	// Define structure result type
@@ -431,9 +431,9 @@ void ValidationFunctions::Register(ExtensionLoader &loader) {
 	structure_result_children.push_back(make_pair("total_content_length", LogicalType::BIGINT));
 	auto structure_result_type = LogicalType::STRUCT(std::move(structure_result_children));
 
-	// db_blocks_structure(blocks LIST(duck_block)) -> STRUCT
+	// duck_blocks_structure(blocks LIST(duck_block)) -> STRUCT
 	auto structure_func =
-	    ScalarFunction("db_blocks_structure", {duck_block_list_type}, structure_result_type, DbBlocksStructureFun);
+	    ScalarFunction("duck_blocks_structure", {duck_block_list_type}, structure_result_type, DbBlocksStructureFun);
 	loader.RegisterFunction(structure_func);
 }
 

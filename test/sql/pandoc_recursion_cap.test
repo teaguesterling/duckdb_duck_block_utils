@@ -94,12 +94,12 @@ SELECT duck_blocks_to_pandoc_blocks(deep_divs(140));
 maximum nesting depth
 
 query I
-SELECT db_inlines_to_pandoc(deep_bolds(100)) LIKE '%Strong%';
+SELECT duck_blocks_inlines_to_pandoc(deep_bolds(100)) LIKE '%Strong%';
 ----
 true
 
 statement error
-SELECT db_inlines_to_pandoc(deep_bolds(140));
+SELECT duck_blocks_inlines_to_pandoc(deep_bolds(140));
 ----
 maximum nesting depth
 

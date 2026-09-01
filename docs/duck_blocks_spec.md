@@ -45,9 +45,9 @@ together.
 Introspect the live vocabulary rather than mirroring this table:
 
 ```sql
-SELECT db_block_kinds();        -- ['block', 'inline', 'value']
-SELECT db_block_types();        -- every element_type name
-SELECT db_block_spec_version(); -- the spec version this build implements
+SELECT duck_block_kind_names();        -- ['block', 'inline', 'value']
+SELECT duck_block_type_names();        -- every element_type name
+SELECT duck_block_spec_version(); -- the spec version this build implements
 ```
 
 Sibling extensions should consume the vocabulary as a **submodule**, not a copy:
@@ -84,7 +84,7 @@ above catch a submodule that was never synced, which a compile cannot.
 | `lineblock` | Preserved line breaks | NULL | `text` (lines joined with `\n`) | |
 | `table` | Table | NULL | `json` | |
 | `hr` | Horizontal rule | NULL | `text` | |
-| `page` | **Physical** page boundary — a marker, not a container | NULL | `text` | `page_number` |
+| `page_break` | **Physical** page boundary — a marker, not a container | NULL | `text` | `page_number` |
 | `metadata` | YAML frontmatter | 0 | `yaml` | |
 | `image` | Block-level image | NULL | `text` | `src`, `alt`, `title` |
 | `raw` | Raw content in a *named* format | NULL | format name | `format` |
@@ -122,17 +122,21 @@ These are three different statements and should not be used interchangeably:
   words), emitting `generic` for everything unrecognised floods the output and buries
   real gaps — there, scope it to constructs that carry document meaning.
 
-### `page` is physical, not semantic
+### `page_break` is physical, not semantic
 
-`page` marks a pagination boundary — a PDF page break, a DOCX explicit page break.
-It is a **marker**: it carries no content and owns no children. `element_order`
+`page_break` marks a pagination boundary — a PDF page break, a DOCX explicit page break.
+It is a **marker**: it carries no content and owns no children. Named `page_break`
+rather than `page` because `page` is already taken twice in this extension — the
+`duck_blocks_page` composer and the `page()` alias for assembling a document — and
+because a marker is the boundary *between* pages, exactly as `hr` is a rule rather
+than a section. `element_order`
 already groups "blocks between marker N and N+1", so making it a container would
 re-nest whole documents one level deeper for nothing.
 
 **Consumers that walk semantic structure must ignore it.** A table of contents and a
 section slicer care about headings, not about where the paper ran out. This type
 exists because the alternative — a reader synthesising `## Page N` headings — puts
-physical pagination into the heading structure, where `db_toc` then lists pages as
+physical pagination into the heading structure, where `duck_blocks_toc_rows` then lists pages as
 though they were sections.
 
 Pandoc has no page constructor, so it exports as `Div` with class `page` carrying
@@ -236,14 +240,14 @@ against. It is **optional** — requiring it would shift every index and break e
 consumer to protect a boundary most lists never cross.
 
 ```sql
-SELECT db_blocks_stamp(blocks);   -- append a marker
-SELECT db_blocks_version(blocks); -- read it back; NULL when unstamped
-SELECT db_block_spec_version();   -- what this build implements
+SELECT duck_blocks_stamp(blocks);   -- append a marker
+SELECT duck_blocks_version(blocks); -- read it back; NULL when unstamped
+SELECT duck_block_spec_version();   -- what this build implements
 ```
 
 It deliberately carries **no** `attributes['key']`, which is what keeps it out of a
 document's own metadata on export. Use it when blocks are written to storage or
-crossing an extension boundary; a runtime check against `db_block_spec_version()` is
+crossing an extension boundary; a runtime check against `duck_block_spec_version()` is
 enough within a single session.
 
 ## Content Rules for Container Types
@@ -258,7 +262,7 @@ When a container builder receives a simple string, it returns a single `duck_blo
 with the text in the `content` field:
 
 ```sql
-db_link('Click here', 'https://example.com')
+duck_block_link('Click here', 'https://example.com')
 
 -- Returns duck_block struct:
 {kind: 'inline', element_type: 'link', content: 'Click here', level: 1,
@@ -271,7 +275,7 @@ When a container builder receives a list of inlines, it returns a `LIST(duck_blo
 with the container as first element (empty content) and children at level+1:
 
 ```sql
-db_link([db_bold('Important'), db_text(' link')], 'https://example.com')
+duck_block_link([duck_block_bold('Important'), duck_block_text(' link')], 'https://example.com')
 
 -- Returns LIST(duck_block):
 [{kind: 'inline', element_type: 'link', content: '', level: 1,
@@ -288,8 +292,8 @@ A single-element list containing only a text inline SHOULD be normalized to the 
 
 ```sql
 -- These are equivalent:
-db_bold('text')
-db_bold([db_text('text')])
+duck_block_bold('text')
+duck_block_bold([duck_block_text('text')])
 
 -- Both produce:
 {kind: 'inline', element_type: 'bold', content: 'text', level: 1,

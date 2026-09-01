@@ -51,12 +51,12 @@ STRUCT(
 
 Functions that create `duck_block` structs with `kind='block'`.
 
-### db_heading
+### duck_block_heading
 
 Creates a heading block.
 
 ```sql
-db_heading(content VARCHAR, level INTEGER) → duck_block
+duck_block_heading(content VARCHAR, level INTEGER) → duck_block
 ```
 
 **Parameters:**
@@ -65,18 +65,18 @@ db_heading(content VARCHAR, level INTEGER) → duck_block
 
 **Example:**
 ```sql
-SELECT db_heading('Introduction', 1);
+SELECT duck_block_heading('Introduction', 1);
 -- Returns: {kind: 'block', element_type: 'heading', content: 'Introduction', level: 1, ...}
 ```
 
 ---
 
-### db_paragraph
+### duck_block_paragraph
 
 Creates a paragraph block.
 
 ```sql
-db_paragraph(content VARCHAR) → duck_block
+duck_block_paragraph(content VARCHAR) → duck_block
 ```
 
 **Parameters:**
@@ -84,18 +84,18 @@ db_paragraph(content VARCHAR) → duck_block
 
 **Example:**
 ```sql
-SELECT db_paragraph('This is body text.');
+SELECT duck_block_paragraph('This is body text.');
 ```
 
 ---
 
-### db_code
+### duck_block_code
 
 Creates a code block.
 
 ```sql
-db_code(content VARCHAR) → duck_block
-db_code(content VARCHAR, language VARCHAR) → duck_block
+duck_block_code(content VARCHAR) → duck_block
+duck_block_code(content VARCHAR, language VARCHAR) → duck_block
 ```
 
 **Parameters:**
@@ -104,19 +104,19 @@ db_code(content VARCHAR, language VARCHAR) → duck_block
 
 **Example:**
 ```sql
-SELECT db_code('print("Hello")', 'python');
+SELECT duck_block_code('print("Hello")', 'python');
 -- Returns block with attributes: {language: 'python'}
 ```
 
 ---
 
-### db_blockquote
+### duck_block_blockquote
 
 Creates a blockquote block.
 
 ```sql
-db_blockquote(content VARCHAR) → duck_block
-db_blockquote(content VARCHAR, level INTEGER) → duck_block
+duck_block_blockquote(content VARCHAR) → duck_block
+duck_block_blockquote(content VARCHAR, level INTEGER) → duck_block
 ```
 
 **Parameters:**
@@ -125,18 +125,18 @@ db_blockquote(content VARCHAR, level INTEGER) → duck_block
 
 **Example:**
 ```sql
-SELECT db_blockquote('To be or not to be.');
+SELECT duck_block_blockquote('To be or not to be.');
 ```
 
 ---
 
-### db_list_block
+### duck_block_list_block
 
 Creates a list block with JSON-encoded items.
 
 ```sql
-db_list_block(items VARCHAR[]) → duck_block
-db_list_block(items VARCHAR[], ordered BOOLEAN) → duck_block
+duck_block_list_block(items VARCHAR[]) → duck_block
+duck_block_list_block(items VARCHAR[], ordered BOOLEAN) → duck_block
 ```
 
 **Parameters:**
@@ -145,34 +145,34 @@ db_list_block(items VARCHAR[], ordered BOOLEAN) → duck_block
 
 **Example:**
 ```sql
-SELECT db_list_block(['First', 'Second', 'Third'], true);
+SELECT duck_block_list_block(['First', 'Second', 'Third'], true);
 -- Returns block with content: '["First","Second","Third"]'
 -- and attributes: {ordered: 'true'}
 ```
 
 ---
 
-### db_hr
+### duck_block_hr
 
 Creates a horizontal rule block.
 
 ```sql
-db_hr() → duck_block
+duck_block_hr() → duck_block
 ```
 
 **Example:**
 ```sql
-SELECT db_hr();
+SELECT duck_block_hr();
 ```
 
 ---
 
-### db_metadata
+### duck_block_metadata
 
 Creates a metadata block (YAML frontmatter).
 
 ```sql
-db_metadata(yaml_content VARCHAR) → duck_block
+duck_block_metadata(yaml_content VARCHAR) → duck_block
 ```
 
 **Parameters:**
@@ -180,21 +180,21 @@ db_metadata(yaml_content VARCHAR) → duck_block
 
 **Example:**
 ```sql
-SELECT db_metadata('title: My Document
+SELECT duck_block_metadata('title: My Document
 author: Jane Doe
 date: 2024-01-15');
 ```
 
 ---
 
-### db_image
+### duck_block_image
 
 Creates an image block.
 
 ```sql
-db_image(src VARCHAR) → duck_block
-db_image(src VARCHAR, alt VARCHAR) → duck_block
-db_image(src VARCHAR, alt VARCHAR, title VARCHAR) → duck_block
+duck_block_image(src VARCHAR) → duck_block
+duck_block_image(src VARCHAR, alt VARCHAR) → duck_block
+duck_block_image(src VARCHAR, alt VARCHAR, title VARCHAR) → duck_block
 ```
 
 **Parameters:**
@@ -204,19 +204,19 @@ db_image(src VARCHAR, alt VARCHAR, title VARCHAR) → duck_block
 
 **Example:**
 ```sql
-SELECT db_image('/images/logo.png', 'Company Logo', 'Our Logo');
+SELECT duck_block_image('/images/logo.png', 'Company Logo', 'Our Logo');
 -- Returns block with attributes: {src: '/images/logo.png', alt: 'Company Logo', title: 'Our Logo'}
 ```
 
 ---
 
-### db_raw
+### duck_block_raw
 
 Creates a raw HTML/XML block.
 
 ```sql
-db_raw(content VARCHAR) → duck_block
-db_raw(content VARCHAR, format VARCHAR) → duck_block
+duck_block_raw(content VARCHAR) → duck_block
+duck_block_raw(content VARCHAR, format VARCHAR) → duck_block
 ```
 
 **Parameters:**
@@ -225,7 +225,7 @@ db_raw(content VARCHAR, format VARCHAR) → duck_block
 
 **Example:**
 ```sql
-SELECT db_raw('<div class="custom">Content</div>', 'html');
+SELECT duck_block_raw('<div class="custom">Content</div>', 'html');
 ```
 
 ---
@@ -234,78 +234,78 @@ SELECT db_raw('<div class="custom">Content</div>', 'html');
 
 Functions that create `duck_block` structs with `kind='inline'`.
 
-### db_text
+### duck_block_text
 
 Creates plain text content.
 
 ```sql
-db_text(content VARCHAR) → duck_block
+duck_block_text(content VARCHAR) → duck_block
 ```
 
 **Example:**
 ```sql
-SELECT db_text('Hello world');
+SELECT duck_block_text('Hello world');
 -- Returns: {kind: 'inline', element_type: 'text', content: 'Hello world', level: 1, ...}
 ```
 
 ---
 
-### db_link
+### duck_block_link
 
 Creates a hyperlink.
 
 ```sql
-db_link(text VARCHAR, href VARCHAR) → duck_block
-db_link(text VARCHAR, href VARCHAR, title VARCHAR) → duck_block
+duck_block_link(text VARCHAR, href VARCHAR) → duck_block
+duck_block_link(text VARCHAR, href VARCHAR, title VARCHAR) → duck_block
 ```
 
 **Example:**
 ```sql
-SELECT db_link('Click here', 'https://example.com');
+SELECT duck_block_link('Click here', 'https://example.com');
 -- Returns: {kind: 'inline', element_type: 'link', content: 'Click here',
 --           attributes: {href: 'https://example.com'}, ...}
 ```
 
 ---
 
-### db_bold
+### duck_block_bold
 
 Creates bold/strong text.
 
 ```sql
-db_bold(content VARCHAR) → duck_block
+duck_block_bold(content VARCHAR) → duck_block
 ```
 
 ---
 
-### db_italic
+### duck_block_italic
 
 Creates italic/emphasis text.
 
 ```sql
-db_italic(content VARCHAR) → duck_block
+duck_block_italic(content VARCHAR) → duck_block
 ```
 
 ---
 
-### db_inline_code
+### duck_block_inline_code
 
 Creates inline code.
 
 ```sql
-db_inline_code(content VARCHAR) → duck_block
+duck_block_inline_code(content VARCHAR) → duck_block
 ```
 
 ---
 
-### db_inline_image
+### duck_block_inline_image
 
 Creates an inline image.
 
 ```sql
-db_inline_image(src VARCHAR) → duck_block
-db_inline_image(src VARCHAR, alt VARCHAR) → duck_block
-db_inline_image(src VARCHAR, alt VARCHAR, title VARCHAR) → duck_block
+duck_block_inline_image(src VARCHAR) → duck_block
+duck_block_inline_image(src VARCHAR, alt VARCHAR) → duck_block
+duck_block_inline_image(src VARCHAR, alt VARCHAR, title VARCHAR) → duck_block
 ```
 
 ---
@@ -313,9 +313,9 @@ db_inline_image(src VARCHAR, alt VARCHAR, title VARCHAR) → duck_block
 ### Whitespace Elements
 
 ```sql
-db_space() → duck_block      -- Word separator
-db_softbreak() → duck_block  -- Soft line break
-db_linebreak() → duck_block  -- Hard line break
+duck_block_space() → duck_block      -- Word separator
+duck_block_softbreak() → duck_block  -- Soft line break
+duck_block_linebreak() → duck_block  -- Hard line break
 ```
 
 ---
@@ -324,12 +324,12 @@ db_linebreak() → duck_block  -- Hard line break
 
 Functions that combine elements into documents.
 
-### db_assemble
+### duck_blocks_assemble
 
 Assigns sequential `element_order` values to a list of elements.
 
 ```sql
-db_assemble(blocks LIST(duck_block)) → LIST(duck_block)
+duck_blocks_assemble(blocks LIST(duck_block)) → LIST(duck_block)
 ```
 
 **Parameters:**
@@ -339,32 +339,32 @@ db_assemble(blocks LIST(duck_block)) → LIST(duck_block)
 
 **Example:**
 ```sql
-SELECT db_assemble([
-    db_heading('Title', 1),
-    db_paragraph('Content')
+SELECT duck_blocks_assemble([
+    duck_block_heading('Title', 1),
+    duck_block_paragraph('Content')
 ]);
 -- First block has element_order=0, second has element_order=1
 ```
 
 ---
 
-### db_document
+### duck_blocks_document
 
-Alias for `db_assemble`. Use for semantic clarity when creating complete documents.
+Alias for `duck_blocks_assemble`. Use for semantic clarity when creating complete documents.
 
 ```sql
-db_document(blocks LIST(duck_block)) → LIST(duck_block)
+duck_blocks_document(blocks LIST(duck_block)) → LIST(duck_block)
 ```
 
 ---
 
-### db_section
+### duck_block_section
 
 Creates a section with a heading followed by content blocks.
 
 ```sql
-db_section(title VARCHAR, level INTEGER) → LIST(duck_block)
-db_section(title VARCHAR, level INTEGER, children LIST(duck_block)) → LIST(duck_block)
+duck_block_section(title VARCHAR, level INTEGER) → LIST(duck_block)
+duck_block_section(title VARCHAR, level INTEGER, children LIST(duck_block)) → LIST(duck_block)
 ```
 
 **Parameters:**
@@ -374,21 +374,21 @@ db_section(title VARCHAR, level INTEGER, children LIST(duck_block)) → LIST(duc
 
 **Example:**
 ```sql
-SELECT db_section('Getting Started', 2, [
-    db_paragraph('First, install the extension.'),
-    db_code('LOAD duck_block_utils;', 'sql')
+SELECT duck_block_section('Getting Started', 2, [
+    duck_block_paragraph('First, install the extension.'),
+    duck_block_code('LOAD duck_block_utils;', 'sql')
 ]);
 -- Returns: [heading, paragraph, code] with sequential element_order
 ```
 
 ---
 
-### db_rebase_levels
+### duck_blocks_rebase_levels
 
 Adjusts heading levels by a fixed offset.
 
 ```sql
-db_rebase_levels(blocks LIST(duck_block), offset INTEGER) → LIST(duck_block)
+duck_blocks_rebase_levels(blocks LIST(duck_block), offset INTEGER) → LIST(duck_block)
 ```
 
 **Parameters:**
@@ -403,18 +403,18 @@ db_rebase_levels(blocks LIST(duck_block), offset INTEGER) → LIST(duck_block)
 **Example:**
 ```sql
 -- Demote all headings by 1 level (h1→h2, h2→h3, etc.)
-SELECT db_rebase_levels([db_heading('Title', 1)], 1);
+SELECT duck_blocks_rebase_levels([duck_block_heading('Title', 1)], 1);
 -- Returns heading with level=2
 ```
 
 ---
 
-### db_concat
+### duck_blocks_concat
 
 Concatenates two element lists without modifying `element_order`.
 
 ```sql
-db_concat(blocks1 LIST(duck_block), blocks2 LIST(duck_block)) → LIST(duck_block)
+duck_blocks_concat(blocks1 LIST(duck_block), blocks2 LIST(duck_block)) → LIST(duck_block)
 ```
 
 **Parameters:**
@@ -422,14 +422,14 @@ db_concat(blocks1 LIST(duck_block), blocks2 LIST(duck_block)) → LIST(duck_bloc
 - `blocks2`: Second list of elements
 
 **Notes:**
-- Unlike `db_blocks_merge`, does not adjust `element_order`
-- Use with `db_assemble` to renumber after concatenation
+- Unlike `duck_blocks_merge`, does not adjust `element_order`
+- Use with `duck_blocks_assemble` to renumber after concatenation
 
 **Example:**
 ```sql
-SELECT db_assemble(db_concat(
-    db_section('Chapter 1', 1, [db_paragraph('...')]),
-    db_section('Chapter 2', 1, [db_paragraph('...')])
+SELECT duck_blocks_assemble(duck_blocks_concat(
+    duck_block_section('Chapter 1', 1, [duck_block_paragraph('...')]),
+    duck_block_section('Chapter 2', 1, [duck_block_paragraph('...')])
 ));
 ```
 
@@ -439,12 +439,12 @@ SELECT db_assemble(db_concat(
 
 Functions that filter, transform, and combine element collections.
 
-### db_blocks_filter
+### duck_blocks_filter
 
 Filters elements to include only specified types.
 
 ```sql
-db_blocks_filter(blocks LIST(duck_block), types VARCHAR[]) → LIST(duck_block)
+duck_blocks_filter(blocks LIST(duck_block), types VARCHAR[]) → LIST(duck_block)
 ```
 
 **Parameters:**
@@ -453,18 +453,18 @@ db_blocks_filter(blocks LIST(duck_block), types VARCHAR[]) → LIST(duck_block)
 
 **Example:**
 ```sql
-SELECT db_blocks_filter(my_blocks, ['heading', 'paragraph']);
+SELECT duck_blocks_filter(my_blocks, ['heading', 'paragraph']);
 -- Returns only heading and paragraph blocks
 ```
 
 ---
 
-### db_blocks_exclude
+### duck_blocks_exclude
 
 Filters elements to exclude specified types.
 
 ```sql
-db_blocks_exclude(blocks LIST(duck_block), types VARCHAR[]) → LIST(duck_block)
+duck_blocks_exclude(blocks LIST(duck_block), types VARCHAR[]) → LIST(duck_block)
 ```
 
 **Parameters:**
@@ -473,18 +473,18 @@ db_blocks_exclude(blocks LIST(duck_block), types VARCHAR[]) → LIST(duck_block)
 
 **Example:**
 ```sql
-SELECT db_blocks_exclude(my_blocks, ['hr', 'raw']);
+SELECT duck_blocks_exclude(my_blocks, ['hr', 'raw']);
 -- Returns all blocks except hr and raw
 ```
 
 ---
 
-### db_blocks_merge
+### duck_blocks_merge
 
 Merges two element lists with automatic `element_order` adjustment.
 
 ```sql
-db_blocks_merge(blocks1 LIST(duck_block), blocks2 LIST(duck_block)) → LIST(duck_block)
+duck_blocks_merge(blocks1 LIST(duck_block), blocks2 LIST(duck_block)) → LIST(duck_block)
 ```
 
 **Parameters:**
@@ -497,21 +497,21 @@ db_blocks_merge(blocks1 LIST(duck_block), blocks2 LIST(duck_block)) → LIST(duc
 
 **Example:**
 ```sql
-SELECT db_blocks_merge(
-    [db_heading('Doc 1', 1)],
-    [db_heading('Doc 2', 1)]
+SELECT duck_blocks_merge(
+    [duck_block_heading('Doc 1', 1)],
+    [duck_block_heading('Doc 2', 1)]
 );
 -- First heading has element_order=0, second has element_order=1
 ```
 
 ---
 
-### db_blocks_reorder
+### duck_blocks_reorder
 
 Renumbers elements sequentially starting from 0.
 
 ```sql
-db_blocks_reorder(blocks LIST(duck_block)) → LIST(duck_block)
+duck_blocks_reorder(blocks LIST(duck_block)) → LIST(duck_block)
 ```
 
 **Parameters:**
@@ -524,19 +524,19 @@ db_blocks_reorder(blocks LIST(duck_block)) → LIST(duck_block)
 
 **Example:**
 ```sql
-SELECT db_blocks_reorder(
-    db_blocks_filter(my_blocks, ['heading'])
+SELECT duck_blocks_reorder(
+    duck_blocks_filter(my_blocks, ['heading'])
 );
 ```
 
 ---
 
-### db_blocks_slice
+### duck_blocks_slice
 
 Extracts elements within an `element_order` range.
 
 ```sql
-db_blocks_slice(blocks LIST(duck_block), start INTEGER, end INTEGER) → LIST(duck_block)
+duck_blocks_slice(blocks LIST(duck_block), start INTEGER, end INTEGER) → LIST(duck_block)
 ```
 
 **Parameters:**
@@ -546,7 +546,7 @@ db_blocks_slice(blocks LIST(duck_block), start INTEGER, end INTEGER) → LIST(du
 
 **Example:**
 ```sql
-SELECT db_blocks_slice(my_blocks, 5, 10);
+SELECT duck_blocks_slice(my_blocks, 5, 10);
 -- Returns blocks with element_order between 5 and 10
 ```
 
@@ -582,13 +582,13 @@ SELECT db_blocks_transform(
 
 ## Content Extraction Functions
 
-### db_blocks_to_text
+### duck_blocks_to_text
 
 Extract plain text content from elements.
 
 ```sql
-db_blocks_to_text(blocks LIST(duck_block)) → VARCHAR
-db_blocks_to_text(blocks LIST(duck_block), separator VARCHAR) → VARCHAR
+duck_blocks_to_text(blocks LIST(duck_block)) → VARCHAR
+duck_blocks_to_text(blocks LIST(duck_block), separator VARCHAR) → VARCHAR
 ```
 
 **Parameters:**
@@ -597,21 +597,21 @@ db_blocks_to_text(blocks LIST(duck_block), separator VARCHAR) → VARCHAR
 
 **Example:**
 ```sql
-SELECT db_blocks_to_text([
-    db_heading('Title', 1),
-    db_paragraph('Content')
+SELECT duck_blocks_to_text([
+    duck_block_heading('Title', 1),
+    duck_block_paragraph('Content')
 ], '\n');
 -- Returns: "Title\nContent"
 ```
 
 ---
 
-### db_blocks_headings
+### duck_blocks_headings
 
 Extract heading information.
 
 ```sql
-db_blocks_headings(blocks LIST(duck_block)) → LIST(STRUCT(level, title, id, element_order))
+duck_blocks_headings(blocks LIST(duck_block)) → LIST(STRUCT(level, title, id, element_order))
 ```
 
 **Returns:** List of structs containing:
@@ -622,7 +622,7 @@ db_blocks_headings(blocks LIST(duck_block)) → LIST(STRUCT(level, title, id, el
 
 **Example:**
 ```sql
-SELECT db_blocks_headings(my_blocks);
+SELECT duck_blocks_headings(my_blocks);
 -- Returns: [{level: 1, title: 'Introduction', id: '', element_order: 0}, ...]
 ```
 
@@ -631,17 +631,17 @@ populated, and otherwise the text of the heading's structured inline children �
 the `kind='inline'` elements that immediately follow it. Producers differ here:
 `markdown` flattens plain heading text into `content`, while `webbed` leaves
 `content` NULL and emits inline children for any heading containing `<code>`,
-`<em>`, `<a>`, … Both shapes yield the same title. `db_blocks_toc` and
-`db_blocks_to_text` apply the same rule.
+`<em>`, `<a>`, … Both shapes yield the same title. `duck_blocks_toc` and
+`duck_blocks_to_text` apply the same rule.
 
 ---
 
-### db_blocks_code_blocks
+### duck_blocks_code_blocks
 
 Extract code block information.
 
 ```sql
-db_blocks_code_blocks(blocks LIST(duck_block)) → LIST(STRUCT(language, content, element_order))
+duck_blocks_code_blocks(blocks LIST(duck_block)) → LIST(STRUCT(language, content, element_order))
 ```
 
 **Returns:** List of structs containing:
@@ -651,12 +651,12 @@ db_blocks_code_blocks(blocks LIST(duck_block)) → LIST(STRUCT(language, content
 
 ---
 
-### db_blocks_stats
+### duck_blocks_stats
 
 Compute statistics by element type.
 
 ```sql
-db_blocks_stats(blocks LIST(duck_block)) → LIST(STRUCT(element_type, count, total_content_length, avg_content_length))
+duck_blocks_stats(blocks LIST(duck_block)) → LIST(STRUCT(element_type, count, total_content_length, avg_content_length))
 ```
 
 **Returns:** List of structs containing:
@@ -712,17 +712,17 @@ SELECT pandoc_inlines_to_db_inlines('[{"t":"Str","c":"Hello"},{"t":"Space"},{"t"
 
 ---
 
-### db_inlines_to_pandoc
+### duck_blocks_inlines_to_pandoc
 
 Convert duck_block inlines to Pandoc JSON.
 
 ```sql
-db_inlines_to_pandoc(inlines LIST(duck_block)) → VARCHAR
+duck_blocks_inlines_to_pandoc(inlines LIST(duck_block)) → VARCHAR
 ```
 
 **Example:**
 ```sql
-SELECT db_inlines_to_pandoc([db_text('Hello')]);
+SELECT duck_blocks_inlines_to_pandoc([duck_block_text('Hello')]);
 -- Returns: '[{"t":"Str","c":"Hello"}]'
 ```
 
@@ -752,11 +752,11 @@ SELECT pandoc_inlines_to_text('[{"t":"Str","c":"Hello"},{"t":"Space"},{"t":"Stro
 
 Render duck_blocks as styled ANSI terminal output. See [Terminal Rendering](rendering.md) for usage, examples, and limitations.
 
-### db_blocks_render_ansi
+### duck_blocks_render_ansi
 
 ```sql
-db_blocks_render_ansi(blocks LIST(duck_block)) → VARCHAR
-db_blocks_render_ansi(blocks LIST(duck_block), width INTEGER) → VARCHAR
+duck_blocks_render_ansi(blocks LIST(duck_block)) → VARCHAR
+duck_blocks_render_ansi(blocks LIST(duck_block), width INTEGER) → VARCHAR
 ```
 
 Native renderer producing UTF-8 text with ANSI SGR escapes, word-wrapped to a
@@ -768,20 +768,20 @@ terminal size (`/dev/tty`, then `$COLUMNS`, then 80). A block's structured
 parent block is skipped; `metadata` blocks are suppressed.
 
 ```sql
-SELECT db_blocks_render_ansi(
-    db_heading(1, 'Report')
-    || db_paragraph([db_text('All systems '), db_bold('nominal'), db_text('.')]),
+SELECT duck_blocks_render_ansi(
+    duck_block_heading(1, 'Report')
+    || duck_block_paragraph([duck_block_text('All systems '), duck_block_bold('nominal'), duck_block_text('.')]),
     72
 );
 ```
 
-### db_terminal_width
+### duck_block_terminal_width
 
 ```sql
-db_terminal_width() → INTEGER
+duck_block_terminal_width() → INTEGER
 ```
 
-The width `db_blocks_render_ansi` would auto-detect. Volatile.
+The width `duck_blocks_render_ansi` would auto-detect. Volatile.
 
 ### PRAGMA duck_block_render
 
@@ -789,11 +789,11 @@ Registers convenience macros (requires the `json` extension, autoloaded):
 
 | Macro | Description |
 |-------|-------------|
-| `db_render_blocks(blocks)` | Render to ANSI at auto-detected width (delegates to `db_blocks_render_ansi`) |
-| `db_render_query(sql)` | Table macro: run `sql` and render the result as an ANSI table (column `rendered`) |
-| `db_json_to_table_block(json)` | JSON array of objects → `table` duck_block |
-| `db_render_block(type, content, attrs)` | Render a single block element |
-| `db_ansi(code, s)` / `db_ansi_inline(s)` | SGR wrapper / inline markdown styler |
+| `duck_blocks_render(blocks)` | Render to ANSI at auto-detected width (delegates to `duck_blocks_render_ansi`) |
+| `duck_blocks_render_query(sql)` | Table macro: run `sql` and render the result as an ANSI table (column `rendered`) |
+| `duck_block_json_to_table(json)` | JSON array of objects → `table` duck_block |
+| `duck_block_render_one(type, content, attrs)` | Render a single block element |
+| `duck_block_ansi(code, s)` / `duck_block_ansi_inline(s)` | SGR wrapper / inline markdown styler |
 
 ## See Also
 

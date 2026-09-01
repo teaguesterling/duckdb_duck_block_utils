@@ -67,32 +67,32 @@ STRUCT(
 LOAD duck_block_utils;
 
 -- Create a simple document
-SELECT db_assemble([
-    db_heading('Introduction', 1),
-    db_paragraph('Welcome to the documentation.'),
-    db_heading('Getting Started', 2),
-    db_code('SELECT * FROM docs;', 'sql'),
-    db_paragraph('Run the query above to begin.')
+SELECT duck_blocks_assemble([
+    duck_block_heading('Introduction', 1),
+    duck_block_paragraph('Welcome to the documentation.'),
+    duck_block_heading('Getting Started', 2),
+    duck_block_code('SELECT * FROM docs;', 'sql'),
+    duck_block_paragraph('Run the query above to begin.')
 ]);
 
 -- Extract just the headings
-SELECT db_blocks_headings(db_assemble([
-    db_heading('Chapter 1', 1),
-    db_paragraph('Content...'),
-    db_heading('Section 1.1', 2)
+SELECT duck_blocks_headings(duck_blocks_assemble([
+    duck_block_heading('Chapter 1', 1),
+    duck_block_paragraph('Content...'),
+    duck_block_heading('Section 1.1', 2)
 ]));
 
 -- Convert to plain text
-SELECT db_blocks_to_text([
-    db_heading('Title', 1),
-    db_paragraph('Hello world')
+SELECT duck_blocks_to_text([
+    duck_block_heading('Title', 1),
+    duck_block_paragraph('Hello world')
 ]);
 
 -- Create rich text with inline elements
 SELECT [
-    db_text('Click '),
-    db_link('here', 'https://example.com'),
-    db_text(' to learn more.')
+    duck_block_text('Click '),
+    duck_block_link('here', 'https://example.com'),
+    duck_block_text(' to learn more.')
 ];
 ```
 

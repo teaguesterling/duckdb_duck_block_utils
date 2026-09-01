@@ -5,500 +5,500 @@
 require duck_block_utils
 
 # ============================================================================
-# db_heading Tests (v2: level first, returns LIST)
+# duck_block_heading Tests (v2: level first, returns LIST)
 # ============================================================================
 
-# Test db_heading returns a list
+# Test duck_block_heading returns a list
 query I
-SELECT typeof(db_heading(1, 'My Title'));
+SELECT typeof(duck_block_heading(1, 'My Title'));
 ----
 STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR, VARCHAR), element_order INTEGER)[]
 
-# Test db_heading creates correct element_type
+# Test duck_block_heading creates correct element_type
 query I
-SELECT db_heading(1, 'My Title')[1].element_type;
+SELECT duck_block_heading(1, 'My Title')[1].element_type;
 ----
 heading
 
-# Test db_heading sets content for simple text
+# Test duck_block_heading sets content for simple text
 query I
-SELECT db_heading(1, 'My Title')[1].content;
+SELECT duck_block_heading(1, 'My Title')[1].content;
 ----
 My Title
 
-# Test db_heading sets heading_level in attributes (not level field).
+# Test duck_block_heading sets heading_level in attributes (not level field).
 # `level` is NULL on a top-level block: it is structural nesting depth, and this
 # heading is not nested. The assertion used to expect 1, contradicting its own
 # comment and the spec, and disagreeing with pandoc_ast_to_blocks().
 query I
-SELECT db_heading(2, 'My Title')[1].level IS NULL;
+SELECT duck_block_heading(2, 'My Title')[1].level IS NULL;
 ----
 true
 
-# Test db_heading stores heading level in attributes
+# Test duck_block_heading stores heading level in attributes
 query I
-SELECT db_heading(2, 'My Title')[1].attributes['heading_level'];
+SELECT duck_block_heading(2, 'My Title')[1].attributes['heading_level'];
 ----
 2
 
-# Test db_heading with inline children - content is NULL
+# Test duck_block_heading with inline children - content is NULL
 query I
-SELECT db_heading(1, [db_text('Hello'), db_bold('World')])[1].content IS NULL;
+SELECT duck_block_heading(1, [duck_block_text('Hello'), duck_block_bold('World')])[1].content IS NULL;
 ----
 true
 
-# Test db_heading with inline children - returns flattened list
+# Test duck_block_heading with inline children - returns flattened list
 query I
-SELECT len(db_heading(1, [db_text('Hello'), db_bold('World')]));
+SELECT len(duck_block_heading(1, [duck_block_text('Hello'), duck_block_bold('World')]));
 ----
 3
 
-# Test db_heading children are at level 2
+# Test duck_block_heading children are at level 2
 query I
-SELECT db_heading(1, [db_text('Hello')])[2].level;
+SELECT duck_block_heading(1, [duck_block_text('Hello')])[2].level;
 ----
 2
 
 # ============================================================================
-# db_paragraph Tests (v2: returns LIST)
+# duck_block_paragraph Tests (v2: returns LIST)
 # ============================================================================
 
-# Test db_paragraph returns a list
+# Test duck_block_paragraph returns a list
 query I
-SELECT len(db_paragraph('Hello world'));
+SELECT len(duck_block_paragraph('Hello world'));
 ----
 1
 
-# Test db_paragraph creates paragraph block
+# Test duck_block_paragraph creates paragraph block
 query I
-SELECT db_paragraph('Hello world')[1].element_type;
+SELECT duck_block_paragraph('Hello world')[1].element_type;
 ----
 paragraph
 
-# Test db_paragraph content for simple text
+# Test duck_block_paragraph content for simple text
 query I
-SELECT db_paragraph('Hello world')[1].content;
+SELECT duck_block_paragraph('Hello world')[1].content;
 ----
 Hello world
 
-# Test db_paragraph level is 1 (top-level)
+# Test duck_block_paragraph level is 1 (top-level)
 query I
-SELECT db_paragraph('Hello world')[1].level IS NULL;
+SELECT duck_block_paragraph('Hello world')[1].level IS NULL;
 ----
 true
 
-# Test db_paragraph with inline children
+# Test duck_block_paragraph with inline children
 query I
-SELECT len(db_paragraph([db_text('Click '), db_link('https://example.com', 'here')]));
+SELECT len(duck_block_paragraph([duck_block_text('Click '), duck_block_link('https://example.com', 'here')]));
 ----
 3
 
-# Test db_paragraph with children - content is NULL
+# Test duck_block_paragraph with children - content is NULL
 query I
-SELECT db_paragraph([db_bold('Important')])[1].content IS NULL;
+SELECT duck_block_paragraph([duck_block_bold('Important')])[1].content IS NULL;
 ----
 true
 
-# Test db_paragraph children have correct levels
+# Test duck_block_paragraph children have correct levels
 query I
-SELECT db_paragraph([db_text('A'), db_text('B')])[2].level;
+SELECT duck_block_paragraph([duck_block_text('A'), duck_block_text('B')])[2].level;
 ----
 2
 
 # ============================================================================
-# db_paragraph with VARCHAR[] Tests (Issue #4)
+# duck_block_paragraph with VARCHAR[] Tests (Issue #4)
 # ============================================================================
 
-# Test db_paragraph with string array - returns paragraph
+# Test duck_block_paragraph with string array - returns paragraph
 query I
-SELECT db_paragraph(['Hello ', 'world'])[1].element_type;
+SELECT duck_block_paragraph(['Hello ', 'world'])[1].element_type;
 ----
 paragraph
 
-# Test db_paragraph with string array - parent content is NULL
+# Test duck_block_paragraph with string array - parent content is NULL
 query I
-SELECT db_paragraph(['Hello ', 'world'])[1].content IS NULL;
+SELECT duck_block_paragraph(['Hello ', 'world'])[1].content IS NULL;
 ----
 true
 
-# Test db_paragraph with string array - correct list length
+# Test duck_block_paragraph with string array - correct list length
 query I
-SELECT len(db_paragraph(['A', 'B', 'C']));
+SELECT len(duck_block_paragraph(['A', 'B', 'C']));
 ----
 4
 
-# Test db_paragraph with string array - children are text type
+# Test duck_block_paragraph with string array - children are text type
 query I
-SELECT db_paragraph(['Hello'])[2].element_type;
+SELECT duck_block_paragraph(['Hello'])[2].element_type;
 ----
 text
 
-# Test db_paragraph with string array - children are inline kind
+# Test duck_block_paragraph with string array - children are inline kind
 query I
-SELECT db_paragraph(['Hello'])[2].kind;
+SELECT duck_block_paragraph(['Hello'])[2].kind;
 ----
 inline
 
-# Test db_paragraph with string array - children have level 2
+# Test duck_block_paragraph with string array - children have level 2
 query I
-SELECT db_paragraph(['Hello'])[2].level;
+SELECT duck_block_paragraph(['Hello'])[2].level;
 ----
 2
 
-# Test db_paragraph with string array - children have correct content
+# Test duck_block_paragraph with string array - children have correct content
 query I
-SELECT db_paragraph(['Hello', 'world'])[2].content;
+SELECT duck_block_paragraph(['Hello', 'world'])[2].content;
 ----
 Hello
 
-# Test db_paragraph with string array - element_order set correctly
+# Test duck_block_paragraph with string array - element_order set correctly
 query III
-SELECT db_paragraph(['A', 'B', 'C'])[2].element_order,
-       db_paragraph(['A', 'B', 'C'])[3].element_order,
-       db_paragraph(['A', 'B', 'C'])[4].element_order;
+SELECT duck_block_paragraph(['A', 'B', 'C'])[2].element_order,
+       duck_block_paragraph(['A', 'B', 'C'])[3].element_order,
+       duck_block_paragraph(['A', 'B', 'C'])[4].element_order;
 ----
 0	1	2
 
-# Test db_paragraph with single string in array
+# Test duck_block_paragraph with single string in array
 query I
-SELECT len(db_paragraph(['Only one']));
+SELECT len(duck_block_paragraph(['Only one']));
 ----
 2
 
-# Test db_paragraph with empty string array returns just parent
+# Test duck_block_paragraph with empty string array returns just parent
 query I
-SELECT len(db_paragraph([]::VARCHAR[]));
+SELECT len(duck_block_paragraph([]::VARCHAR[]));
 ----
 1
 
 # ============================================================================
-# db_code Tests (v2: language first when specified)
+# duck_block_code Tests (v2: language first when specified)
 # ============================================================================
 
-# Test db_code with language (language first)
+# Test duck_block_code with language (language first)
 query I
-SELECT db_code('python', 'print(1)')[1].element_type;
+SELECT duck_block_code('python', 'print(1)')[1].element_type;
 ----
 code
 
 query I
-SELECT db_code('python', 'print(1)')[1].content;
+SELECT duck_block_code('python', 'print(1)')[1].content;
 ----
 print(1)
 
 query I
-SELECT db_code('python', 'print(1)')[1].attributes['language'];
+SELECT duck_block_code('python', 'print(1)')[1].attributes['language'];
 ----
 python
 
-# Test db_code without language (single arg)
+# Test duck_block_code without language (single arg)
 query I
-SELECT db_code('print(1)')[1].element_type;
+SELECT duck_block_code('print(1)')[1].element_type;
 ----
 code
 
 query I
-SELECT db_code('print(1)')[1].content;
+SELECT duck_block_code('print(1)')[1].content;
 ----
 print(1)
 
 # ============================================================================
-# db_blockquote Tests (v2: level first when specified)
+# duck_block_blockquote Tests (v2: level first when specified)
 # ============================================================================
 
-# Test db_blockquote with level (level first)
+# Test duck_block_blockquote with level (level first)
 query I
-SELECT db_blockquote(2, 'Quote text')[1].element_type;
+SELECT duck_block_blockquote(2, 'Quote text')[1].element_type;
 ----
 blockquote
 
 query I
-SELECT db_blockquote(2, 'Quote text')[1].level;
+SELECT duck_block_blockquote(2, 'Quote text')[1].level;
 ----
 2
 
-# Test db_blockquote single arg defaults level to 1
+# Test duck_block_blockquote single arg defaults level to 1
 query I
-SELECT db_blockquote('Quote text')[1].level IS NULL;
+SELECT duck_block_blockquote('Quote text')[1].level IS NULL;
 ----
 true
 
-# Test db_blockquote with children
+# Test duck_block_blockquote with children
 query I
-SELECT len(db_blockquote([db_text('Quoted '), db_bold('text')]));
+SELECT len(duck_block_blockquote([duck_block_text('Quoted '), duck_block_bold('text')]));
 ----
 3
 
 # ============================================================================
-# db_list_block Tests (v2: ordered first when specified)
+# duck_block_list_block Tests (v2: ordered first when specified)
 # ============================================================================
 
-# Test db_list_block unordered (default)
+# Test duck_block_list_block unordered (default)
 query I
-SELECT db_list_block(['First', 'Second', 'Third'])[1].element_type;
+SELECT duck_block_list_block(['First', 'Second', 'Third'])[1].element_type;
 ----
 list
 
 query I
-SELECT db_list_block(['First', 'Second', 'Third'])[1].encoding;
+SELECT duck_block_list_block(['First', 'Second', 'Third'])[1].encoding;
 ----
 json
 
 query I
-SELECT db_list_block(['First', 'Second', 'Third'])[1].attributes['ordered'];
+SELECT duck_block_list_block(['First', 'Second', 'Third'])[1].attributes['ordered'];
 ----
 false
 
-# Test db_list_block ordered (ordered first)
+# Test duck_block_list_block ordered (ordered first)
 query I
-SELECT db_list_block(true, ['First', 'Second'])[1].attributes['ordered'];
+SELECT duck_block_list_block(true, ['First', 'Second'])[1].attributes['ordered'];
 ----
 true
 
-# Test db_list_block content is JSON array
+# Test duck_block_list_block content is JSON array
 query I
-SELECT db_list_block(['A', 'B'])[1].content;
+SELECT duck_block_list_block(['A', 'B'])[1].content;
 ----
 ["A","B"]
 
 # ============================================================================
-# db_list_block with LIST(LIST(duck_block)) Tests (Issue #3)
+# duck_block_list_block with LIST(LIST(duck_block)) Tests (Issue #3)
 # ============================================================================
 
-# Test db_list_block with list items - returns list type
+# Test duck_block_list_block with list items - returns list type
 query I
-SELECT db_list_block([db_list_item('First'), db_list_item('Second')])[1].element_type;
+SELECT duck_block_list_block([duck_block_list_item('First'), duck_block_list_item('Second')])[1].element_type;
 ----
 list
 
-# Test db_list_block with list items - unordered by default
+# Test duck_block_list_block with list items - unordered by default
 query I
-SELECT db_list_block([db_list_item('First'), db_list_item('Second')])[1].attributes['ordered'];
+SELECT duck_block_list_block([duck_block_list_item('First'), duck_block_list_item('Second')])[1].attributes['ordered'];
 ----
 false
 
-# Test db_list_block with list items - ordered flag (ordered first)
+# Test duck_block_list_block with list items - ordered flag (ordered first)
 query I
-SELECT db_list_block(true, [db_list_item('First'), db_list_item('Second')])[1].attributes['ordered'];
+SELECT duck_block_list_block(true, [duck_block_list_item('First'), duck_block_list_item('Second')])[1].attributes['ordered'];
 ----
 true
 
-# Test db_list_block with list items - parent content is NULL
+# Test duck_block_list_block with list items - parent content is NULL
 query I
-SELECT db_list_block([db_list_item('First')])[1].content IS NULL;
+SELECT duck_block_list_block([duck_block_list_item('First')])[1].content IS NULL;
 ----
 true
 
-# Test db_list_block with list items - correct list length (1 parent + children)
+# Test duck_block_list_block with list items - correct list length (1 parent + children)
 query I
-SELECT len(db_list_block([db_list_item('A'), db_list_item('B'), db_list_item('C')]));
+SELECT len(duck_block_list_block([duck_block_list_item('A'), duck_block_list_item('B'), duck_block_list_item('C')]));
 ----
 4
 
-# Test db_list_block with list items - children have level 2 (parent is level 1)
+# Test duck_block_list_block with list items - children have level 2 (parent is level 1)
 query I
-SELECT db_list_block([db_list_item('First')])[2].level;
+SELECT duck_block_list_block([duck_block_list_item('First')])[2].level;
 ----
 2
 
-# Test db_list_block with list items - children element_order is set correctly
+# Test duck_block_list_block with list items - children element_order is set correctly
 query III
-SELECT db_list_block([db_list_item('A'), db_list_item('B'), db_list_item('C')])[2].element_order,
-       db_list_block([db_list_item('A'), db_list_item('B'), db_list_item('C')])[3].element_order,
-       db_list_block([db_list_item('A'), db_list_item('B'), db_list_item('C')])[4].element_order;
+SELECT duck_block_list_block([duck_block_list_item('A'), duck_block_list_item('B'), duck_block_list_item('C')])[2].element_order,
+       duck_block_list_block([duck_block_list_item('A'), duck_block_list_item('B'), duck_block_list_item('C')])[3].element_order,
+       duck_block_list_block([duck_block_list_item('A'), duck_block_list_item('B'), duck_block_list_item('C')])[4].element_order;
 ----
 0	1	2
 
-# Test db_list_block with rich list items containing inline content
+# Test duck_block_list_block with rich list items containing inline content
 query I
-SELECT len(db_list_block([
-    db_list_item([db_link('https://example.com', 'Link'), db_text(' description')])
+SELECT len(duck_block_list_block([
+    duck_block_list_item([duck_block_link('https://example.com', 'Link'), duck_block_text(' description')])
 ]));
 ----
 4
 
-# Test db_list_block with rich items - nested children have correct levels
+# Test duck_block_list_block with rich items - nested children have correct levels
 query I
-SELECT db_list_block([db_list_item([db_bold('Bold text')])])[3].level;
+SELECT duck_block_list_block([duck_block_list_item([duck_block_bold('Bold text')])])[3].level;
 ----
 3
 
-# Test db_list_block with rich items - nested element_type preserved
+# Test duck_block_list_block with rich items - nested element_type preserved
 query I
-SELECT db_list_block([db_list_item([db_bold('Bold')])])[3].element_type;
+SELECT duck_block_list_block([duck_block_list_item([duck_block_bold('Bold')])])[3].element_type;
 ----
 bold
 
-# Test db_list_block ordered with rich items
+# Test duck_block_list_block ordered with rich items
 query I
-SELECT len(db_list_block(true, [
-    db_list_item(true, [db_text('First item')]),
-    db_list_item(true, [db_text('Second item')])
+SELECT len(duck_block_list_block(true, [
+    duck_block_list_item(true, [duck_block_text('First item')]),
+    duck_block_list_item(true, [duck_block_text('Second item')])
 ]));
 ----
 5
 
-# Test db_list_block with list items - parent level is 1
+# Test duck_block_list_block with list items - parent level is 1
 query I
-SELECT db_list_block([db_list_item('Test')])[1].level IS NULL;
+SELECT duck_block_list_block([duck_block_list_item('Test')])[1].level IS NULL;
 ----
 true
 
-# Test db_list_block with list items - parent kind is block
+# Test duck_block_list_block with list items - parent kind is block
 query I
-SELECT db_list_block([db_list_item('Test')])[1].kind;
+SELECT duck_block_list_block([duck_block_list_item('Test')])[1].kind;
 ----
 block
 
-# Test db_list_block with explicit ordered=false
+# Test duck_block_list_block with explicit ordered=false
 query I
-SELECT db_list_block(false, [db_list_item('A'), db_list_item('B')])[1].attributes['ordered'];
+SELECT duck_block_list_block(false, [duck_block_list_item('A'), duck_block_list_item('B')])[1].attributes['ordered'];
 ----
 false
 
-# Test db_list_block with single item
+# Test duck_block_list_block with single item
 query I
-SELECT len(db_list_block([db_list_item('Only one')]));
+SELECT len(duck_block_list_block([duck_block_list_item('Only one')]));
 ----
 2
 
-# Test db_list_block with empty list returns just the parent
+# Test duck_block_list_block with empty list returns just the parent
 query I
-SELECT len(db_list_block(list_value()::duck_block[][]));
+SELECT len(duck_block_list_block(list_value()::duck_block[][]));
 ----
 1
 
-# Test db_list_block children preserve list_item element_type
+# Test duck_block_list_block children preserve list_item element_type
 query I
-SELECT db_list_block([db_list_item('Item')])[2].element_type;
+SELECT duck_block_list_block([duck_block_list_item('Item')])[2].element_type;
 ----
 list_item
 
 # ============================================================================
-# db_list_item Tests (NEW in v2)
+# duck_block_list_item Tests (NEW in v2)
 # ============================================================================
 
-# Test db_list_item creates list_item block
+# Test duck_block_list_item creates list_item block
 query I
-SELECT db_list_item('Item text')[1].element_type;
+SELECT duck_block_list_item('Item text')[1].element_type;
 ----
 list_item
 
-# Test db_list_item with text content
+# Test duck_block_list_item with text content
 query I
-SELECT db_list_item('Item text')[1].content;
+SELECT duck_block_list_item('Item text')[1].content;
 ----
 Item text
 
-# Test db_list_item unordered by default
+# Test duck_block_list_item unordered by default
 query I
-SELECT db_list_item('Item text')[1].attributes['ordered'];
+SELECT duck_block_list_item('Item text')[1].attributes['ordered'];
 ----
 false
 
-# Test db_list_item ordered (ordered first)
+# Test duck_block_list_item ordered (ordered first)
 query I
-SELECT db_list_item(true, 'Item text')[1].attributes['ordered'];
+SELECT duck_block_list_item(true, 'Item text')[1].attributes['ordered'];
 ----
 true
 
-# Test db_list_item with inline children
+# Test duck_block_list_item with inline children
 query I
-SELECT len(db_list_item([db_link('https://github.com', 'GitHub'), db_text(' '), db_inline_image('badge.svg', 'CI')]));
+SELECT len(duck_block_list_item([duck_block_link('https://github.com', 'GitHub'), duck_block_text(' '), duck_block_inline_image('badge.svg', 'CI')]));
 ----
 4
 
-# Test db_list_item children have correct levels
+# Test duck_block_list_item children have correct levels
 query I
-SELECT db_list_item([db_text('content')])[2].level;
+SELECT duck_block_list_item([duck_block_text('content')])[2].level;
 ----
 2
 
 # ============================================================================
-# db_hr Tests (v2: returns LIST)
+# duck_block_hr Tests (v2: returns LIST)
 # ============================================================================
 
-# Test db_hr creates hr block in a list
+# Test duck_block_hr creates hr block in a list
 query I
-SELECT len(db_hr());
+SELECT len(duck_block_hr());
 ----
 1
 
 query I
-SELECT db_hr()[1].element_type;
+SELECT duck_block_hr()[1].element_type;
 ----
 hr
 
 query I
-SELECT db_hr()[1].content;
+SELECT duck_block_hr()[1].content;
 ----
 (empty)
 
 # ============================================================================
-# db_metadata Tests (v2: returns LIST)
+# duck_block_metadata Tests (v2: returns LIST)
 # ============================================================================
 
 query I
-SELECT db_metadata('title: Test')[1].element_type;
+SELECT duck_block_metadata('title: Test')[1].element_type;
 ----
 metadata
 
 query I
-SELECT db_metadata('title: Test')[1].content;
+SELECT duck_block_metadata('title: Test')[1].content;
 ----
 title: Test
 
 query I
-SELECT db_metadata('title: Test')[1].encoding;
+SELECT duck_block_metadata('title: Test')[1].encoding;
 ----
 yaml
 
 # ============================================================================
-# db_image Tests (v2: returns LIST)
+# duck_block_image Tests (v2: returns LIST)
 # ============================================================================
 
 query I
-SELECT db_image('/path/to/img.png', 'Alt text', 'Title')[1].element_type;
+SELECT duck_block_image('/path/to/img.png', 'Alt text', 'Title')[1].element_type;
 ----
 image
 
 query I
-SELECT db_image('/path/to/img.png', 'Alt text', 'Title')[1].attributes['src'];
+SELECT duck_block_image('/path/to/img.png', 'Alt text', 'Title')[1].attributes['src'];
 ----
 /path/to/img.png
 
 query I
-SELECT db_image('/path/to/img.png', 'Alt text')[1].attributes['alt'];
+SELECT duck_block_image('/path/to/img.png', 'Alt text')[1].attributes['alt'];
 ----
 Alt text
 
 query I
-SELECT db_image('/path/to/img.png')[1].attributes['src'];
+SELECT duck_block_image('/path/to/img.png')[1].attributes['src'];
 ----
 /path/to/img.png
 
 # ============================================================================
-# db_raw Tests (v2: format first when specified)
+# duck_block_raw Tests (v2: format first when specified)
 # ============================================================================
 
 query I
-SELECT db_raw('html', '<div>HTML</div>')[1].element_type;
+SELECT duck_block_raw('html', '<div>HTML</div>')[1].element_type;
 ----
 raw
 
 query I
-SELECT db_raw('html', '<div>HTML</div>')[1].content;
+SELECT duck_block_raw('html', '<div>HTML</div>')[1].content;
 ----
 <div>HTML</div>
 
 query I
-SELECT db_raw('html', '<div>HTML</div>')[1].encoding;
+SELECT duck_block_raw('html', '<div>HTML</div>')[1].encoding;
 ----
 html
 
-# Test db_raw single arg defaults to html
+# Test duck_block_raw single arg defaults to html
 query I
-SELECT db_raw('<br>')[1].encoding;
+SELECT duck_block_raw('<br>')[1].encoding;
 ----
 html
 
@@ -555,86 +555,86 @@ SELECT len([('a'::duck_block), ('b'::duck_block)]);
 2
 
 # ============================================================================
-# db_div Tests (Issue #6) - Generic block container
+# duck_block_div Tests (Issue #6) - Generic block container
 # ============================================================================
 
-# Test db_div creates div element_type
+# Test duck_block_div creates div element_type
 query I
-SELECT db_div(db_paragraph('content'))[1].element_type;
+SELECT duck_block_div(duck_block_paragraph('content'))[1].element_type;
 ----
 div
 
-# Test db_div creates block kind
+# Test duck_block_div creates block kind
 query I
-SELECT db_div(db_paragraph('content'))[1].kind;
+SELECT duck_block_div(duck_block_paragraph('content'))[1].kind;
 ----
 block
 
-# Test db_div parent content is NULL
+# Test duck_block_div parent content is NULL
 query I
-SELECT db_div(db_paragraph('content'))[1].content IS NULL;
+SELECT duck_block_div(duck_block_paragraph('content'))[1].content IS NULL;
 ----
 true
 
-# Test db_div with single child - correct length
+# Test duck_block_div with single child - correct length
 query I
-SELECT len(db_div(db_paragraph('content')));
+SELECT len(duck_block_div(duck_block_paragraph('content')));
 ----
 2
 
-# Test db_div children have level 2
+# Test duck_block_div children have level 2
 query I
-SELECT db_div(db_paragraph('content'))[2].level;
+SELECT duck_block_div(duck_block_paragraph('content'))[2].level;
 ----
 2
 
-# Test db_div with id attribute
+# Test duck_block_div with id attribute
 query I
-SELECT db_div('my-id', db_paragraph('content'))[1].attributes['id'];
+SELECT duck_block_div('my-id', duck_block_paragraph('content'))[1].attributes['id'];
 ----
 my-id
 
-# Test db_div with id and class attributes
+# Test duck_block_div with id and class attributes
 query II
-SELECT db_div('my-id', 'my-class', db_paragraph('content'))[1].attributes['id'],
-       db_div('my-id', 'my-class', db_paragraph('content'))[1].attributes['class'];
+SELECT duck_block_div('my-id', 'my-class', duck_block_paragraph('content'))[1].attributes['id'],
+       duck_block_div('my-id', 'my-class', duck_block_paragraph('content'))[1].attributes['class'];
 ----
 my-id	my-class
 
-# Test db_div with nested list (composition)
+# Test duck_block_div with nested list (composition)
 query I
-SELECT len(db_div([db_heading(1, 'Title'), db_paragraph('Text')]));
+SELECT len(duck_block_div([duck_block_heading(1, 'Title'), duck_block_paragraph('Text')]));
 ----
 3
 
-# Test db_div with id and nested list
+# Test duck_block_div with id and nested list
 query I
-SELECT db_div('section-1', [db_heading(1, 'Title'), db_paragraph('Text')])[1].attributes['id'];
+SELECT duck_block_div('section-1', [duck_block_heading(1, 'Title'), duck_block_paragraph('Text')])[1].attributes['id'];
 ----
 section-1
 
-# Test db_div with id, class, and nested list
+# Test duck_block_div with id, class, and nested list
 query I
-SELECT len(db_div('my-id', 'container', [db_heading(1, 'A'), db_paragraph('B')]));
+SELECT len(duck_block_div('my-id', 'container', [duck_block_heading(1, 'A'), duck_block_paragraph('B')]));
 ----
 3
 
-# Test db_div element_order on children
+# Test duck_block_div element_order on children
 query II
-SELECT db_div([db_paragraph('A'), db_paragraph('B')])[2].element_order,
-       db_div([db_paragraph('A'), db_paragraph('B')])[3].element_order;
+SELECT duck_block_div([duck_block_paragraph('A'), duck_block_paragraph('B')])[2].element_order,
+       duck_block_div([duck_block_paragraph('A'), duck_block_paragraph('B')])[3].element_order;
 ----
 0	1
 
-# Test db_div with NULL id
+# Test duck_block_div with NULL id
 query I
-SELECT db_div(NULL, db_paragraph('content'))[1].attributes['id'] IS NULL;
+SELECT duck_block_div(NULL, duck_block_paragraph('content'))[1].attributes['id'] IS NULL;
 ----
 true
 
-# Test db_div parent level is 1
+# Test duck_block_div parent level is 1
 query I
-SELECT db_div(db_paragraph('test'))[1].level IS NULL;
+SELECT duck_block_div(duck_block_paragraph('test'))[1].level IS NULL;
 ----
 true
 
@@ -644,8 +644,8 @@ true
 
 # Test filtering builder-created blocks (need to flatten first)
 query I
-SELECT len(db_blocks_filter(
-    flatten([db_heading(1, 'Title'), db_paragraph('Text'), db_code('py', 'x=1')]),
+SELECT len(duck_blocks_filter(
+    flatten([duck_block_heading(1, 'Title'), duck_block_paragraph('Text'), duck_block_code('py', 'x=1')]),
     ['heading', 'code']
 ));
 ----
@@ -653,9 +653,9 @@ SELECT len(db_blocks_filter(
 
 # Test merging builder-created blocks
 query I
-SELECT len(db_blocks_merge(
-    db_heading(1, 'Title'),
-    db_paragraph('Text')
+SELECT len(duck_blocks_merge(
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Text')
 ));
 ----
 2
@@ -666,70 +666,70 @@ SELECT len(db_blocks_merge(
 
 # Test deeply nested content
 query I
-SELECT len(db_paragraph([
-    db_text('Click '),
-    db_bold([db_italic('here')]),
-    db_text('!')
+SELECT len(duck_block_paragraph([
+    duck_block_text('Click '),
+    duck_block_bold([duck_block_italic('here')]),
+    duck_block_text('!')
 ]));
 ----
 5
 
 # Test content is NULL when children exist (at every level)
 query I
-SELECT db_bold([db_text('text')])[1].content IS NULL;
+SELECT duck_block_bold([duck_block_text('text')])[1].content IS NULL;
 ----
 true
 
 # Test nested children get incremented levels
 query I
-SELECT db_paragraph([db_bold([db_text('nested')])])[2].level;
+SELECT duck_block_paragraph([duck_block_bold([duck_block_text('nested')])])[2].level;
 ----
 2
 
 # Test element_order is preserved within children
 query III
-SELECT db_paragraph([db_text('A'), db_text('B'), db_text('C')])[2].element_order,
-       db_paragraph([db_text('A'), db_text('B'), db_text('C')])[3].element_order,
-       db_paragraph([db_text('A'), db_text('B'), db_text('C')])[4].element_order;
+SELECT duck_block_paragraph([duck_block_text('A'), duck_block_text('B'), duck_block_text('C')])[2].element_order,
+       duck_block_paragraph([duck_block_text('A'), duck_block_text('B'), duck_block_text('C')])[3].element_order,
+       duck_block_paragraph([duck_block_text('A'), duck_block_text('B'), duck_block_text('C')])[4].element_order;
 ----
 0	1	2
 
 # ============================================================================
-# db_assemble Tests (v2: takes LIST(LIST(duck_block)))
+# duck_blocks_assemble Tests (v2: takes LIST(LIST(duck_block)))
 # ============================================================================
 
-# Test db_assemble flattens list of lists
+# Test duck_blocks_assemble flattens list of lists
 query I
-SELECT len(db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph('Text'),
-    db_hr()
+SELECT len(duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Text'),
+    duck_block_hr()
 ]));
 ----
 3
 
-# Test db_assemble assigns sequential element_order
+# Test duck_blocks_assemble assigns sequential element_order
 query III
-SELECT db_assemble([db_heading(1, 'A'), db_paragraph('B'), db_hr()])[1].element_order,
-       db_assemble([db_heading(1, 'A'), db_paragraph('B'), db_hr()])[2].element_order,
-       db_assemble([db_heading(1, 'A'), db_paragraph('B'), db_hr()])[3].element_order;
+SELECT duck_blocks_assemble([duck_block_heading(1, 'A'), duck_block_paragraph('B'), duck_block_hr()])[1].element_order,
+       duck_blocks_assemble([duck_block_heading(1, 'A'), duck_block_paragraph('B'), duck_block_hr()])[2].element_order,
+       duck_blocks_assemble([duck_block_heading(1, 'A'), duck_block_paragraph('B'), duck_block_hr()])[3].element_order;
 ----
 0	1	2
 
-# Test db_assemble with nested inline content
+# Test duck_blocks_assemble with nested inline content
 query I
-SELECT len(db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph([db_text('Hello '), db_bold('world')])
+SELECT len(duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph([duck_block_text('Hello '), duck_block_bold('world')])
 ]));
 ----
 4
 
-# Test db_assemble preserves child levels
+# Test duck_blocks_assemble preserves child levels
 query I
-SELECT db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph([db_bold('Important')])
+SELECT duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph([duck_block_bold('Important')])
 ])[3].level;
 ----
 2
@@ -740,18 +740,18 @@ SELECT db_assemble([
 
 # Test building a complete document
 query I
-SELECT len(db_assemble([
-    db_metadata('title: Test Doc'),
-    db_heading(1, 'Introduction'),
-    db_paragraph('Welcome to the guide.'),
-    db_heading(2, 'Getting Started'),
-    db_paragraph([
-        db_text('First, '),
-        db_link('https://example.com', 'install the extension'),
-        db_text('.')
+SELECT len(duck_blocks_assemble([
+    duck_block_metadata('title: Test Doc'),
+    duck_block_heading(1, 'Introduction'),
+    duck_block_paragraph('Welcome to the guide.'),
+    duck_block_heading(2, 'Getting Started'),
+    duck_block_paragraph([
+        duck_block_text('First, '),
+        duck_block_link('https://example.com', 'install the extension'),
+        duck_block_text('.')
     ]),
-    db_code('sql', 'LOAD duck_block_utils;'),
-    db_hr()
+    duck_block_code('sql', 'LOAD duck_block_utils;'),
+    duck_block_hr()
 ]));
 ----
 10

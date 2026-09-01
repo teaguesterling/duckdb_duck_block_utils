@@ -191,7 +191,7 @@ math
 # Document Assembly Aliases
 # ============================================================================
 
-# Test page (db_assemble)
+# Test page (duck_blocks_assemble)
 query I
 SELECT len(page([h1('Title'), p('Text')]));
 ----

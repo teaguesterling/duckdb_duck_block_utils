@@ -865,54 +865,54 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 	// (V2 versions with same input signature but different return type win)
 	// ========================================================================
 
-	// db_heading(content, level) - LEGACY ONLY (V2 uses level, content order)
-	loader.RegisterFunction(
-	    ScalarFunction("db_heading", {LogicalType::VARCHAR, LogicalType::INTEGER}, duck_block_type, DbHeadingFun));
+	// duck_block_heading(content, level) - LEGACY ONLY (V2 uses level, content order)
+	loader.RegisterFunction(ScalarFunction("duck_block_heading", {LogicalType::VARCHAR, LogicalType::INTEGER},
+	                                       duck_block_type, DbHeadingFun));
 
-	// db_paragraph(content) - REMOVED: V2 version exists with same signature
+	// duck_block_paragraph(content) - REMOVED: V2 version exists with same signature
 
-	// db_code(content, language) - REMOVED: V2 has same signature (VARCHAR, VARCHAR)
-	// db_code(content) - REMOVED: V2 version exists with same signature
+	// duck_block_code(content, language) - REMOVED: V2 has same signature (VARCHAR, VARCHAR)
+	// duck_block_code(content) - REMOVED: V2 version exists with same signature
 
-	// db_blockquote(content, level) - LEGACY ONLY (V2 uses level, content order)
-	loader.RegisterFunction(ScalarFunction("db_blockquote", {LogicalType::VARCHAR, LogicalType::INTEGER},
+	// duck_block_blockquote(content, level) - LEGACY ONLY (V2 uses level, content order)
+	loader.RegisterFunction(ScalarFunction("duck_block_blockquote", {LogicalType::VARCHAR, LogicalType::INTEGER},
 	                                       duck_block_type, DbBlockquoteFun));
-	// db_blockquote(content) - REMOVED: V2 version exists with same signature
+	// duck_block_blockquote(content) - REMOVED: V2 version exists with same signature
 
-	// db_list_block(items, ordered) - LEGACY ONLY (V2 uses ordered, items order)
-	loader.RegisterFunction(ScalarFunction("db_list_block",
+	// duck_block_list_block(items, ordered) - LEGACY ONLY (V2 uses ordered, items order)
+	loader.RegisterFunction(ScalarFunction("duck_block_list_block",
 	                                       {LogicalType::LIST(LogicalType::VARCHAR), LogicalType::BOOLEAN},
 	                                       duck_block_type, DbListBlockFun));
-	// db_list_block(items) - REMOVED: V2 version exists with same signature
+	// duck_block_list_block(items) - REMOVED: V2 version exists with same signature
 
-	// db_hr() - REMOVED: V2 version exists with same signature
+	// duck_block_hr() - REMOVED: V2 version exists with same signature
 
-	// db_metadata(yaml_content) - REMOVED: V2 version exists with same signature
+	// duck_block_metadata(yaml_content) - REMOVED: V2 version exists with same signature
 
-	// db_image - REMOVED: V2 versions exist with same signatures
+	// duck_block_image - REMOVED: V2 versions exist with same signatures
 
-	// db_raw(content, format) - REMOVED: V2 has same signature (VARCHAR, VARCHAR)
-	// db_raw(content) - REMOVED: V2 version exists with same signature
+	// duck_block_raw(content, format) - REMOVED: V2 has same signature (VARCHAR, VARCHAR)
+	// duck_block_raw(content) - REMOVED: V2 version exists with same signature
 
 	// ========================================================================
 	// Flattening overloads - take children list, return flattened list
 	// ========================================================================
 
-	// db_paragraph(children LIST(duck_block)) -> LIST(duck_block)
+	// duck_block_paragraph(children LIST(duck_block)) -> LIST(duck_block)
 	loader.RegisterFunction(
-	    ScalarFunction("db_paragraph", {duck_block_list_type}, duck_block_list_type, DbParagraphFlattenFun));
+	    ScalarFunction("duck_block_paragraph", {duck_block_list_type}, duck_block_list_type, DbParagraphFlattenFun));
 
-	// db_heading(level, children LIST(duck_block)) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("db_heading", {LogicalType::INTEGER, duck_block_list_type},
+	// duck_block_heading(level, children LIST(duck_block)) -> LIST(duck_block)
+	loader.RegisterFunction(ScalarFunction("duck_block_heading", {LogicalType::INTEGER, duck_block_list_type},
 	                                       duck_block_list_type, DbHeadingFlattenFun));
 
-	// db_blockquote(level, children LIST(duck_block)) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("db_blockquote", {LogicalType::INTEGER, duck_block_list_type},
+	// duck_block_blockquote(level, children LIST(duck_block)) -> LIST(duck_block)
+	loader.RegisterFunction(ScalarFunction("duck_block_blockquote", {LogicalType::INTEGER, duck_block_list_type},
 	                                       duck_block_list_type, DbBlockquoteFlattenFun));
 
-	// db_blockquote(children LIST(duck_block)) -> LIST(duck_block) (level defaults to 1)
+	// duck_block_blockquote(children LIST(duck_block)) -> LIST(duck_block) (level defaults to 1)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_blockquote", {duck_block_list_type}, duck_block_list_type,
+	    "duck_block_blockquote", {duck_block_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &children_vec = args.data[0];
 		    auto count = args.size();
@@ -925,13 +925,13 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
-	// db_code(language, children LIST(duck_block)) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("db_code", {LogicalType::VARCHAR, duck_block_list_type},
+	// duck_block_code(language, children LIST(duck_block)) -> LIST(duck_block)
+	loader.RegisterFunction(ScalarFunction("duck_block_code", {LogicalType::VARCHAR, duck_block_list_type},
 	                                       duck_block_list_type, DbCodeFlattenFun));
 
-	// db_code(children LIST(duck_block)) -> LIST(duck_block) (no language)
+	// duck_block_code(children LIST(duck_block)) -> LIST(duck_block) (no language)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_code", {duck_block_list_type}, duck_block_list_type,
+	    "duck_block_code", {duck_block_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &children_vec = args.data[0];
 		    auto count = args.size();
@@ -946,13 +946,13 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 
 	// ========================================================================
 	// Nested list overloads - accept LIST(LIST(duck_block)) and flatten
-	// This enables: db_heading(1, [db_text('A'), db_bold('B')])
+	// This enables: duck_block_heading(1, [duck_block_text('A'), duck_block_bold('B')])
 	// ========================================================================
 	auto duck_block_nested_list_type = LogicalType::LIST(duck_block_list_type);
 
-	// db_heading(level, LIST(LIST(duck_block))) -> LIST(duck_block)
+	// duck_block_heading(level, LIST(LIST(duck_block))) -> LIST(duck_block)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_heading", {LogicalType::INTEGER, duck_block_nested_list_type}, duck_block_list_type,
+	    "duck_block_heading", {LogicalType::INTEGER, duck_block_nested_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &level_vec = args.data[0];
 		    auto &nested_vec = args.data[1];
@@ -971,9 +971,9 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
-	// db_paragraph(LIST(LIST(duck_block))) -> LIST(duck_block)
+	// duck_block_paragraph(LIST(LIST(duck_block))) -> LIST(duck_block)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_paragraph", {duck_block_nested_list_type}, duck_block_list_type,
+	    "duck_block_paragraph", {duck_block_nested_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &nested_vec = args.data[0];
 		    auto count = args.size();
@@ -987,10 +987,10 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
-	// db_paragraph(VARCHAR[]) -> LIST(duck_block)
-	// Converts each string to a db_text inline element (Issue #4)
+	// duck_block_paragraph(VARCHAR[]) -> LIST(duck_block)
+	// Converts each string to a duck_block_text inline element (Issue #4)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_paragraph", {LogicalType::LIST(LogicalType::VARCHAR)}, duck_block_list_type,
+	    "duck_block_paragraph", {LogicalType::LIST(LogicalType::VARCHAR)}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &strings_vec = args.data[0];
 		    auto count = args.size();
@@ -1027,9 +1027,9 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
-	// db_blockquote(level, LIST(LIST(duck_block))) -> LIST(duck_block)
+	// duck_block_blockquote(level, LIST(LIST(duck_block))) -> LIST(duck_block)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_blockquote", {LogicalType::INTEGER, duck_block_nested_list_type}, duck_block_list_type,
+	    "duck_block_blockquote", {LogicalType::INTEGER, duck_block_nested_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &level_vec = args.data[0];
 		    auto &nested_vec = args.data[1];
@@ -1047,9 +1047,9 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
-	// db_blockquote(LIST(LIST(duck_block))) -> LIST(duck_block) (level defaults to 1)
+	// duck_block_blockquote(LIST(LIST(duck_block))) -> LIST(duck_block) (level defaults to 1)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_blockquote", {duck_block_nested_list_type}, duck_block_list_type,
+	    "duck_block_blockquote", {duck_block_nested_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &nested_vec = args.data[0];
 		    auto count = args.size();
@@ -1063,9 +1063,9 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
-	// db_code(language, LIST(LIST(duck_block))) -> LIST(duck_block)
+	// duck_block_code(language, LIST(LIST(duck_block))) -> LIST(duck_block)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_code", {LogicalType::VARCHAR, duck_block_nested_list_type}, duck_block_list_type,
+	    "duck_block_code", {LogicalType::VARCHAR, duck_block_nested_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &lang_vec = args.data[0];
 		    auto &nested_vec = args.data[1];
@@ -1084,9 +1084,9 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
-	// db_code(LIST(LIST(duck_block))) -> LIST(duck_block) (no language)
+	// duck_block_code(LIST(LIST(duck_block))) -> LIST(duck_block) (no language)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_code", {duck_block_nested_list_type}, duck_block_list_type,
+	    "duck_block_code", {duck_block_nested_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &nested_vec = args.data[0];
 		    auto count = args.size();
@@ -1106,68 +1106,71 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 	// These REPLACE legacy overloads by having different return type
 	// ========================================================================
 
-	// db_heading(level INTEGER, content VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("db_heading", {LogicalType::INTEGER, LogicalType::VARCHAR},
+	// duck_block_heading(level INTEGER, content VARCHAR) -> LIST(duck_block)
+	loader.RegisterFunction(ScalarFunction("duck_block_heading", {LogicalType::INTEGER, LogicalType::VARCHAR},
 	                                       duck_block_list_type, DbHeadingV2Fun));
 
-	// db_paragraph(content VARCHAR) -> LIST(duck_block)
+	// duck_block_paragraph(content VARCHAR) -> LIST(duck_block)
 	// V2: Returns LIST instead of single duck_block
 	loader.RegisterFunction(
-	    ScalarFunction("db_paragraph", {LogicalType::VARCHAR}, duck_block_list_type, DbParagraphV2Fun));
+	    ScalarFunction("duck_block_paragraph", {LogicalType::VARCHAR}, duck_block_list_type, DbParagraphV2Fun));
 
-	// db_code(language VARCHAR, content VARCHAR) -> LIST(duck_block)
+	// duck_block_code(language VARCHAR, content VARCHAR) -> LIST(duck_block)
+	loader.RegisterFunction(ScalarFunction("duck_block_code", {LogicalType::VARCHAR, LogicalType::VARCHAR},
+	                                       duck_block_list_type, DbCodeV2Fun));
+
+	// duck_block_code(content VARCHAR) -> LIST(duck_block) (no language)
 	loader.RegisterFunction(
-	    ScalarFunction("db_code", {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_list_type, DbCodeV2Fun));
+	    ScalarFunction("duck_block_code", {LogicalType::VARCHAR}, duck_block_list_type, DbCodeV2NoLangFun));
 
-	// db_code(content VARCHAR) -> LIST(duck_block) (no language)
-	loader.RegisterFunction(ScalarFunction("db_code", {LogicalType::VARCHAR}, duck_block_list_type, DbCodeV2NoLangFun));
-
-	// db_blockquote(level INTEGER, content VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("db_blockquote", {LogicalType::INTEGER, LogicalType::VARCHAR},
+	// duck_block_blockquote(level INTEGER, content VARCHAR) -> LIST(duck_block)
+	loader.RegisterFunction(ScalarFunction("duck_block_blockquote", {LogicalType::INTEGER, LogicalType::VARCHAR},
 	                                       duck_block_list_type, DbBlockquoteV2Fun));
 
-	// db_blockquote(content VARCHAR) -> LIST(duck_block) (level defaults to 1)
+	// duck_block_blockquote(content VARCHAR) -> LIST(duck_block) (level defaults to 1)
+	loader.RegisterFunction(ScalarFunction("duck_block_blockquote", {LogicalType::VARCHAR}, duck_block_list_type,
+	                                       DbBlockquoteV2NoLevelFun));
+
+	// duck_block_hr() -> LIST(duck_block)
+	loader.RegisterFunction(ScalarFunction("duck_block_hr", {}, duck_block_list_type, DbHrV2Fun));
+
+	// duck_block_metadata(yaml_content VARCHAR) -> LIST(duck_block)
 	loader.RegisterFunction(
-	    ScalarFunction("db_blockquote", {LogicalType::VARCHAR}, duck_block_list_type, DbBlockquoteV2NoLevelFun));
+	    ScalarFunction("duck_block_metadata", {LogicalType::VARCHAR}, duck_block_list_type, DbMetadataV2Fun));
 
-	// db_hr() -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("db_hr", {}, duck_block_list_type, DbHrV2Fun));
-
-	// db_metadata(yaml_content VARCHAR) -> LIST(duck_block)
+	// duck_block_image(src VARCHAR) -> LIST(duck_block)
 	loader.RegisterFunction(
-	    ScalarFunction("db_metadata", {LogicalType::VARCHAR}, duck_block_list_type, DbMetadataV2Fun));
+	    ScalarFunction("duck_block_image", {LogicalType::VARCHAR}, duck_block_list_type, DbImageV2Fun));
 
-	// db_image(src VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("db_image", {LogicalType::VARCHAR}, duck_block_list_type, DbImageV2Fun));
+	// duck_block_image(src VARCHAR, alt VARCHAR) -> LIST(duck_block)
+	loader.RegisterFunction(ScalarFunction("duck_block_image", {LogicalType::VARCHAR, LogicalType::VARCHAR},
+	                                       duck_block_list_type, DbImageV2Fun));
 
-	// db_image(src VARCHAR, alt VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(
-	    ScalarFunction("db_image", {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_list_type, DbImageV2Fun));
-
-	// db_image(src VARCHAR, alt VARCHAR, title VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("db_image",
+	// duck_block_image(src VARCHAR, alt VARCHAR, title VARCHAR) -> LIST(duck_block)
+	loader.RegisterFunction(ScalarFunction("duck_block_image",
 	                                       {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR},
 	                                       duck_block_list_type, DbImageV2Fun));
 
-	// db_raw(content VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("db_raw", {LogicalType::VARCHAR}, duck_block_list_type, DbRawV2NoFormatFun));
+	// duck_block_raw(content VARCHAR) -> LIST(duck_block)
+	loader.RegisterFunction(
+	    ScalarFunction("duck_block_raw", {LogicalType::VARCHAR}, duck_block_list_type, DbRawV2NoFormatFun));
 
-	// db_raw(format VARCHAR, content VARCHAR) -> LIST(duck_block)
+	// duck_block_raw(format VARCHAR, content VARCHAR) -> LIST(duck_block)
 	// Note: V2 has format first
 
-	// db_list_block(ordered BOOLEAN, items VARCHAR[]) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("db_list_block",
+	// duck_block_list_block(ordered BOOLEAN, items VARCHAR[]) -> LIST(duck_block)
+	loader.RegisterFunction(ScalarFunction("duck_block_list_block",
 	                                       {LogicalType::BOOLEAN, LogicalType::LIST(LogicalType::VARCHAR)},
 	                                       duck_block_list_type, DbListBlockV2Fun));
 
-	// db_list_block(items VARCHAR[]) -> LIST(duck_block) (ordered defaults to false)
-	loader.RegisterFunction(ScalarFunction("db_list_block", {LogicalType::LIST(LogicalType::VARCHAR)},
+	// duck_block_list_block(items VARCHAR[]) -> LIST(duck_block) (ordered defaults to false)
+	loader.RegisterFunction(ScalarFunction("duck_block_list_block", {LogicalType::LIST(LogicalType::VARCHAR)},
 	                                       duck_block_list_type, DbListBlockV2NoOrderFun));
 
-	// db_list_block(ordered BOOLEAN, items LIST(LIST(duck_block))) -> LIST(duck_block)
-	// Wraps db_list_item results with a list container
+	// duck_block_list_block(ordered BOOLEAN, items LIST(LIST(duck_block))) -> LIST(duck_block)
+	// Wraps duck_block_list_item results with a list container
 	loader.RegisterFunction(ScalarFunction(
-	    "db_list_block", {LogicalType::BOOLEAN, duck_block_nested_list_type}, duck_block_list_type,
+	    "duck_block_list_block", {LogicalType::BOOLEAN, duck_block_nested_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &ordered_vec = args.data[0];
 		    auto &nested_vec = args.data[1];
@@ -1213,9 +1216,9 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
-	// db_list_block(items LIST(LIST(duck_block))) -> LIST(duck_block) (unordered by default)
+	// duck_block_list_block(items LIST(LIST(duck_block))) -> LIST(duck_block) (unordered by default)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_list_block", {duck_block_nested_list_type}, duck_block_list_type,
+	    "duck_block_list_block", {duck_block_nested_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &nested_vec = args.data[0];
 		    auto count = args.size();
@@ -1258,13 +1261,14 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
-	// db_list - shorter alias for db_list_block
-	loader.RegisterFunction(ScalarFunction("db_list", {LogicalType::BOOLEAN, LogicalType::LIST(LogicalType::VARCHAR)},
+	// duck_block_list - shorter alias for duck_block_list_block
+	loader.RegisterFunction(ScalarFunction("duck_block_list",
+	                                       {LogicalType::BOOLEAN, LogicalType::LIST(LogicalType::VARCHAR)},
 	                                       duck_block_list_type, DbListBlockV2Fun));
-	loader.RegisterFunction(ScalarFunction("db_list", {LogicalType::LIST(LogicalType::VARCHAR)}, duck_block_list_type,
-	                                       DbListBlockV2NoOrderFun));
+	loader.RegisterFunction(ScalarFunction("duck_block_list", {LogicalType::LIST(LogicalType::VARCHAR)},
+	                                       duck_block_list_type, DbListBlockV2NoOrderFun));
 	loader.RegisterFunction(ScalarFunction(
-	    "db_list", {LogicalType::BOOLEAN, duck_block_nested_list_type}, duck_block_list_type,
+	    "duck_block_list", {LogicalType::BOOLEAN, duck_block_nested_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &ordered_vec = args.data[0];
 		    auto &nested_vec = args.data[1];
@@ -1305,7 +1309,7 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 	loader.RegisterFunction(ScalarFunction(
-	    "db_list", {duck_block_nested_list_type}, duck_block_list_type,
+	    "duck_block_list", {duck_block_nested_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &nested_vec = args.data[0];
 		    auto count = args.size();
@@ -1343,25 +1347,25 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
-	// db_list_item(content VARCHAR) -> LIST(duck_block)
+	// duck_block_list_item(content VARCHAR) -> LIST(duck_block)
 	loader.RegisterFunction(
-	    ScalarFunction("db_list_item", {LogicalType::VARCHAR}, duck_block_list_type, DbListItemV2NoOrderFun));
+	    ScalarFunction("duck_block_list_item", {LogicalType::VARCHAR}, duck_block_list_type, DbListItemV2NoOrderFun));
 
-	// db_list_item(ordered BOOLEAN, content VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("db_list_item", {LogicalType::BOOLEAN, LogicalType::VARCHAR},
+	// duck_block_list_item(ordered BOOLEAN, content VARCHAR) -> LIST(duck_block)
+	loader.RegisterFunction(ScalarFunction("duck_block_list_item", {LogicalType::BOOLEAN, LogicalType::VARCHAR},
 	                                       duck_block_list_type, DbListItemV2Fun));
 
-	// db_list_item(content LIST(duck_block)) -> LIST(duck_block)
+	// duck_block_list_item(content LIST(duck_block)) -> LIST(duck_block)
 	loader.RegisterFunction(
-	    ScalarFunction("db_list_item", {duck_block_list_type}, duck_block_list_type, DbListItemV2NoOrderFun));
+	    ScalarFunction("duck_block_list_item", {duck_block_list_type}, duck_block_list_type, DbListItemV2NoOrderFun));
 
-	// db_list_item(ordered BOOLEAN, content LIST(duck_block)) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("db_list_item", {LogicalType::BOOLEAN, duck_block_list_type},
+	// duck_block_list_item(ordered BOOLEAN, content LIST(duck_block)) -> LIST(duck_block)
+	loader.RegisterFunction(ScalarFunction("duck_block_list_item", {LogicalType::BOOLEAN, duck_block_list_type},
 	                                       duck_block_list_type, DbListItemV2Fun));
 
-	// db_list_item(content LIST(LIST(duck_block))) -> LIST(duck_block) (flatten nested lists)
+	// duck_block_list_item(content LIST(LIST(duck_block))) -> LIST(duck_block) (flatten nested lists)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_list_item", {duck_block_nested_list_type}, duck_block_list_type,
+	    "duck_block_list_item", {duck_block_nested_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &nested_vec = args.data[0];
 		    auto count = args.size();
@@ -1377,9 +1381,9 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
-	// db_list_item(ordered BOOLEAN, content LIST(LIST(duck_block))) -> LIST(duck_block)
+	// duck_block_list_item(ordered BOOLEAN, content LIST(LIST(duck_block))) -> LIST(duck_block)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_list_item", {LogicalType::BOOLEAN, duck_block_nested_list_type}, duck_block_list_type,
+	    "duck_block_list_item", {LogicalType::BOOLEAN, duck_block_nested_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &ordered_vec = args.data[0];
 		    auto &nested_vec = args.data[1];
@@ -1398,17 +1402,17 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
-	// db_raw(format VARCHAR, content VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(
-	    ScalarFunction("db_raw", {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_list_type, DbRawV2Fun));
+	// duck_block_raw(format VARCHAR, content VARCHAR) -> LIST(duck_block)
+	loader.RegisterFunction(ScalarFunction("duck_block_raw", {LogicalType::VARCHAR, LogicalType::VARCHAR},
+	                                       duck_block_list_type, DbRawV2Fun));
 
 	// ========================================================================
-	// db_div - Generic block container (Issue #6)
+	// duck_block_div - Generic block container (Issue #6)
 	// ========================================================================
 
-	// db_div(children LIST(duck_block)) -> LIST(duck_block)
+	// duck_block_div(children LIST(duck_block)) -> LIST(duck_block)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_div", {duck_block_list_type}, duck_block_list_type,
+	    "duck_block_div", {duck_block_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &children_vec = args.data[0];
 		    auto count = args.size();
@@ -1421,9 +1425,9 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
-	// db_div(id VARCHAR, children LIST(duck_block)) -> LIST(duck_block)
+	// duck_block_div(id VARCHAR, children LIST(duck_block)) -> LIST(duck_block)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_div", {LogicalType::VARCHAR, duck_block_list_type}, duck_block_list_type,
+	    "duck_block_div", {LogicalType::VARCHAR, duck_block_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &id_vec = args.data[0];
 		    auto &children_vec = args.data[1];
@@ -1442,9 +1446,9 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
-	// db_div(id VARCHAR, class VARCHAR, children LIST(duck_block)) -> LIST(duck_block)
+	// duck_block_div(id VARCHAR, class VARCHAR, children LIST(duck_block)) -> LIST(duck_block)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_div", {LogicalType::VARCHAR, LogicalType::VARCHAR, duck_block_list_type}, duck_block_list_type,
+	    "duck_block_div", {LogicalType::VARCHAR, LogicalType::VARCHAR, duck_block_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &id_vec = args.data[0];
 		    auto &class_vec = args.data[1];
@@ -1468,9 +1472,9 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
-	// db_div(children LIST(LIST(duck_block))) -> LIST(duck_block)
+	// duck_block_div(children LIST(LIST(duck_block))) -> LIST(duck_block)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_div", {duck_block_nested_list_type}, duck_block_list_type,
+	    "duck_block_div", {duck_block_nested_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &nested_vec = args.data[0];
 		    auto count = args.size();
@@ -1484,9 +1488,9 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
-	// db_div(id VARCHAR, children LIST(LIST(duck_block))) -> LIST(duck_block)
+	// duck_block_div(id VARCHAR, children LIST(LIST(duck_block))) -> LIST(duck_block)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_div", {LogicalType::VARCHAR, duck_block_nested_list_type}, duck_block_list_type,
+	    "duck_block_div", {LogicalType::VARCHAR, duck_block_nested_list_type}, duck_block_list_type,
 	    [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &id_vec = args.data[0];
 		    auto &nested_vec = args.data[1];
@@ -1506,10 +1510,10 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
-	// db_div(id VARCHAR, class VARCHAR, children LIST(LIST(duck_block))) -> LIST(duck_block)
+	// duck_block_div(id VARCHAR, class VARCHAR, children LIST(LIST(duck_block))) -> LIST(duck_block)
 	loader.RegisterFunction(ScalarFunction(
-	    "db_div", {LogicalType::VARCHAR, LogicalType::VARCHAR, duck_block_nested_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+	    "duck_block_div", {LogicalType::VARCHAR, LogicalType::VARCHAR, duck_block_nested_list_type},
+	    duck_block_list_type, [](DataChunk &args, ExpressionState &state, Vector &result) {
 		    auto &id_vec = args.data[0];
 		    auto &class_vec = args.data[1];
 		    auto &nested_vec = args.data[2];

@@ -125,10 +125,10 @@ CREATE TYPE duck_block_ext AS STRUCT(
 
 Transform element sequences without parsing content.
 
-#### db_blocks_filter
+#### duck_blocks_filter
 ```cpp
 // Signature
-LIST(duck_block) db_blocks_filter(LIST(duck_block) blocks, VARCHAR[] types)
+LIST(duck_block) duck_blocks_filter(LIST(duck_block) blocks, VARCHAR[] types)
 
 // Implementation
 - Iterate through blocks
@@ -136,30 +136,30 @@ LIST(duck_block) db_blocks_filter(LIST(duck_block) blocks, VARCHAR[] types)
 - Preserve element_order values
 ```
 
-#### db_blocks_exclude
+#### duck_blocks_exclude
 ```cpp
 // Signature
-LIST(duck_block) db_blocks_exclude(LIST(duck_block) blocks, VARCHAR[] types)
+LIST(duck_block) duck_blocks_exclude(LIST(duck_block) blocks, VARCHAR[] types)
 
 // Implementation
 - Iterate through blocks
 - Keep blocks where element_type NOT IN types
 ```
 
-#### db_blocks_merge
+#### duck_blocks_merge
 ```cpp
 // Signature
-LIST(duck_block) db_blocks_merge(LIST(duck_block) blocks1, LIST(duck_block) blocks2)
+LIST(duck_block) duck_blocks_merge(LIST(duck_block) blocks1, LIST(duck_block) blocks2)
 
 // Implementation
 - Concatenate blocks2 after blocks1
 - Renumber element_order: blocks2 orders += max(blocks1 orders) + 1
 ```
 
-#### db_blocks_reorder
+#### duck_blocks_reorder
 ```cpp
 // Signature
-LIST(duck_block) db_blocks_reorder(LIST(duck_block) blocks)
+LIST(duck_block) duck_blocks_reorder(LIST(duck_block) blocks)
 
 // Implementation
 - Sort by current element_order
@@ -185,10 +185,10 @@ LIST(duck_block) db_blocks_transform(
 
 Extract specific information from elements.
 
-#### db_blocks_to_text
+#### duck_blocks_to_text
 ```cpp
 // Signature
-VARCHAR db_blocks_to_text(LIST(duck_block) blocks)
+VARCHAR duck_blocks_to_text(LIST(duck_block) blocks)
 
 // Implementation
 - For each block:
@@ -199,34 +199,34 @@ VARCHAR db_blocks_to_text(LIST(duck_block) blocks)
 - Skip 'hr', 'raw' blocks
 ```
 
-#### db_blocks_headings
+#### duck_blocks_headings
 ```cpp
 // Signature (returns table)
 TABLE(level INT, title VARCHAR, id VARCHAR, element_order INT)
-    db_blocks_headings(LIST(duck_block) blocks)
+    duck_blocks_headings(LIST(duck_block) blocks)
 
 // Implementation
 - Filter to element_type = 'heading'
 - Return level, content as title, attributes['id'], element_order
 ```
 
-#### db_blocks_toc
+#### duck_blocks_toc
 ```cpp
 // Signature (returns table)
 TABLE(level INT, title VARCHAR, id VARCHAR, indent VARCHAR, element_order INT)
-    db_blocks_toc(LIST(duck_block) blocks)
+    duck_blocks_toc(LIST(duck_block) blocks)
 
 // Implementation
-- Call db_blocks_headings
+- Call duck_blocks_headings
 - Add indent column: repeat('  ', level - 1)
 - Optionally generate IDs from titles if missing
 ```
 
-#### db_blocks_code_blocks
+#### duck_blocks_code_blocks
 ```cpp
 // Signature (returns table)
 TABLE(language VARCHAR, content VARCHAR, info_string VARCHAR, element_order INT, file_path VARCHAR)
-    db_blocks_code_blocks(LIST(duck_block) blocks)
+    duck_blocks_code_blocks(LIST(duck_block) blocks)
 
 // Implementation
 - Filter to element_type = 'code'
@@ -234,11 +234,11 @@ TABLE(language VARCHAR, content VARCHAR, info_string VARCHAR, element_order INT,
 - Include file_path if present
 ```
 
-#### db_blocks_links
+#### duck_blocks_links
 ```cpp
 // Signature (returns table)
 TABLE(text VARCHAR, url VARCHAR, title VARCHAR, element_order INT)
-    db_blocks_links(LIST(duck_block) blocks)
+    duck_blocks_links(LIST(duck_block) blocks)
 
 // Implementation
 - Scan content of 'paragraph', 'list' blocks for markdown links
@@ -250,10 +250,10 @@ TABLE(text VARCHAR, url VARCHAR, title VARCHAR, element_order INT)
 
 Check conformance and quality.
 
-#### db_blocks_validate
+#### duck_blocks_validate
 ```cpp
 // Signature
-STRUCT(valid BOOL, errors LIST(VARCHAR)) db_blocks_validate(LIST(duck_block) blocks)
+STRUCT(valid BOOL, errors LIST(VARCHAR)) duck_blocks_validate(LIST(duck_block) blocks)
 
 // Implementation
 - Check each block:
@@ -267,11 +267,11 @@ STRUCT(valid BOOL, errors LIST(VARCHAR)) db_blocks_validate(LIST(duck_block) blo
 - Return aggregated results
 ```
 
-#### db_blocks_lint
+#### duck_blocks_lint
 ```cpp
 // Signature (returns table)
 TABLE(severity VARCHAR, message VARCHAR, element_order INT, suggestion VARCHAR)
-    db_blocks_lint(LIST(duck_block) blocks)
+    duck_blocks_lint(LIST(duck_block) blocks)
 
 // Implementation
 Checks:
@@ -283,11 +283,11 @@ Checks:
 - 'info': Large element_order gaps
 ```
 
-#### db_blocks_stats
+#### duck_blocks_stats
 ```cpp
 // Signature
 TABLE(element_type VARCHAR, count INT, avg_content_length FLOAT)
-    db_blocks_stats(LIST(duck_block) blocks)
+    duck_blocks_stats(LIST(duck_block) blocks)
 
 // Implementation
 - Group by element_type
@@ -344,21 +344,21 @@ LIST(duck_block) db_blocks_map_types(
 - Basic manipulation: filter, exclude, merge, reorder
 
 ### Phase 2: Extraction Functions
-- db_blocks_to_text
-- db_blocks_headings
-- db_blocks_toc
-- db_blocks_code_blocks
+- duck_blocks_to_text
+- duck_blocks_headings
+- duck_blocks_toc
+- duck_blocks_code_blocks
 
 ### Phase 3: Validation
-- db_blocks_validate
-- db_blocks_lint
-- db_blocks_stats
+- duck_blocks_validate
+- duck_blocks_lint
+- duck_blocks_stats
 
 ### Phase 4: Conversion Helpers
 - db_blocks_set_source
 - db_blocks_normalize
 - db_blocks_map_types
-- db_blocks_links
+- duck_blocks_links
 
 ### Phase 5: Advanced Features
 - Content-aware transformations

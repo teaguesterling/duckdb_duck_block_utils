@@ -147,7 +147,7 @@ static void SpecVersionFun(DataChunk &args, ExpressionState &state, Vector &resu
 	result.Reference(v);
 }
 
-// db_blocks_stamp(blocks) -> blocks with a version marker appended.
+// duck_blocks_stamp(blocks) -> blocks with a version marker appended.
 static void BlocksStampFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto block_type = BlockTypes::DuckBlockType();
 	UnaryExecutor::Execute<list_entry_t, list_entry_t>(args.data[0], result, args.size(),
@@ -183,7 +183,7 @@ static void BlocksStampFun(DataChunk &args, ExpressionState &state, Vector &resu
 	}
 }
 
-// db_blocks_version(blocks) -> the stamped spec version, or NULL if unstamped.
+// duck_blocks_version(blocks) -> the stamped spec version, or NULL if unstamped.
 static void BlocksVersionFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	for (idx_t i = 0; i < args.size(); i++) {
 		auto in = args.data[0].GetValue(i);
@@ -214,13 +214,13 @@ void BlockTypes::Register(ExtensionLoader &loader) {
 	loader.RegisterType("duck_block_ext", DuckBlockExtType());
 
 	auto varchar_list = LogicalType::LIST(LogicalType::VARCHAR);
-	loader.RegisterFunction(ScalarFunction("db_block_kinds", {}, varchar_list, BlockKindsFun));
-	loader.RegisterFunction(ScalarFunction("db_block_types", {}, varchar_list, BlockTypesFun));
-	loader.RegisterFunction(ScalarFunction("db_block_spec_version", {}, LogicalType::VARCHAR, SpecVersionFun));
+	loader.RegisterFunction(ScalarFunction("duck_block_kind_names", {}, varchar_list, BlockKindsFun));
+	loader.RegisterFunction(ScalarFunction("duck_block_type_names", {}, varchar_list, BlockTypesFun));
+	loader.RegisterFunction(ScalarFunction("duck_block_spec_version", {}, LogicalType::VARCHAR, SpecVersionFun));
 	loader.RegisterFunction(
-	    ScalarFunction("db_blocks_stamp", {DuckBlockListType()}, DuckBlockListType(), BlocksStampFun));
+	    ScalarFunction("duck_blocks_stamp", {DuckBlockListType()}, DuckBlockListType(), BlocksStampFun));
 	loader.RegisterFunction(
-	    ScalarFunction("db_blocks_version", {DuckBlockListType()}, LogicalType::VARCHAR, BlocksVersionFun));
+	    ScalarFunction("duck_blocks_version", {DuckBlockListType()}, LogicalType::VARCHAR, BlocksVersionFun));
 
 	// Register cast from VARCHAR to duck_block (creates text inline element)
 	// Using implicit_cast_cost = -1 means explicit cast only (not implicit)

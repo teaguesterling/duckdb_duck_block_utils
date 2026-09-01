@@ -97,50 +97,50 @@ SELECT len(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23],"meta":{},"blocks"
 # duck_blocks_to_pandoc_blocks Tests (v2: builders return LIST)
 # ============================================================================
 
-# Test converting heading to Pandoc AST (db_heading returns LIST, can pass directly)
+# Test converting heading to Pandoc AST (duck_block_heading returns LIST, can pass directly)
 query I
-SELECT duck_blocks_to_pandoc_blocks(db_heading(1, 'Title')) LIKE '%Header%';
+SELECT duck_blocks_to_pandoc_blocks(duck_block_heading(1, 'Title')) LIKE '%Header%';
 ----
 true
 
 query I
-SELECT duck_blocks_to_pandoc_blocks(db_heading(1, 'Title')) LIKE '%Title%';
+SELECT duck_blocks_to_pandoc_blocks(duck_block_heading(1, 'Title')) LIKE '%Title%';
 ----
 true
 
 # Test converting paragraph to Pandoc AST
 query I
-SELECT duck_blocks_to_pandoc_blocks(db_paragraph('Hello')) LIKE '%Para%';
+SELECT duck_blocks_to_pandoc_blocks(duck_block_paragraph('Hello')) LIKE '%Para%';
 ----
 true
 
 query I
-SELECT duck_blocks_to_pandoc_blocks(db_paragraph('Hello')) LIKE '%Hello%';
+SELECT duck_blocks_to_pandoc_blocks(duck_block_paragraph('Hello')) LIKE '%Hello%';
 ----
 true
 
 # Test converting code block to Pandoc AST (v2: language first)
 query I
-SELECT duck_blocks_to_pandoc_blocks(db_code('python', 'x=1')) LIKE '%CodeBlock%';
+SELECT duck_blocks_to_pandoc_blocks(duck_block_code('python', 'x=1')) LIKE '%CodeBlock%';
 ----
 true
 
 query I
-SELECT duck_blocks_to_pandoc_blocks(db_code('python', 'x=1')) LIKE '%python%';
+SELECT duck_blocks_to_pandoc_blocks(duck_block_code('python', 'x=1')) LIKE '%python%';
 ----
 true
 
 # Test converting hr to Pandoc AST
 query I
-SELECT duck_blocks_to_pandoc_blocks(db_hr()) LIKE '%HorizontalRule%';
+SELECT duck_blocks_to_pandoc_blocks(duck_block_hr()) LIKE '%HorizontalRule%';
 ----
 true
 
-# Test converting multiple blocks (use db_assemble to flatten)
+# Test converting multiple blocks (use duck_blocks_assemble to flatten)
 query I
-SELECT duck_blocks_to_pandoc_blocks(db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph('Text')
+SELECT duck_blocks_to_pandoc_blocks(duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Text')
 ])) LIKE '%Header%Para%';
 ----
 true
@@ -159,7 +159,7 @@ true
 
 # Test inline elements are skipped in block output
 query I
-SELECT duck_blocks_to_pandoc_blocks(db_text('inline'));
+SELECT duck_blocks_to_pandoc_blocks(duck_block_text('inline'));
 ----
 []
 
@@ -169,25 +169,25 @@ SELECT duck_blocks_to_pandoc_blocks(db_text('inline'));
 
 # Test simple round-trip: Para
 query I
-SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_paragraph('Hello')))[1].element_type;
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(duck_block_paragraph('Hello')))[1].element_type;
 ----
 paragraph
 
 # Test simple round-trip: Header (v2: level first)
 query I
-SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_heading(1, 'Title')))[1].element_type;
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(duck_block_heading(1, 'Title')))[1].element_type;
 ----
 heading
 
 # Test simple round-trip: CodeBlock (v2: language first)
 query I
-SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_code('py', 'x=1')))[1].element_type;
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(duck_block_code('py', 'x=1')))[1].element_type;
 ----
 code
 
 # Test content preserved in round-trip
 query I
-SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_paragraph('Test content')))[1].content;
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(duck_block_paragraph('Test content')))[1].content;
 ----
 Test content
 
@@ -197,11 +197,11 @@ Test content
 
 # Test assembled document round-trip
 query I
-SELECT len(pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph('Introduction'),
-    db_code('python', 'print("hello")'),
-    db_hr()
+SELECT len(pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Introduction'),
+    duck_block_code('python', 'print("hello")'),
+    duck_block_hr()
 ]))));
 ----
 4
@@ -213,56 +213,56 @@ SELECT len(pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_assemble([
 
 # Test returns STRUCT type
 query I
-SELECT typeof(duck_blocks_to_pandoc_ast(db_heading(1, 'Test'))) LIKE 'STRUCT%';
+SELECT typeof(duck_blocks_to_pandoc_ast(duck_block_heading(1, 'Test'))) LIKE 'STRUCT%';
 ----
 true
 
 # Test struct has pandoc-api-version field
 query I
-SELECT duck_blocks_to_pandoc_ast(db_heading(1, 'Test'))."pandoc-api-version" IS NOT NULL;
+SELECT duck_blocks_to_pandoc_ast(duck_block_heading(1, 'Test'))."pandoc-api-version" IS NOT NULL;
 ----
 true
 
 # Test API version is [1,23,1] -- pandoc 3.x rejects anything below [1,23]
 query I
-SELECT duck_blocks_to_pandoc_ast(db_heading(1, 'Test'))."pandoc-api-version"[1];
+SELECT duck_blocks_to_pandoc_ast(duck_block_heading(1, 'Test'))."pandoc-api-version"[1];
 ----
 1
 
 query I
-SELECT duck_blocks_to_pandoc_ast(db_heading(1, 'Test'))."pandoc-api-version"[2];
+SELECT duck_blocks_to_pandoc_ast(duck_block_heading(1, 'Test'))."pandoc-api-version"[2];
 ----
 23
 
 # Test struct has meta field (empty object)
 query I
-SELECT duck_blocks_to_pandoc_ast(db_heading(1, 'Test')).meta;
+SELECT duck_blocks_to_pandoc_ast(duck_block_heading(1, 'Test')).meta;
 ----
 {}
 
 # Test blocks array has correct length
 query I
-SELECT json_array_length(duck_blocks_to_pandoc_ast(db_heading(1, 'Test')).blocks);
+SELECT json_array_length(duck_blocks_to_pandoc_ast(duck_block_heading(1, 'Test')).blocks);
 ----
 1
 
 # Test block type in output
 query I
-SELECT json_extract(duck_blocks_to_pandoc_ast(db_heading(1, 'Test')).blocks, '$[0].t');
+SELECT json_extract(duck_blocks_to_pandoc_ast(duck_block_heading(1, 'Test')).blocks, '$[0].t');
 ----
 "Header"
 
 query I
-SELECT json_extract(duck_blocks_to_pandoc_ast(db_paragraph('Hello')).blocks, '$[0].t');
+SELECT json_extract(duck_blocks_to_pandoc_ast(duck_block_paragraph('Hello')).blocks, '$[0].t');
 ----
 "Para"
 
 # Test multiple blocks
 query I
-SELECT json_array_length(duck_blocks_to_pandoc_ast(db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph('Body'),
-    db_hr()
+SELECT json_array_length(duck_blocks_to_pandoc_ast(duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Body'),
+    duck_block_hr()
 ])).blocks);
 ----
 3
@@ -285,45 +285,45 @@ SELECT duck_blocks_to_pandoc_ast([]).blocks;
 
 # Test paragraph with inline formatting
 query I
-SELECT json_extract(duck_blocks_to_pandoc_ast(db_assemble([
-    db_paragraph([db_text('Hello '), db_bold('world')])
+SELECT json_extract(duck_blocks_to_pandoc_ast(duck_blocks_assemble([
+    duck_block_paragraph([duck_block_text('Hello '), duck_block_bold('world')])
 ])).blocks, '$[0].c[0].t');
 ----
 "Str"
 
 query I
-SELECT json_extract(duck_blocks_to_pandoc_ast(db_assemble([
-    db_paragraph([db_text('Hello '), db_bold('world')])
+SELECT json_extract(duck_blocks_to_pandoc_ast(duck_blocks_assemble([
+    duck_block_paragraph([duck_block_text('Hello '), duck_block_bold('world')])
 ])).blocks, '$[0].c[1].t');
 ----
 "Strong"
 
 # Test list block type with inline children
 query I
-SELECT json_extract(duck_blocks_to_pandoc_ast(db_assemble([
-    db_list([db_list_item([db_text('Item 1')]), db_list_item([db_text('Item 2')])])
+SELECT json_extract(duck_blocks_to_pandoc_ast(duck_blocks_assemble([
+    duck_block_list([duck_block_list_item([duck_block_text('Item 1')]), duck_block_list_item([duck_block_text('Item 2')])])
 ])).blocks, '$[0].t');
 ----
 "BulletList"
 
 # Test list with simple string items (no inline children)
 query I
-SELECT json_extract(duck_blocks_to_pandoc_ast(db_assemble([
-    db_list([db_list_item('Simple 1'), db_list_item('Simple 2')])
+SELECT json_extract(duck_blocks_to_pandoc_ast(duck_blocks_assemble([
+    duck_block_list([duck_block_list_item('Simple 1'), duck_block_list_item('Simple 2')])
 ])).blocks, '$[0].c[0][0].c[0].c');
 ----
 "Simple 1"
 
 query I
-SELECT json_array_length(json_extract(duck_blocks_to_pandoc_ast(db_assemble([
-    db_list([db_list_item('A'), db_list_item('B'), db_list_item('C')])
+SELECT json_array_length(json_extract(duck_blocks_to_pandoc_ast(duck_blocks_assemble([
+    duck_block_list([duck_block_list_item('A'), duck_block_list_item('B'), duck_block_list_item('C')])
 ])).blocks, '$[0].c'));
 ----
 3
 
 # Test code block with language
 query I
-SELECT json_extract(duck_blocks_to_pandoc_ast(db_code('sql', 'SELECT 1')).blocks, '$[0].c[0][1][0]');
+SELECT json_extract(duck_blocks_to_pandoc_ast(duck_block_code('sql', 'SELECT 1')).blocks, '$[0].c[0][1][0]');
 ----
 "sql"
 
@@ -334,36 +334,36 @@ SELECT json_extract(duck_blocks_to_pandoc_ast(db_code('sql', 'SELECT 1')).blocks
 
 # Test round-trip through complete AST
 query I
-SELECT pandoc_ast_to_blocks(to_json(duck_blocks_to_pandoc_ast(db_heading(1, 'Test'))))[1].element_type;
+SELECT pandoc_ast_to_blocks(to_json(duck_blocks_to_pandoc_ast(duck_block_heading(1, 'Test'))))[1].element_type;
 ----
 heading
 
 query I
-SELECT pandoc_ast_to_blocks(to_json(duck_blocks_to_pandoc_ast(db_paragraph('Hello'))))[1].content;
+SELECT pandoc_ast_to_blocks(to_json(duck_blocks_to_pandoc_ast(duck_block_paragraph('Hello'))))[1].content;
 ----
 Hello
 
 # Test complex document round-trip preserves block count
 query I
-SELECT len(pandoc_ast_to_blocks(to_json(duck_blocks_to_pandoc_ast(db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph('Intro'),
-    db_code('python', 'x=1'),
-    db_hr(),
-    db_paragraph('Conclusion')
+SELECT len(pandoc_ast_to_blocks(to_json(duck_blocks_to_pandoc_ast(duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Intro'),
+    duck_block_code('python', 'x=1'),
+    duck_block_hr(),
+    duck_block_paragraph('Conclusion')
 ])))));
 ----
 5
 
 # Test heading level preserved in round-trip
 query I
-SELECT pandoc_ast_to_blocks(to_json(duck_blocks_to_pandoc_ast(db_heading(2, 'Section'))))[1].attributes['heading_level'];
+SELECT pandoc_ast_to_blocks(to_json(duck_blocks_to_pandoc_ast(duck_block_heading(2, 'Section'))))[1].attributes['heading_level'];
 ----
 2
 
 # Test code language preserved in round-trip
 query I
-SELECT pandoc_ast_to_blocks(to_json(duck_blocks_to_pandoc_ast(db_code('javascript', 'let x'))))[1].attributes['language'];
+SELECT pandoc_ast_to_blocks(to_json(duck_blocks_to_pandoc_ast(duck_block_code('javascript', 'let x'))))[1].attributes['language'];
 ----
 javascript
 
@@ -373,41 +373,41 @@ javascript
 
 # Test basic table function
 query I
-SELECT "pandoc-api-version" FROM pandoc_ast(db_heading(1, 'Test'));
+SELECT "pandoc-api-version" FROM pandoc_ast(duck_block_heading(1, 'Test'));
 ----
 [1, 23, 1]
 
 # Test custom api_version parameter
 query I
-SELECT "pandoc-api-version" FROM pandoc_ast(db_heading(1, 'Test'), api_version := [1, 23]);
+SELECT "pandoc-api-version" FROM pandoc_ast(duck_block_heading(1, 'Test'), api_version := [1, 23]);
 ----
 [1, 23]
 
 # Test meta parameter with simple MAP - title only
 query I
-SELECT json_extract(meta, '$.title.t') FROM pandoc_ast(db_heading(1, 'Test'), meta := {'title': 'My Document'});
+SELECT json_extract(meta, '$.title.t') FROM pandoc_ast(duck_block_heading(1, 'Test'), meta := {'title': 'My Document'});
 ----
 "MetaInlines"
 
 query I
-SELECT json_extract(meta, '$.title.c[0].c') FROM pandoc_ast(db_heading(1, 'Test'), meta := {'title': 'My Document'});
+SELECT json_extract(meta, '$.title.c[0].c') FROM pandoc_ast(duck_block_heading(1, 'Test'), meta := {'title': 'My Document'});
 ----
 "My Document"
 
 # Test meta with multiple fields
 query I
-SELECT json_extract(meta, '$.author.c[0].c') FROM pandoc_ast(db_heading(1, 'Test'), meta := {'title': 'Doc', 'author': 'John Doe'});
+SELECT json_extract(meta, '$.author.c[0].c') FROM pandoc_ast(duck_block_heading(1, 'Test'), meta := {'title': 'Doc', 'author': 'John Doe'});
 ----
 "John Doe"
 
 query I
-SELECT json_extract(meta, '$.date.c[0].c') FROM pandoc_ast(db_heading(1, 'Test'), meta := {'title': 'Doc', 'author': 'Jane', 'date': '2024-01-05'});
+SELECT json_extract(meta, '$.date.c[0].c') FROM pandoc_ast(duck_block_heading(1, 'Test'), meta := {'title': 'Doc', 'author': 'Jane', 'date': '2024-01-05'});
 ----
 "2024-01-05"
 
 # Test empty meta (default)
 query I
-SELECT meta FROM pandoc_ast(db_heading(1, 'Test'));
+SELECT meta FROM pandoc_ast(duck_block_heading(1, 'Test'));
 ----
 {}
 
@@ -424,7 +424,7 @@ SELECT meta FROM pandoc_ast(db_heading(1, 'Test'));
 # INLINE builders start at level 1, not NULL. Only BLOCKS carry NULL at top
 # level -- an inline is always inside something, so it always has a depth.
 query I
-SELECT unnest(db_bold([db_text('a'), db_italic('b')])).level;
+SELECT unnest(duck_block_bold([duck_block_text('a'), duck_block_italic('b')])).level;
 ----
 1
 2
@@ -432,7 +432,7 @@ SELECT unnest(db_bold([db_text('a'), db_italic('b')])).level;
 
 # When nested in paragraph, levels should shift appropriately
 query I
-SELECT unnest(db_paragraph([db_bold([db_text('a'), db_italic('b')])])).level;
+SELECT unnest(duck_block_paragraph([duck_block_bold([duck_block_text('a'), duck_block_italic('b')])])).level;
 ----
 NULL
 2
@@ -441,7 +441,7 @@ NULL
 
 # Triple nesting: paragraph > bold > italic > text
 query I
-SELECT unnest(db_paragraph([db_bold([db_italic([db_text('deep')])])])).level;
+SELECT unnest(duck_block_paragraph([duck_block_bold([duck_block_italic([duck_block_text('deep')])])])).level;
 ----
 NULL
 2
@@ -455,14 +455,14 @@ NULL
 # Bold with nested italic should produce Strong containing Emph
 query I
 SELECT json_extract(duck_blocks_to_pandoc_blocks(
-    db_paragraph([db_bold([db_text('a '), db_italic('b')])])
+    duck_block_paragraph([duck_block_bold([duck_block_text('a '), duck_block_italic('b')])])
 ), '$[0].c[0].t');
 ----
 "Strong"
 
 query I
 SELECT json_extract(duck_blocks_to_pandoc_blocks(
-    db_paragraph([db_bold([db_text('a '), db_italic('b')])])
+    duck_block_paragraph([duck_block_bold([duck_block_text('a '), duck_block_italic('b')])])
 ), '$[0].c[0].c[1].t');
 ----
 "Emph"
@@ -476,7 +476,7 @@ SELECT json_extract(duck_blocks_to_pandoc_blocks(
 # the next case.
 query II
 SELECT elem.element_type, elem.level FROM (
-    SELECT unnest(db_list([db_list_item('A'), db_list_item('B')])) as elem
+    SELECT unnest(duck_block_list([duck_block_list_item('A'), duck_block_list_item('B')])) as elem
 );
 ----
 list	NULL
@@ -486,9 +486,9 @@ list_item	2
 # Nested list: outer list items at level 2, inner list at level 2, inner items at level 3
 query II
 SELECT elem.element_type, elem.level FROM (
-    SELECT unnest(db_list([
-        db_list_item('First'),
-        db_list([db_list_item('Nested A'), db_list_item('Nested B')])
+    SELECT unnest(duck_block_list([
+        duck_block_list_item('First'),
+        duck_block_list([duck_block_list_item('Nested A'), duck_block_list_item('Nested B')])
     ])) as elem
 );
 ----
@@ -504,27 +504,27 @@ list_item	3
 
 # A nested list produces one BulletList with the nested list inside the first item
 query I
-SELECT json_array_length(duck_blocks_to_pandoc_blocks(db_list([
-    db_list_item('First'),
-    db_list([db_list_item('Nested')])
+SELECT json_array_length(duck_blocks_to_pandoc_blocks(duck_block_list([
+    duck_block_list_item('First'),
+    duck_block_list([duck_block_list_item('Nested')])
 ])));
 ----
 1
 
 # Verify the nested structure: outer list has 1 item, inner list has 1 item
 query I
-SELECT json_extract(duck_blocks_to_pandoc_blocks(db_list([
-    db_list_item('First'),
-    db_list([db_list_item('Nested A'), db_list_item('Nested B')])
+SELECT json_extract(duck_blocks_to_pandoc_blocks(duck_block_list([
+    duck_block_list_item('First'),
+    duck_block_list([duck_block_list_item('Nested A'), duck_block_list_item('Nested B')])
 ])), '$[0].c[0][1].t');
 ----
 "BulletList"
 
 # Nested list has 2 items
 query I
-SELECT json_array_length(json_extract(duck_blocks_to_pandoc_blocks(db_list([
-    db_list_item('First'),
-    db_list([db_list_item('Nested A'), db_list_item('Nested B')])
+SELECT json_array_length(json_extract(duck_blocks_to_pandoc_blocks(duck_block_list([
+    duck_block_list_item('First'),
+    duck_block_list([duck_block_list_item('Nested A'), duck_block_list_item('Nested B')])
 ])), '$[0].c[0][1].c'));
 ----
 2
@@ -536,7 +536,7 @@ SELECT json_array_length(json_extract(duck_blocks_to_pandoc_blocks(db_list([
 # Blockquote with paragraph children
 query II
 SELECT elem.element_type, elem.level FROM (
-    SELECT unnest(db_blockquote(1, [db_text('quoted text')])) as elem
+    SELECT unnest(duck_block_blockquote(1, [duck_block_text('quoted text')])) as elem
 );
 ----
 blockquote	NULL
@@ -545,14 +545,14 @@ text	2
 # Blockquote converts to Pandoc with content
 query I
 SELECT json_extract(duck_blocks_to_pandoc_blocks(
-    db_blockquote(1, [db_text('Simple quote')])
+    duck_block_blockquote(1, [duck_block_text('Simple quote')])
 ), '$[0].t');
 ----
 "BlockQuote"
 
 query I
 SELECT json_extract(duck_blocks_to_pandoc_blocks(
-    db_blockquote(1, [db_text('Simple quote')])
+    duck_block_blockquote(1, [duck_block_text('Simple quote')])
 ), '$[0].c[0].c[0].c');
 ----
 "Simple quote"
@@ -560,7 +560,7 @@ SELECT json_extract(duck_blocks_to_pandoc_blocks(
 # Blockquote with rich inline content
 query I
 SELECT json_extract(duck_blocks_to_pandoc_blocks(
-    db_blockquote(1, [db_bold('Bold quote')])
+    duck_block_blockquote(1, [duck_block_bold('Bold quote')])
 ), '$[0].c[0].c[0].t');
 ----
 "Strong"
@@ -568,7 +568,7 @@ SELECT json_extract(duck_blocks_to_pandoc_blocks(
 # Blockquote round-trip preserves type
 query I
 SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(
-    db_blockquote(1, [db_text('Round trip')])
+    duck_block_blockquote(1, [duck_block_text('Round trip')])
 ))[1].element_type;
 ----
 blockquote
@@ -579,9 +579,9 @@ blockquote
 
 # Paragraph with link containing bold
 query I
-SELECT unnest(db_paragraph([
-    db_text('See '),
-    db_link('http://x', [db_bold('here')])
+SELECT unnest(duck_block_paragraph([
+    duck_block_text('See '),
+    duck_block_link('http://x', [duck_block_bold('here')])
 ])).level;
 ----
 NULL
@@ -596,8 +596,8 @@ NULL
 # List item with bold text should have correct levels
 query II
 SELECT elem.element_type, elem.level FROM (
-    SELECT unnest(db_list([
-        db_list_item([db_bold('Important'), db_text(' item')])
+    SELECT unnest(duck_block_list([
+        duck_block_list_item([duck_block_bold('Important'), duck_block_text(' item')])
     ])) as elem
 );
 ----
@@ -692,31 +692,31 @@ SELECT json_array_length(json_extract(duck_blocks_to_pandoc_blocks(pandoc_ast_to
 
 # Image block outputs as Para containing Image inline
 query I
-SELECT json_extract(duck_blocks_to_pandoc_blocks(db_image('http://example.com/img.png', 'Alt', 'Title')), '$[0].t');
+SELECT json_extract(duck_blocks_to_pandoc_blocks(duck_block_image('http://example.com/img.png', 'Alt', 'Title')), '$[0].t');
 ----
 "Para"
 
 # Image inline is inside the Para
 query I
-SELECT json_extract(duck_blocks_to_pandoc_blocks(db_image('http://example.com/img.png', 'Alt', 'Title')), '$[0].c[0].t');
+SELECT json_extract(duck_blocks_to_pandoc_blocks(duck_block_image('http://example.com/img.png', 'Alt', 'Title')), '$[0].c[0].t');
 ----
 "Image"
 
 # Image URL is preserved
 query I
-SELECT json_extract(duck_blocks_to_pandoc_blocks(db_image('http://example.com/img.png', 'Alt', 'Title')), '$[0].c[0].c[2][0]');
+SELECT json_extract(duck_blocks_to_pandoc_blocks(duck_block_image('http://example.com/img.png', 'Alt', 'Title')), '$[0].c[0].c[2][0]');
 ----
 "http://example.com/img.png"
 
 # Image alt text is preserved
 query I
-SELECT json_extract(duck_blocks_to_pandoc_blocks(db_image('http://example.com/img.png', 'Alt', 'Title')), '$[0].c[0].c[1][0].c');
+SELECT json_extract(duck_blocks_to_pandoc_blocks(duck_block_image('http://example.com/img.png', 'Alt', 'Title')), '$[0].c[0].c[1][0].c');
 ----
 "Alt"
 
 # Image title is preserved
 query I
-SELECT json_extract(duck_blocks_to_pandoc_blocks(db_image('http://example.com/img.png', 'Alt', 'Title')), '$[0].c[0].c[2][1]');
+SELECT json_extract(duck_blocks_to_pandoc_blocks(duck_block_image('http://example.com/img.png', 'Alt', 'Title')), '$[0].c[0].c[2][1]');
 ----
 "Title"
 
@@ -726,43 +726,43 @@ SELECT json_extract(duck_blocks_to_pandoc_blocks(db_image('http://example.com/im
 
 # Raw block outputs as RawBlock
 query I
-SELECT json_extract(duck_blocks_to_pandoc_blocks(db_raw('html', '<div>Test</div>')), '$[0].t');
+SELECT json_extract(duck_blocks_to_pandoc_blocks(duck_block_raw('html', '<div>Test</div>')), '$[0].t');
 ----
 "RawBlock"
 
 # Raw block format is preserved
 query I
-SELECT json_extract(duck_blocks_to_pandoc_blocks(db_raw('html', '<div>Test</div>')), '$[0].c[0]');
+SELECT json_extract(duck_blocks_to_pandoc_blocks(duck_block_raw('html', '<div>Test</div>')), '$[0].c[0]');
 ----
 "html"
 
 # Raw block content is preserved
 query I
-SELECT json_extract(duck_blocks_to_pandoc_blocks(db_raw('html', '<div>Test</div>')), '$[0].c[1]');
+SELECT json_extract(duck_blocks_to_pandoc_blocks(duck_block_raw('html', '<div>Test</div>')), '$[0].c[1]');
 ----
 "<div>Test</div>"
 
 # Raw block with latex format
 query I
-SELECT json_extract(duck_blocks_to_pandoc_blocks(db_raw('latex', '\\textbf{bold}')), '$[0].c[0]');
+SELECT json_extract(duck_blocks_to_pandoc_blocks(duck_block_raw('latex', '\\textbf{bold}')), '$[0].c[0]');
 ----
 "latex"
 
 # Raw block round-trip preserves type
 query I
-SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_raw('html', '<span>X</span>')))[1].element_type;
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(duck_block_raw('html', '<span>X</span>')))[1].element_type;
 ----
 raw
 
 # Raw block round-trip preserves format attribute
 query I
-SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_raw('html', '<span>X</span>')))[1].attributes['format'];
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(duck_block_raw('html', '<span>X</span>')))[1].attributes['format'];
 ----
 html
 
 # Raw block round-trip preserves content
 query I
-SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_raw('html', '<span>X</span>')))[1].content;
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(duck_block_raw('html', '<span>X</span>')))[1].content;
 ----
 <span>X</span>
 
@@ -772,7 +772,7 @@ SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_raw('html', '<span>X
 
 # HR outputs as HorizontalRule
 query I
-SELECT duck_blocks_to_pandoc_blocks(db_hr());
+SELECT duck_blocks_to_pandoc_blocks(duck_block_hr());
 ----
 [{"t":"HorizontalRule"}]
 
@@ -784,13 +784,13 @@ hr
 
 # HR round-trip preserves type
 query I
-SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_hr()))[1].element_type;
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(duck_block_hr()))[1].element_type;
 ----
 hr
 
 # HR has empty content
 query I
-SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_hr()))[1].content;
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(duck_block_hr()))[1].content;
 ----
 (empty)
 
@@ -800,13 +800,13 @@ SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_hr()))[1].content;
 
 # Metadata blocks are skipped in Pandoc output (they belong in meta, not blocks)
 query I
-SELECT duck_blocks_to_pandoc_blocks(db_metadata('{"title": "Test"}'));
+SELECT duck_blocks_to_pandoc_blocks(duck_block_metadata('{"title": "Test"}'));
 ----
 []
 
 # Metadata mixed with other blocks - only non-metadata blocks output
 query I
-SELECT duck_blocks_to_pandoc_blocks(list_concat(db_metadata('{"title": "Doc"}'), db_paragraph('Content')));
+SELECT duck_blocks_to_pandoc_blocks(list_concat(duck_block_metadata('{"title": "Doc"}'), duck_block_paragraph('Content')));
 ----
 [{"t":"Para","c":[{"t":"Str","c":"Content"}]}]
 
@@ -816,43 +816,43 @@ SELECT duck_blocks_to_pandoc_blocks(list_concat(db_metadata('{"title": "Doc"}'),
 
 # Code block outputs as CodeBlock
 query I
-SELECT json_extract(duck_blocks_to_pandoc_blocks(db_code('python', 'x = 1')), '$[0].t');
+SELECT json_extract(duck_blocks_to_pandoc_blocks(duck_block_code('python', 'x = 1')), '$[0].t');
 ----
 "CodeBlock"
 
 # Code block language is in classes array
 query I
-SELECT json_extract(duck_blocks_to_pandoc_blocks(db_code('python', 'x = 1')), '$[0].c[0][1][0]');
+SELECT json_extract(duck_blocks_to_pandoc_blocks(duck_block_code('python', 'x = 1')), '$[0].c[0][1][0]');
 ----
 "python"
 
 # Code block content is preserved
 query I
-SELECT json_extract(duck_blocks_to_pandoc_blocks(db_code('python', 'print("Hello")')), '$[0].c[1]');
+SELECT json_extract(duck_blocks_to_pandoc_blocks(duck_block_code('python', 'print("Hello")')), '$[0].c[1]');
 ----
 "print(\"Hello\")"
 
 # Code block round-trip preserves type
 query I
-SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_code('sql', 'SELECT 1')))[1].element_type;
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(duck_block_code('sql', 'SELECT 1')))[1].element_type;
 ----
 code
 
 # Code block round-trip preserves language
 query I
-SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_code('javascript', 'let x')))[1].attributes['language'];
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(duck_block_code('javascript', 'let x')))[1].attributes['language'];
 ----
 javascript
 
 # Code block round-trip preserves content
 query I
-SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(db_code('rust', 'fn main() {}')))[1].content;
+SELECT pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks(duck_block_code('rust', 'fn main() {}')))[1].content;
 ----
 fn main() {}
 
 # Code block with multiline content
 query I
-SELECT json_extract(duck_blocks_to_pandoc_blocks(db_code('sql', 'SELECT *
+SELECT json_extract(duck_blocks_to_pandoc_blocks(duck_block_code('sql', 'SELECT *
 FROM t')), '$[0].c[1]');
 ----
 "SELECT *\nFROM t"
@@ -893,7 +893,7 @@ Hello world
 
 # The reported reproduction: "Run `make install` first."
 query I
-SELECT db_blocks_to_text(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"Run"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"make install"]},{"t":"Space"},{"t":"Str","c":"first."}]}]'));
+SELECT duck_blocks_to_text(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"Run"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"make install"]},{"t":"Space"},{"t":"Str","c":"first."}]}]'));
 ----
 Run make install first.
 
@@ -919,7 +919,7 @@ SELECT list_filter(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"E"},{
 E=mc^2
 
 query I
-SELECT db_blocks_to_text(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"E"},{"t":"Space"},{"t":"Math","c":[{"t":"InlineMath"},"E=mc^2"]}]}]'));
+SELECT duck_blocks_to_text(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"E"},{"t":"Space"},{"t":"Math","c":[{"t":"InlineMath"},"E=mc^2"]}]}]'));
 ----
 E E=mc^2
 
@@ -929,7 +929,7 @@ E E=mc^2
 
 # Link text is a child of the link container
 query I
-SELECT db_blocks_to_text(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"See"},{"t":"Space"},{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"the docs"}],["http://x",""]]}]}]'));
+SELECT duck_blocks_to_text(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"See"},{"t":"Space"},{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"the docs"}],["http://x",""]]}]}]'));
 ----
 See the docs
 
@@ -955,12 +955,12 @@ duck.png
 # ----------------------------------------------------------------------------
 
 query I
-SELECT db_blocks_headings(pandoc_ast_to_blocks('[{"t":"Header","c":[2,["fmt",[],[]],[{"t":"Str","c":"The"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"mrconfig"]},{"t":"Space"},{"t":"Str","c":"format"}]]}]'))[1].title;
+SELECT duck_blocks_headings(pandoc_ast_to_blocks('[{"t":"Header","c":[2,["fmt",[],[]],[{"t":"Str","c":"The"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"mrconfig"]},{"t":"Space"},{"t":"Str","c":"format"}]]}]'))[1].title;
 ----
 The mrconfig format
 
 query I
-SELECT db_blocks_headings(pandoc_ast_to_blocks('[{"t":"Header","c":[2,["fmt",[],[]],[{"t":"Str","c":"The"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"mrconfig"]},{"t":"Space"},{"t":"Str","c":"format"}]]}]'))[1].id;
+SELECT duck_blocks_headings(pandoc_ast_to_blocks('[{"t":"Header","c":[2,["fmt",[],[]],[{"t":"Str","c":"The"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"mrconfig"]},{"t":"Space"},{"t":"Str","c":"format"}]]}]'))[1].id;
 ----
 fmt
 
@@ -1004,12 +1004,12 @@ SELECT pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Underline","c":[{"t":"Str",
 under
 
 query I
-SELECT duck_blocks_to_pandoc_ast(db_paragraph([db_text('An '), db_underline('underlined'), db_text(' phrase.')])).blocks::VARCHAR LIKE '%"t":"Underline"%';
+SELECT duck_blocks_to_pandoc_ast(duck_block_paragraph([duck_block_text('An '), duck_block_underline('underlined'), duck_block_text(' phrase.')])).blocks::VARCHAR LIKE '%"t":"Underline"%';
 ----
 true
 
 query I
-SELECT duck_blocks_to_pandoc_ast(db_paragraph([db_text('An '), db_underline('underlined'), db_text(' phrase.')])).blocks::VARCHAR LIKE '%[underline]%';
+SELECT duck_blocks_to_pandoc_ast(duck_block_paragraph([duck_block_text('An '), duck_block_underline('underlined'), duck_block_text(' phrase.')])).blocks::VARCHAR LIKE '%[underline]%';
 ----
 false
 
@@ -1199,18 +1199,18 @@ true
 # ============================================================================
 
 query I
-SELECT duck_blocks_to_pandoc_ast(db_paragraph([db_text('hi')]))['pandoc-api-version'];
+SELECT duck_blocks_to_pandoc_ast(duck_block_paragraph([duck_block_text('hi')]))['pandoc-api-version'];
 ----
 [1, 23, 1]
 
 query I
-SELECT (SELECT "pandoc-api-version" FROM pandoc_ast(db_paragraph([db_text('hi')])));
+SELECT (SELECT "pandoc-api-version" FROM pandoc_ast(duck_block_paragraph([duck_block_text('hi')])));
 ----
 [1, 23, 1]
 
 # the table function's override still works
 query I
-SELECT (SELECT "pandoc-api-version" FROM pandoc_ast(db_paragraph([db_text('hi')]), api_version := [1,23]));
+SELECT (SELECT "pandoc-api-version" FROM pandoc_ast(duck_block_paragraph([duck_block_text('hi')]), api_version := [1,23]));
 ----
 [1, 23]
 

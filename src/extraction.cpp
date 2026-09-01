@@ -217,7 +217,7 @@ void ExtractionFunctions::DbBlocksToTextFun(DataChunk &args, ExpressionState &st
 	}
 }
 
-// db_blocks_to_text(blocks) -- same as above with the default "\n\n" separator
+// duck_blocks_to_text(blocks) -- same as above with the default "\n\n" separator
 static void DbBlocksToTextDefaultSeparatorFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &blocks_vec = args.data[0];
 	auto count = args.size();
@@ -452,7 +452,7 @@ void ExtractionFunctions::DbBlocksTocFun(DataChunk &args, ExpressionState &state
 			}
 			auto id = GetElementAttribute(block, "id");
 			auto element_order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
-			// Same content-or-inline-children rule as db_blocks_headings (issue #20)
+			// Same content-or-inline-children rule as duck_blocks_headings (issue #20)
 			auto title = BlockText(blocks_list, bi);
 
 			if (level < min_level) {
@@ -619,13 +619,13 @@ void ExtractionFunctions::DbBlocksStatsFun(DataChunk &args, ExpressionState &sta
 void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	auto duck_block_list_type = BlockTypes::DuckBlockListType();
 
-	// db_blocks_to_text(blocks LIST(duck_block), separator VARCHAR) -> VARCHAR
-	auto to_text_func = ScalarFunction("db_blocks_to_text", {duck_block_list_type, LogicalType::VARCHAR},
+	// duck_blocks_to_text(blocks LIST(duck_block), separator VARCHAR) -> VARCHAR
+	auto to_text_func = ScalarFunction("duck_blocks_to_text", {duck_block_list_type, LogicalType::VARCHAR},
 	                                   LogicalType::VARCHAR, DbBlocksToTextFun);
 	loader.RegisterFunction(to_text_func);
 
 	// Single-arg version with default separator
-	auto to_text_func_simple = ScalarFunction("db_blocks_to_text", {duck_block_list_type}, LogicalType::VARCHAR,
+	auto to_text_func_simple = ScalarFunction("duck_blocks_to_text", {duck_block_list_type}, LogicalType::VARCHAR,
 	                                          DbBlocksToTextDefaultSeparatorFun);
 	loader.RegisterFunction(to_text_func_simple);
 
@@ -637,9 +637,9 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	heading_struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
 	auto heading_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(heading_struct_children)));
 
-	// db_blocks_headings(blocks LIST(duck_block)) -> LIST(STRUCT)
+	// duck_blocks_headings(blocks LIST(duck_block)) -> LIST(STRUCT)
 	auto headings_func =
-	    ScalarFunction("db_blocks_headings", {duck_block_list_type}, heading_list_type, DbBlocksHeadingsFun);
+	    ScalarFunction("duck_blocks_headings", {duck_block_list_type}, heading_list_type, DbBlocksHeadingsFun);
 	loader.RegisterFunction(headings_func);
 
 	// Define return types for code blocks
@@ -649,9 +649,9 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	code_struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
 	auto code_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(code_struct_children)));
 
-	// db_blocks_code_blocks(blocks LIST(duck_block)) -> LIST(STRUCT)
+	// duck_blocks_code_blocks(blocks LIST(duck_block)) -> LIST(STRUCT)
 	auto code_blocks_func =
-	    ScalarFunction("db_blocks_code_blocks", {duck_block_list_type}, code_list_type, DbBlocksCodeBlocksFun);
+	    ScalarFunction("duck_blocks_code_blocks", {duck_block_list_type}, code_list_type, DbBlocksCodeBlocksFun);
 	loader.RegisterFunction(code_blocks_func);
 
 	// Define return types for stats
@@ -662,8 +662,8 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	stats_struct_children.push_back(make_pair("avg_content_length", LogicalType::DOUBLE));
 	auto stats_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(stats_struct_children)));
 
-	// db_blocks_stats(blocks LIST(duck_block)) -> LIST(STRUCT)
-	auto stats_func = ScalarFunction("db_blocks_stats", {duck_block_list_type}, stats_list_type, DbBlocksStatsFun);
+	// duck_blocks_stats(blocks LIST(duck_block)) -> LIST(STRUCT)
+	auto stats_func = ScalarFunction("duck_blocks_stats", {duck_block_list_type}, stats_list_type, DbBlocksStatsFun);
 	loader.RegisterFunction(stats_func);
 
 	// Define return types for TOC
@@ -675,8 +675,8 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	toc_struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
 	auto toc_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(toc_struct_children)));
 
-	// db_blocks_toc(blocks LIST(duck_block)) -> LIST(STRUCT)
-	auto toc_func = ScalarFunction("db_blocks_toc", {duck_block_list_type}, toc_list_type, DbBlocksTocFun);
+	// duck_blocks_toc(blocks LIST(duck_block)) -> LIST(STRUCT)
+	auto toc_func = ScalarFunction("duck_blocks_toc", {duck_block_list_type}, toc_list_type, DbBlocksTocFun);
 	loader.RegisterFunction(toc_func);
 
 	// Define return types for links
@@ -687,8 +687,8 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	link_struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
 	auto link_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(link_struct_children)));
 
-	// db_blocks_links(blocks LIST(duck_block)) -> LIST(STRUCT)
-	auto links_func = ScalarFunction("db_blocks_links", {duck_block_list_type}, link_list_type, DbBlocksLinksFun);
+	// duck_blocks_links(blocks LIST(duck_block)) -> LIST(STRUCT)
+	auto links_func = ScalarFunction("duck_blocks_links", {duck_block_list_type}, link_list_type, DbBlocksLinksFun);
 	loader.RegisterFunction(links_func);
 }
 

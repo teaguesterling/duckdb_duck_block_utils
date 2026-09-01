@@ -1248,35 +1248,35 @@ static void TerminalWidthFun(DataChunk &args, ExpressionState &state, Vector &re
 void RenderAnsiFunctions::Register(ExtensionLoader &loader) {
 	auto duck_block_list_type = BlockTypes::DuckBlockListType();
 
-	// db_blocks_render_ansi(blocks) -> VARCHAR (auto-detected width and theme)
+	// duck_blocks_render_ansi(blocks) -> VARCHAR (auto-detected width and theme)
 	auto render_auto =
-	    ScalarFunction("db_blocks_render_ansi", {duck_block_list_type}, LogicalType::VARCHAR, RenderAnsiFun);
+	    ScalarFunction("duck_blocks_render_ansi", {duck_block_list_type}, LogicalType::VARCHAR, RenderAnsiFun);
 	loader.RegisterFunction(render_auto);
 
-	// db_blocks_render_ansi(blocks, width) -> VARCHAR
-	auto render_width = ScalarFunction("db_blocks_render_ansi", {duck_block_list_type, LogicalType::INTEGER},
+	// duck_blocks_render_ansi(blocks, width) -> VARCHAR
+	auto render_width = ScalarFunction("duck_blocks_render_ansi", {duck_block_list_type, LogicalType::INTEGER},
 	                                   LogicalType::VARCHAR, RenderAnsiFun);
 	loader.RegisterFunction(render_width);
 
-	// db_blocks_render_ansi(blocks, theme) -> VARCHAR
-	auto render_theme = ScalarFunction("db_blocks_render_ansi", {duck_block_list_type, LogicalType::VARCHAR},
+	// duck_blocks_render_ansi(blocks, theme) -> VARCHAR
+	auto render_theme = ScalarFunction("duck_blocks_render_ansi", {duck_block_list_type, LogicalType::VARCHAR},
 	                                   LogicalType::VARCHAR, RenderAnsiFun);
 	loader.RegisterFunction(render_theme);
 
-	// db_blocks_render_ansi(blocks, width, theme) -> VARCHAR
+	// duck_blocks_render_ansi(blocks, width, theme) -> VARCHAR
 	auto render_width_theme =
-	    ScalarFunction("db_blocks_render_ansi", {duck_block_list_type, LogicalType::INTEGER, LogicalType::VARCHAR},
+	    ScalarFunction("duck_blocks_render_ansi", {duck_block_list_type, LogicalType::INTEGER, LogicalType::VARCHAR},
 	                   LogicalType::VARCHAR, RenderAnsiFun);
 	loader.RegisterFunction(render_width_theme);
 
-	// db_blocks_render_ansi(blocks, theme, width) -> VARCHAR
+	// duck_blocks_render_ansi(blocks, theme, width) -> VARCHAR
 	auto render_theme_width =
-	    ScalarFunction("db_blocks_render_ansi", {duck_block_list_type, LogicalType::VARCHAR, LogicalType::INTEGER},
+	    ScalarFunction("duck_blocks_render_ansi", {duck_block_list_type, LogicalType::VARCHAR, LogicalType::INTEGER},
 	                   LogicalType::VARCHAR, RenderAnsiFun);
 	loader.RegisterFunction(render_theme_width);
 
-	// db_terminal_width() -> INTEGER
-	auto term_width = ScalarFunction("db_terminal_width", {}, LogicalType::INTEGER, TerminalWidthFun);
+	// duck_block_terminal_width() -> INTEGER
+	auto term_width = ScalarFunction("duck_block_terminal_width", {}, LogicalType::INTEGER, TerminalWidthFun);
 	term_width.stability = FunctionStability::VOLATILE;
 	loader.RegisterFunction(term_width);
 }

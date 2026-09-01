@@ -1,5 +1,5 @@
 # name: test/sql/render_ansi.test
-# description: test db_blocks_render_ansi C++ renderer (width-aware ANSI output)
+# description: test duck_blocks_render_ansi C++ renderer (width-aware ANSI output)
 # group: [sql]
 
 require duck_block_utils
@@ -17,11 +17,11 @@ CREATE MACRO tb(t, c, a) AS
    attributes: a, element_order: 1}::duck_block;
 
 # ============================================================================
-# db_terminal_width
+# duck_block_terminal_width
 # ============================================================================
 
 query I
-SELECT db_terminal_width() >= 20;
+SELECT duck_block_terminal_width() >= 20;
 ----
 true
 
@@ -31,19 +31,19 @@ true
 
 query I
 SELECT r LIKE '%Hello%' AND r LIKE '%world%' AND position(chr(27) IN r) > 0
-FROM (SELECT db_blocks_render_ansi(db_heading(1, 'Hello') || db_paragraph('world')) AS r);
+FROM (SELECT duck_blocks_render_ansi(duck_block_heading(1, 'Hello') || duck_block_paragraph('world')) AS r);
 ----
 true
 
 # NULL in, NULL out
 query I
-SELECT db_blocks_render_ansi(NULL) IS NULL;
+SELECT duck_blocks_render_ansi(NULL) IS NULL;
 ----
 true
 
 # Explicit width <= 0 means auto-detect (still renders)
 query I
-SELECT db_blocks_render_ansi(db_paragraph('hi'), 0) LIKE '%hi%';
+SELECT duck_blocks_render_ansi(duck_block_paragraph('hi'), 0) LIKE '%hi%';
 ----
 true
 
@@ -58,17 +58,17 @@ SELECT r LIKE '%' || chr(27) || '[1mbold' || chr(27) || '[22m%'
    AND r LIKE '%' || chr(27) || '[3mem' || chr(27) || '[23m%'
    AND r LIKE '%' || chr(27) || '[38;5;203mcode' || chr(27) || '[39m%'
    AND r LIKE '%duckdb.org%'
-FROM (SELECT db_blocks_render_ansi(db_paragraph([
-    db_text('has '), db_bold('bold'), db_text(' '), db_italic('em'),
-    db_text(' '), db_inline_code('code'), db_text(' '),
-    db_link('https://duckdb.org', 'site')])) AS r);
+FROM (SELECT duck_blocks_render_ansi(duck_block_paragraph([
+    duck_block_text('has '), duck_block_bold('bold'), duck_block_text(' '), duck_block_italic('em'),
+    duck_block_text(' '), duck_block_inline_code('code'), duck_block_text(' '),
+    duck_block_link('https://duckdb.org', 'site')])) AS r);
 ----
 true
 
 # a paragraph built from inline children renders (regression: previously the
 # inline children were skipped and this produced empty output)
 query I
-SELECT length(db_blocks_render_ansi(db_paragraph([db_text('x'), db_bold('y')]))) > 0;
+SELECT length(duck_blocks_render_ansi(duck_block_paragraph([duck_block_text('x'), duck_block_bold('y')]))) > 0;
 ----
 true
 
@@ -76,14 +76,14 @@ true
 # renderer has no awareness of markdown (that is a producer's concern)
 query I
 SELECT r LIKE '%**not bold**%' AND position(chr(27) || '[1m' IN r) = 0
-FROM (SELECT db_blocks_render_ansi(db_paragraph('**not bold**')) AS r);
+FROM (SELECT duck_blocks_render_ansi(duck_block_paragraph('**not bold**')) AS r);
 ----
 true
 
 # nested inlines: italic inside a link keeps both the link color and italic
 query I
 SELECT r LIKE '%' || chr(27) || '[4;38;5;75m%' || chr(27) || '[3mdeep' || chr(27) || '[23m%'
-FROM (SELECT db_blocks_render_ansi(db_paragraph([db_link('https://x.io', [db_italic('deep')])])) AS r);
+FROM (SELECT duck_blocks_render_ansi(duck_block_paragraph([duck_block_link('https://x.io', [duck_block_italic('deep')])])) AS r);
 ----
 true
 
@@ -96,7 +96,7 @@ SELECT r LIKE '%Duck Blocks Fixture%'
    AND r LIKE '%' || chr(27) || '[1mbold' || chr(27) || '[22m%'
    AND r NOT LIKE '%**%'
 FROM (
-  SELECT db_blocks_render_ansi(
+  SELECT duck_blocks_render_ansi(
     (SELECT list({'kind': kind, 'element_type': element_type, 'content': content,
                   'level': level, 'encoding': encoding, 'attributes': attributes,
                   'element_order': element_order}::duck_block ORDER BY element_order)
@@ -115,7 +115,7 @@ query I
 SELECT max(length(regexp_replace(l, chr(27) || '\[[0-9;]*m', '', 'g'))) <= 40
    AND count(*) > 1
 FROM (
-  SELECT unnest(string_split(db_blocks_render_ansi(db_paragraph(repeat('word ', 30)), 40), chr(10))) AS l
+  SELECT unnest(string_split(duck_blocks_render_ansi(duck_block_paragraph(repeat('word ', 30)), 40), chr(10))) AS l
 );
 ----
 true
@@ -124,7 +124,7 @@ true
 query I
 SELECT max(length(regexp_replace(l, chr(27) || '\[[0-9;]*m', '', 'g'))) <= 20
 FROM (
-  SELECT unnest(string_split(db_blocks_render_ansi(db_paragraph(repeat('x', 95)), 20), chr(10))) AS l
+  SELECT unnest(string_split(duck_blocks_render_ansi(duck_block_paragraph(repeat('x', 95)), 20), chr(10))) AS l
 );
 ----
 true
@@ -134,7 +134,7 @@ true
 query I
 SELECT count(*) >= 5
 FROM (
-  SELECT unnest(string_split(db_blocks_render_ansi(db_paragraph(repeat('你好 ', 20)), 20), chr(10))) AS l
+  SELECT unnest(string_split(duck_blocks_render_ansi(duck_block_paragraph(repeat('你好 ', 20)), 20), chr(10))) AS l
 )
 WHERE length(l) > 0;
 ----
@@ -148,7 +148,7 @@ true
 query I
 SELECT lines[2] LIKE chr(27) || '[1m%'
 FROM (
-  SELECT string_split(db_blocks_render_ansi(db_paragraph([db_bold(repeat('bold ', 20))]), 30), chr(10)) AS lines
+  SELECT string_split(duck_blocks_render_ansi(duck_block_paragraph([duck_block_bold(repeat('bold ', 20))]), 30), chr(10)) AS lines
 );
 ----
 true
@@ -159,7 +159,7 @@ true
 
 query I
 SELECT r LIKE '%1.%' AND r LIKE '%2.%'
-FROM (SELECT db_blocks_render_ansi([tb('list', '["first", "second"]', MAP {'ordered': 'true'})], 60) AS r);
+FROM (SELECT duck_blocks_render_ansi([tb('list', '["first", "second"]', MAP {'ordered': 'true'})], 60) AS r);
 ----
 true
 
@@ -167,7 +167,7 @@ true
 query I
 SELECT regexp_replace(lines[2], chr(27) || '\[[0-9;]*m', '', 'g') LIKE '    %'
 FROM (
-  SELECT string_split(db_blocks_render_ansi([tb('list', '["' || repeat('item ', 20) || '"]', MAP {'ordered': 'false'})], 30), chr(10)) AS lines
+  SELECT string_split(duck_blocks_render_ansi([tb('list', '["' || repeat('item ', 20) || '"]', MAP {'ordered': 'false'})], 30), chr(10)) AS lines
 );
 ----
 true
@@ -178,7 +178,7 @@ true
 
 query I
 SELECT length(r) - length(replace(r, '▌', '')) >= 2
-FROM (SELECT db_blocks_render_ansi([tb('blockquote', repeat('quote ', 20), MAP {}::MAP(VARCHAR, VARCHAR))], 30) AS r);
+FROM (SELECT duck_blocks_render_ansi([tb('blockquote', repeat('quote ', 20), MAP {}::MAP(VARCHAR, VARCHAR))], 30) AS r);
 ----
 true
 
@@ -191,7 +191,7 @@ query I
 SELECT max(length(regexp_replace(l, chr(27) || '\[[0-9;]*m', '', 'g'))) <= 40
    AND bool_or(l LIKE '%┼%')
 FROM (
-  SELECT unnest(string_split(db_blocks_render_ansi(
+  SELECT unnest(string_split(duck_blocks_render_ansi(
     [tb('table', '{"headers": ["Name", "Description"], "rows": [["alpha", "' || repeat('lorem ipsum ', 8) || '"], ["beta", "short"]]}', MAP {}::MAP(VARCHAR, VARCHAR))],
     40), chr(10))) AS l
 )
@@ -202,7 +202,7 @@ true
 # narrow table keeps natural column widths and stays aligned
 query I
 SELECT r LIKE '%Name%' AND r LIKE '%─┼─%' AND r LIKE '%Ada%'
-FROM (SELECT db_blocks_render_ansi(
+FROM (SELECT duck_blocks_render_ansi(
   [tb('table', '{"headers": ["Name", "Age"], "rows": [["Ada", "36"], ["Grace", "85"]]}', MAP {}::MAP(VARCHAR, VARCHAR))],
   60) AS r);
 ----
@@ -213,12 +213,12 @@ true
 # ============================================================================
 
 query I
-SELECT db_blocks_render_ansi([db_text('loose inline')[1]], 60) = '';
+SELECT duck_blocks_render_ansi([duck_block_text('loose inline')[1]], 60) = '';
 ----
 true
 
 query I
-SELECT db_blocks_render_ansi([tb('metadata', 'title: x', MAP {}::MAP(VARCHAR, VARCHAR))], 60) = '';
+SELECT duck_blocks_render_ansi([tb('metadata', 'title: x', MAP {}::MAP(VARCHAR, VARCHAR))], 60) = '';
 ----
 true
 
@@ -231,8 +231,8 @@ query I
 SELECT r LIKE '%' || chr(27) || '[1;38;5;219m%'
    AND r LIKE '%' || chr(27) || '[38;5;203mcode' || chr(27) || '[39m%'
    AND r LIKE '%' || chr(27) || '[4;38;5;75m%'
-FROM (SELECT db_blocks_render_ansi(
-    db_heading(1, 'Title') || db_paragraph([db_inline_code('code'), db_link('https://example.com', 'link')]),
+FROM (SELECT duck_blocks_render_ansi(
+    duck_block_heading(1, 'Title') || duck_block_paragraph([duck_block_inline_code('code'), duck_block_link('https://example.com', 'link')]),
     'dark') AS r);
 ----
 true
@@ -242,33 +242,33 @@ query I
 SELECT r LIKE '%' || chr(27) || '[1;38;5;125m%'
    AND r LIKE '%' || chr(27) || '[38;5;160mcode' || chr(27) || '[39m%'
    AND r LIKE '%' || chr(27) || '[4;38;5;27m%'
-FROM (SELECT db_blocks_render_ansi(
-    db_heading(1, 'Title') || db_paragraph([db_inline_code('code'), db_link('https://example.com', 'link')]),
+FROM (SELECT duck_blocks_render_ansi(
+    duck_block_heading(1, 'Title') || duck_block_paragraph([duck_block_inline_code('code'), duck_block_link('https://example.com', 'link')]),
     'light') AS r);
 ----
 true
 
-# Overload with width and theme: db_blocks_render_ansi(blocks, width, theme)
+# Overload with width and theme: duck_blocks_render_ansi(blocks, width, theme)
 query I
 SELECT r LIKE '%' || chr(27) || '[1;38;5;125m%'
-FROM (SELECT db_blocks_render_ansi(db_heading(1, 'Title'), 60, 'light') AS r);
+FROM (SELECT duck_blocks_render_ansi(duck_block_heading(1, 'Title'), 60, 'light') AS r);
 ----
 true
 
-# Overload with theme and width: db_blocks_render_ansi(blocks, theme, width)
+# Overload with theme and width: duck_blocks_render_ansi(blocks, theme, width)
 query I
 SELECT r LIKE '%' || chr(27) || '[1;38;5;125m%'
-FROM (SELECT db_blocks_render_ansi(db_heading(1, 'Title'), 'light', 60) AS r);
+FROM (SELECT duck_blocks_render_ansi(duck_block_heading(1, 'Title'), 'light', 60) AS r);
 ----
 true
 
-# Macro db_render_blocks with theme
+# Macro duck_blocks_render with theme
 statement ok
 PRAGMA duck_block_render;
 
 query I
 SELECT r LIKE '%' || chr(27) || '[1;38;5;125m%'
-FROM (SELECT db_render_blocks(db_heading(1, 'Title'), theme := 'light') AS r);
+FROM (SELECT duck_blocks_render(duck_block_heading(1, 'Title'), theme := 'light') AS r);
 ----
 true
 
@@ -280,23 +280,23 @@ true
 # ============================================================================
 
 query I
-SELECT db_blocks_render_ansi(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]')) LIKE '%bodyword%';
+SELECT duck_blocks_render_ansi(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]')) LIKE '%bodyword%';
 ----
 true
 
 query I
-SELECT db_blocks_render_ansi(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]')) LIKE '%capword%';
+SELECT duck_blocks_render_ansi(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]')) LIKE '%capword%';
 ----
 true
 
 # the caption is dimmed (SGR 2); the body paragraph is not
 query I
-SELECT db_blocks_render_ansi(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]')) LIKE '%' || chr(27) || '[2m%capword%';
+SELECT duck_blocks_render_ansi(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]')) LIKE '%' || chr(27) || '[2m%capword%';
 ----
 true
 
 query I
-SELECT db_blocks_render_ansi(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]')) LIKE '%' || chr(27) || '[2m%bodyword%';
+SELECT duck_blocks_render_ansi(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]')) LIKE '%' || chr(27) || '[2m%bodyword%';
 ----
 false
 
@@ -306,7 +306,7 @@ false
 # the marker and closes at the first block back at its own level, so position
 # is the emitter's choice and not a property of `caption`.
 query I
-SELECT db_blocks_render_ansi([
+SELECT duck_blocks_render_ansi([
   {'kind':'block','element_type':'section','content':'','level':1,'encoding':'text','attributes':MAP{'role':'group'},'element_order':0}::duck_block,
   {'kind':'block','element_type':'caption','content':'','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
   {'kind':'block','element_type':'paragraph','content':'SUMMARY','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block,
@@ -320,7 +320,7 @@ true
 # code appears earlier in the string before SUMMARY. It has to test for dim
 # ADJACENT to BODY, which is what a dimmed line would actually look like.
 query I
-SELECT db_blocks_render_ansi([
+SELECT duck_blocks_render_ansi([
   {'kind':'block','element_type':'section','content':'','level':1,'encoding':'text','attributes':MAP{'role':'group'},'element_order':0}::duck_block,
   {'kind':'block','element_type':'caption','content':'','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
   {'kind':'block','element_type':'paragraph','content':'SUMMARY','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block,
@@ -333,7 +333,7 @@ false
 # MARKER is insufficient: a MetaBlocks value has kind='block' CHILDREN, which
 # then rendered as prose -- an abstract appearing in the rendered document.
 query I
-SELECT db_blocks_render_ansi(pandoc_ast_to_blocks(
+SELECT duck_blocks_render_ansi(pandoc_ast_to_blocks(
   '{"meta":{"abstract":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"BLOCKLEAK"}]}]},
             "title":{"t":"MetaInlines","c":[{"t":"Str","c":"INLEAK"}]}},
     "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}')) LIKE '%LEAK%';
@@ -341,7 +341,7 @@ SELECT db_blocks_render_ansi(pandoc_ast_to_blocks(
 false
 
 query I
-SELECT db_blocks_render_ansi(pandoc_ast_to_blocks(
+SELECT duck_blocks_render_ansi(pandoc_ast_to_blocks(
   '{"meta":{"abstract":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"BLOCKLEAK"}]}]}},
     "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}')) LIKE '%REALBODY%';
 ----

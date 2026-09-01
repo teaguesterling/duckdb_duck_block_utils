@@ -7,7 +7,7 @@ This document describes the v2 API redesign for `duck_block_utils`, introducing 
 1. **Uniform return type**: ALL `db_*` builders return `LIST(duck_block)`
 2. **Flexible content input**: Accept text, single element, or list of elements uniformly
 3. **Config-first parameters**: Configuration params before content params
-4. **Composable by default**: Natural composition with `db_assemble([...])`
+4. **Composable by default**: Natural composition with `duck_blocks_assemble([...])`
 
 ## Core Types
 
@@ -40,9 +40,9 @@ UNION(
 This allows all three forms to work with a single function signature:
 
 ```sql
-db_paragraph('Simple text')                              -- VARCHAR
-db_paragraph(db_bold('Important'))                       -- single duck_block
-db_paragraph([db_text('Click '), db_link(url, 'here')]) -- LIST(duck_block)
+duck_block_paragraph('Simple text')                              -- VARCHAR
+duck_block_paragraph(duck_block_bold('Important'))                       -- single duck_block
+duck_block_paragraph([duck_block_text('Click '), duck_block_link(url, 'here')]) -- LIST(duck_block)
 ```
 
 ## Universal Builder Pattern
@@ -79,83 +79,83 @@ All builders follow the same internal pattern:
 
 | Function | Signature | Notes |
 |----------|-----------|-------|
-| `db_heading` | `(level INT, content duck_block_content) → LIST(duck_block)` | Level stored in `attributes['heading_level']` |
-| `db_paragraph` | `(content duck_block_content) → LIST(duck_block)` | |
-| `db_code` | `(content duck_block_content) → LIST(duck_block)` | No language |
-| `db_code` | `(language VARCHAR, content duck_block_content) → LIST(duck_block)` | With language |
-| `db_blockquote` | `(content duck_block_content) → LIST(duck_block)` | Level defaults to 1 |
-| `db_blockquote` | `(level INT, content duck_block_content) → LIST(duck_block)` | Nested blockquote |
-| `db_list_block` | `(items duck_block_content[]) → LIST(duck_block)` | Unordered list |
-| `db_list_block` | `(ordered BOOL, items duck_block_content[]) → LIST(duck_block)` | Ordered/unordered |
-| `db_list_item` | `(content duck_block_content) → LIST(duck_block)` | **NEW** - single list item |
-| `db_list_item` | `(ordered BOOL, content duck_block_content) → LIST(duck_block)` | With bullet type |
-| `db_hr` | `() → LIST(duck_block)` | |
-| `db_metadata` | `(yaml VARCHAR) → LIST(duck_block)` | |
-| `db_image` | `(src VARCHAR) → LIST(duck_block)` | |
-| `db_image` | `(src VARCHAR, alt VARCHAR) → LIST(duck_block)` | |
-| `db_image` | `(src VARCHAR, alt VARCHAR, title VARCHAR) → LIST(duck_block)` | |
-| `db_raw` | `(content VARCHAR) → LIST(duck_block)` | HTML format |
-| `db_raw` | `(format VARCHAR, content VARCHAR) → LIST(duck_block)` | Custom format |
+| `duck_block_heading` | `(level INT, content duck_block_content) → LIST(duck_block)` | Level stored in `attributes['heading_level']` |
+| `duck_block_paragraph` | `(content duck_block_content) → LIST(duck_block)` | |
+| `duck_block_code` | `(content duck_block_content) → LIST(duck_block)` | No language |
+| `duck_block_code` | `(language VARCHAR, content duck_block_content) → LIST(duck_block)` | With language |
+| `duck_block_blockquote` | `(content duck_block_content) → LIST(duck_block)` | Level defaults to 1 |
+| `duck_block_blockquote` | `(level INT, content duck_block_content) → LIST(duck_block)` | Nested blockquote |
+| `duck_block_list_block` | `(items duck_block_content[]) → LIST(duck_block)` | Unordered list |
+| `duck_block_list_block` | `(ordered BOOL, items duck_block_content[]) → LIST(duck_block)` | Ordered/unordered |
+| `duck_block_list_item` | `(content duck_block_content) → LIST(duck_block)` | **NEW** - single list item |
+| `duck_block_list_item` | `(ordered BOOL, content duck_block_content) → LIST(duck_block)` | With bullet type |
+| `duck_block_hr` | `() → LIST(duck_block)` | |
+| `duck_block_metadata` | `(yaml VARCHAR) → LIST(duck_block)` | |
+| `duck_block_image` | `(src VARCHAR) → LIST(duck_block)` | |
+| `duck_block_image` | `(src VARCHAR, alt VARCHAR) → LIST(duck_block)` | |
+| `duck_block_image` | `(src VARCHAR, alt VARCHAR, title VARCHAR) → LIST(duck_block)` | |
+| `duck_block_raw` | `(content VARCHAR) → LIST(duck_block)` | HTML format |
+| `duck_block_raw` | `(format VARCHAR, content VARCHAR) → LIST(duck_block)` | Custom format |
 
 ### Inline Builders
 
 | Function | Signature | Notes |
 |----------|-----------|-------|
-| `db_text` | `(content VARCHAR) → LIST(duck_block)` | Plain text |
-| `db_space` | `() → LIST(duck_block)` | Word separator |
-| `db_softbreak` | `() → LIST(duck_block)` | Soft line break |
-| `db_linebreak` | `() → LIST(duck_block)` | Hard line break |
-| `db_bold` | `(content duck_block_content) → LIST(duck_block)` | |
-| `db_italic` | `(content duck_block_content) → LIST(duck_block)` | |
-| `db_strikethrough` | `(content duck_block_content) → LIST(duck_block)` | |
-| `db_superscript` | `(content duck_block_content) → LIST(duck_block)` | |
-| `db_subscript` | `(content duck_block_content) → LIST(duck_block)` | |
-| `db_smallcaps` | `(content duck_block_content) → LIST(duck_block)` | |
-| `db_underline` | `(content duck_block_content) → LIST(duck_block)` | |
-| `db_inline_code` | `(content VARCHAR) → LIST(duck_block)` | Code doesn't nest |
-| `db_math` | `(content VARCHAR) → LIST(duck_block)` | Inline math |
-| `db_math` | `(display BOOL, content VARCHAR) → LIST(duck_block)` | Block math if true |
-| `db_link` | `(href VARCHAR, content duck_block_content) → LIST(duck_block)` | |
-| `db_link` | `(href VARCHAR, title VARCHAR, content duck_block_content) → LIST(duck_block)` | |
-| `db_inline_image` | `(src VARCHAR) → LIST(duck_block)` | |
-| `db_inline_image` | `(src VARCHAR, alt VARCHAR) → LIST(duck_block)` | |
-| `db_inline_image` | `(src VARCHAR, alt VARCHAR, title VARCHAR) → LIST(duck_block)` | |
-| `db_quoted` | `(content duck_block_content) → LIST(duck_block)` | Double quotes |
-| `db_quoted` | `(quote_type VARCHAR, content duck_block_content) → LIST(duck_block)` | |
-| `db_cite` | `(key VARCHAR) → LIST(duck_block)` | |
-| `db_note` | `(content duck_block_content) → LIST(duck_block)` | Footnote |
-| `db_span` | `(content duck_block_content) → LIST(duck_block)` | |
-| `db_span` | `(id VARCHAR, content duck_block_content) → LIST(duck_block)` | |
-| `db_span` | `(id VARCHAR, class VARCHAR, content duck_block_content) → LIST(duck_block)` | |
-| `db_raw_inline` | `(content VARCHAR) → LIST(duck_block)` | HTML |
-| `db_raw_inline` | `(format VARCHAR, content VARCHAR) → LIST(duck_block)` | |
+| `duck_block_text` | `(content VARCHAR) → LIST(duck_block)` | Plain text |
+| `duck_block_space` | `() → LIST(duck_block)` | Word separator |
+| `duck_block_softbreak` | `() → LIST(duck_block)` | Soft line break |
+| `duck_block_linebreak` | `() → LIST(duck_block)` | Hard line break |
+| `duck_block_bold` | `(content duck_block_content) → LIST(duck_block)` | |
+| `duck_block_italic` | `(content duck_block_content) → LIST(duck_block)` | |
+| `duck_block_strikethrough` | `(content duck_block_content) → LIST(duck_block)` | |
+| `duck_block_superscript` | `(content duck_block_content) → LIST(duck_block)` | |
+| `duck_block_subscript` | `(content duck_block_content) → LIST(duck_block)` | |
+| `duck_block_smallcaps` | `(content duck_block_content) → LIST(duck_block)` | |
+| `duck_block_underline` | `(content duck_block_content) → LIST(duck_block)` | |
+| `duck_block_inline_code` | `(content VARCHAR) → LIST(duck_block)` | Code doesn't nest |
+| `duck_block_math` | `(content VARCHAR) → LIST(duck_block)` | Inline math |
+| `duck_block_math` | `(display BOOL, content VARCHAR) → LIST(duck_block)` | Block math if true |
+| `duck_block_link` | `(href VARCHAR, content duck_block_content) → LIST(duck_block)` | |
+| `duck_block_link` | `(href VARCHAR, title VARCHAR, content duck_block_content) → LIST(duck_block)` | |
+| `duck_block_inline_image` | `(src VARCHAR) → LIST(duck_block)` | |
+| `duck_block_inline_image` | `(src VARCHAR, alt VARCHAR) → LIST(duck_block)` | |
+| `duck_block_inline_image` | `(src VARCHAR, alt VARCHAR, title VARCHAR) → LIST(duck_block)` | |
+| `duck_block_quoted` | `(content duck_block_content) → LIST(duck_block)` | Double quotes |
+| `duck_block_quoted` | `(quote_type VARCHAR, content duck_block_content) → LIST(duck_block)` | |
+| `duck_block_cite` | `(key VARCHAR) → LIST(duck_block)` | |
+| `duck_block_note` | `(content duck_block_content) → LIST(duck_block)` | Footnote |
+| `duck_block_span` | `(content duck_block_content) → LIST(duck_block)` | |
+| `duck_block_span` | `(id VARCHAR, content duck_block_content) → LIST(duck_block)` | |
+| `duck_block_span` | `(id VARCHAR, class VARCHAR, content duck_block_content) → LIST(duck_block)` | |
+| `duck_block_raw_inline` | `(content VARCHAR) → LIST(duck_block)` | HTML |
+| `duck_block_raw_inline` | `(format VARCHAR, content VARCHAR) → LIST(duck_block)` | |
 
 ### Assembly Functions
 
 | Function | Signature | Notes |
 |----------|-----------|-------|
-| `db_assemble` | `(blocks LIST(LIST(duck_block))) → LIST(duck_block)` | Flatten + renumber |
-| `db_document` | `(blocks LIST(LIST(duck_block))) → LIST(duck_block)` | Alias for assemble |
-| `db_section` | `(level INT, title duck_block_content) → LIST(duck_block)` | Heading only |
-| `db_section` | `(level INT, title duck_block_content, children LIST(LIST(duck_block))) → LIST(duck_block)` | Heading + content |
-| `db_concat` | `(a LIST(duck_block), b LIST(duck_block)) → LIST(duck_block)` | No renumbering |
-| `db_rebase_levels` | `(blocks LIST(duck_block), offset INT) → LIST(duck_block)` | Adjust heading levels |
+| `duck_blocks_assemble` | `(blocks LIST(LIST(duck_block))) → LIST(duck_block)` | Flatten + renumber |
+| `duck_blocks_document` | `(blocks LIST(LIST(duck_block))) → LIST(duck_block)` | Alias for assemble |
+| `duck_block_section` | `(level INT, title duck_block_content) → LIST(duck_block)` | Heading only |
+| `duck_block_section` | `(level INT, title duck_block_content, children LIST(LIST(duck_block))) → LIST(duck_block)` | Heading + content |
+| `duck_blocks_concat` | `(a LIST(duck_block), b LIST(duck_block)) → LIST(duck_block)` | No renumbering |
+| `duck_blocks_rebase_levels` | `(blocks LIST(duck_block), offset INT) → LIST(duck_block)` | Adjust heading levels |
 
 ## Usage Examples
 
 ### Simple Document
 
 ```sql
-SELECT db_assemble([
-    db_heading(1, 'My Document'),
-    db_paragraph('This is the introduction.'),
-    db_heading(2, 'Section One'),
-    db_paragraph([
-        db_text('Click '),
-        db_link('https://example.com', 'here'),
-        db_text(' to learn more.')
+SELECT duck_blocks_assemble([
+    duck_block_heading(1, 'My Document'),
+    duck_block_paragraph('This is the introduction.'),
+    duck_block_heading(2, 'Section One'),
+    duck_block_paragraph([
+        duck_block_text('Click '),
+        duck_block_link('https://example.com', 'here'),
+        duck_block_text(' to learn more.')
     ]),
-    db_hr()
+    duck_block_hr()
 ]);
 ```
 
@@ -163,21 +163,21 @@ SELECT db_assemble([
 
 ```sql
 -- Heading with formatted content
-SELECT db_heading(1, [
-    db_text('Hello '),
-    db_bold('World'),
-    db_text('!')
+SELECT duck_block_heading(1, [
+    duck_block_text('Hello '),
+    duck_block_bold('World'),
+    duck_block_text('!')
 ]);
 -- Returns: [{heading, content=NULL, level=1}, {text, 'Hello ', level=2}, {bold, 'World', level=2}, {text, '!', level=2}]
 
 -- Paragraph with link containing formatted text
-SELECT db_paragraph([
-    db_text('See the '),
-    db_link('https://docs.example.com', [
-        db_bold('official'),
-        db_text(' documentation')
+SELECT duck_block_paragraph([
+    duck_block_text('See the '),
+    duck_block_link('https://docs.example.com', [
+        duck_block_bold('official'),
+        duck_block_text(' documentation')
     ]),
-    db_text('.')
+    duck_block_text('.')
 ]);
 ```
 
@@ -185,18 +185,18 @@ SELECT db_paragraph([
 
 ```sql
 -- List items with inline content
-SELECT db_assemble([
-    db_heading(2, 'Resources'),
-    db_list_block(false, [
-        db_list_item([
-            db_link('https://github.com/org/repo', 'GitHub'),
-            db_text(' '),
-            db_inline_image('https://github.com/org/repo/badge.svg', 'CI')
+SELECT duck_blocks_assemble([
+    duck_block_heading(2, 'Resources'),
+    duck_block_list_block(false, [
+        duck_block_list_item([
+            duck_block_link('https://github.com/org/repo', 'GitHub'),
+            duck_block_text(' '),
+            duck_block_inline_image('https://github.com/org/repo/badge.svg', 'CI')
         ]),
-        db_list_item([
-            db_link('https://docs.example.com', 'Documentation'),
-            db_text(' '),
-            db_inline_image('https://readthedocs.org/badge/', 'Docs')
+        duck_block_list_item([
+            duck_block_link('https://docs.example.com', 'Documentation'),
+            duck_block_text(' '),
+            duck_block_inline_image('https://readthedocs.org/badge/', 'Docs')
         ])
     ])
 ]);
@@ -207,19 +207,19 @@ SELECT db_assemble([
 ```sql
 -- Single list production, single render
 CREATE TABLE page_blocks AS
-SELECT db_assemble([
-    db_heading(1, 'DuckDB Extensions Dashboard'),
-    db_paragraph('A collection of extensions.'),
+SELECT duck_blocks_assemble([
+    duck_block_heading(1, 'DuckDB Extensions Dashboard'),
+    duck_block_paragraph('A collection of extensions.'),
 
     -- Dynamic per-project
-    db_heading(2, project.category),
-    db_heading(3, project.name),
-    db_paragraph(COALESCE(project.description, db_italic('No description'))),
-    db_list_block(false, [
-        db_list_item([
-            db_link(project.github_url, 'GitHub'),
-            db_text(' '),
-            db_inline_image(project.ci_badge, 'CI')
+    duck_block_heading(2, project.category),
+    duck_block_heading(3, project.name),
+    duck_block_paragraph(COALESCE(project.description, duck_block_italic('No description'))),
+    duck_block_list_block(false, [
+        duck_block_list_item([
+            duck_block_link(project.github_url, 'GitHub'),
+            duck_block_text(' '),
+            duck_block_inline_image(project.ci_badge, 'CI')
         ])
     ])
 ]) AS blocks
@@ -232,35 +232,35 @@ FROM projects;
 
 ```sql
 -- v1: Single block
-SELECT db_heading('Title', 1).content;
+SELECT duck_block_heading('Title', 1).content;
 
 -- v2: List of blocks
-SELECT db_heading(1, 'Title')[1].content;
+SELECT duck_block_heading(1, 'Title')[1].content;
 ```
 
 ### Parameter Order Changes
 
 ```sql
 -- v1: content first
-db_heading('Title', 1)
-db_code('print(1)', 'python')
-db_link('Click', 'https://example.com')
+duck_block_heading('Title', 1)
+duck_block_code('print(1)', 'python')
+duck_block_link('Click', 'https://example.com')
 
 -- v2: config first, content last
-db_heading(1, 'Title')
-db_code('python', 'print(1)')
-db_link('https://example.com', 'Click')
+duck_block_heading(1, 'Title')
+duck_block_code('python', 'print(1)')
+duck_block_link('https://example.com', 'Click')
 ```
 
 ### Assembly Changes
 
 ```sql
 -- v1: List of blocks (mixed single/list didn't work well)
-db_assemble([db_heading('A', 1), db_paragraph('B')])
+duck_blocks_assemble([duck_block_heading('A', 1), duck_block_paragraph('B')])
 
 -- v2: List of lists (uniform, each builder returns list)
-db_assemble([db_heading(1, 'A'), db_paragraph('B')])
--- Works because each builder returns LIST, db_assemble flattens LIST(LIST)
+duck_blocks_assemble([duck_block_heading(1, 'A'), duck_block_paragraph('B')])
+-- Works because each builder returns LIST, duck_blocks_assemble flattens LIST(LIST)
 ```
 
 ## Implementation Notes

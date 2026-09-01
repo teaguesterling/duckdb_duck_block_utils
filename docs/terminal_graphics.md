@@ -6,7 +6,7 @@ exploratory — nothing here is committed to a release.
 
 ## Where we are (v1.3.0)
 
-`PRAGMA duck_block_render` + `db_blocks_render_ansi` render structured documents
+`PRAGMA duck_block_render` + `duck_blocks_render_ansi` render structured documents
 to **text cells with ANSI SGR color**: headings, paragraphs with inline markdown,
 box-drawing tables, lists, code gutters, blockquotes — width-aware, utf8proc-measured.
 That's the *text-cell tier*: everything is a character in the terminal grid.
@@ -38,10 +38,10 @@ LOAD textplot; LOAD duck_block_utils;
 PRAGMA duck_block_render;
 
 WITH m(mon, cnt) AS (VALUES (1,5),(2,8),(3,3),(4,12),(5,9),(6,15))
-SELECT db_render_blocks(db_assemble([
-    db_heading(1, 'Monthly Activity'),
-    db_paragraph('Trend: ' || (SELECT tp_sparkline(list(cnt ORDER BY mon)) FROM m)),
-    db_query_table('SELECT mon, cnt, bar(cnt, 0, 15, 12) AS chart
+SELECT duck_blocks_render(duck_blocks_assemble([
+    duck_block_heading(1, 'Monthly Activity'),
+    duck_block_paragraph('Trend: ' || (SELECT tp_sparkline(list(cnt ORDER BY mon)) FROM m)),
+    duck_blocks_query_table('SELECT mon, cnt, bar(cnt, 0, 15, 12) AS chart
                     FROM (VALUES (1,5),(2,8),(3,3),(4,12),(5,9),(6,15)) t(mon,cnt)
                     ORDER BY mon')
 ]));
@@ -109,7 +109,7 @@ sequences as `VARCHAR`; sixel/kitty is just a bigger payload. The real costs:
 
 - Where does image decoding live — a vcpkg dep, a pre-decoded RGBA input, or a
   sibling extension?
-- Keep `db_render_blocks` pure-text and add a separate capability-gated
+- Keep `duck_blocks_render` pure-text and add a separate capability-gated
   `db_blocks_render_graphics(...)`, so text output stays dependency-free?
 
 **Recommendation:** not near-term. The text-cell tier + `textplot` composition

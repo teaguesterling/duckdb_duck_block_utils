@@ -5,236 +5,236 @@
 require duck_block_utils
 
 # ============================================================================
-# db_assemble Tests (v2: takes LIST(LIST(duck_block)))
+# duck_blocks_assemble Tests (v2: takes LIST(LIST(duck_block)))
 # ============================================================================
 
-# Test db_assemble flattens LIST(LIST(duck_block))
+# Test duck_blocks_assemble flattens LIST(LIST(duck_block))
 query I
-SELECT len(db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph('Text'),
-    db_code('py', 'x=1')
+SELECT len(duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Text'),
+    duck_block_code('py', 'x=1')
 ]));
 ----
 3
 
-# Test db_assemble assigns sequential element_order
+# Test duck_blocks_assemble assigns sequential element_order
 query III
-SELECT db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph('Text'),
-    db_code('py', 'x=1')
+SELECT duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Text'),
+    duck_block_code('py', 'x=1')
 ])[1].element_order,
-db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph('Text'),
-    db_code('py', 'x=1')
+duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Text'),
+    duck_block_code('py', 'x=1')
 ])[2].element_order,
-db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph('Text'),
-    db_code('py', 'x=1')
+duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Text'),
+    duck_block_code('py', 'x=1')
 ])[3].element_order;
 ----
 0	1	2
 
-# Test db_assemble flattens nested content correctly
+# Test duck_blocks_assemble flattens nested content correctly
 query I
-SELECT len(db_assemble([
-    db_heading(1, 'Title'),
-    db_paragraph([db_text('Hello '), db_bold('world')])
+SELECT len(duck_blocks_assemble([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph([duck_block_text('Hello '), duck_block_bold('world')])
 ]));
 ----
 4
 
-# Test db_assemble preserves child levels
+# Test duck_blocks_assemble preserves child levels
 query I
-SELECT db_assemble([
-    db_paragraph([db_bold('Important')])
+SELECT duck_blocks_assemble([
+    duck_block_paragraph([duck_block_bold('Important')])
 ])[2].level;
 ----
 2
 
 # ============================================================================
-# db_document Tests (v2: alias for db_assemble)
+# duck_blocks_document Tests (v2: alias for duck_blocks_assemble)
 # ============================================================================
 
 query I
-SELECT len(db_document([
-    db_heading(1, 'Title'),
-    db_paragraph('Text')
+SELECT len(duck_blocks_document([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Text')
 ]));
 ----
 2
 
 query I
-SELECT db_document([
-    db_heading(1, 'Title'),
-    db_paragraph('Text')
+SELECT duck_blocks_document([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Text')
 ])[2].element_order;
 ----
 1
 
 # ============================================================================
-# db_section Tests (v2: level first, title second)
+# duck_block_section Tests (v2: level first, title second)
 # ============================================================================
 
-# Test db_section creates heading + children
+# Test duck_block_section creates heading + children
 query I
-SELECT len(db_section(2, 'Introduction', [
-    db_paragraph('First paragraph'),
-    db_paragraph('Second paragraph')
+SELECT len(duck_block_section(2, 'Introduction', [
+    duck_block_paragraph('First paragraph'),
+    duck_block_paragraph('Second paragraph')
 ]));
 ----
 3
 
-# Test db_section first block is heading with correct level
+# Test duck_block_section first block is heading with correct level
 query I
-SELECT db_section(2, 'Introduction', [db_paragraph('Text')])[1].element_type;
+SELECT duck_block_section(2, 'Introduction', [duck_block_paragraph('Text')])[1].element_type;
 ----
 heading
 
 query I
-SELECT db_section(2, 'Introduction', [db_paragraph('Text')])[1].attributes['heading_level'];
+SELECT duck_block_section(2, 'Introduction', [duck_block_paragraph('Text')])[1].attributes['heading_level'];
 ----
 2
 
-# Test db_section heading has level 1 (top-level structural level)
+# Test duck_block_section heading has level 1 (top-level structural level)
 query I
-SELECT db_section(2, 'Introduction', [db_paragraph('Text')])[1].level;
+SELECT duck_block_section(2, 'Introduction', [duck_block_paragraph('Text')])[1].level;
 ----
 1
 
-# Test db_section children follow heading
+# Test duck_block_section children follow heading
 query I
-SELECT db_section(2, 'Introduction', [db_paragraph('First')])[2].element_type;
+SELECT duck_block_section(2, 'Introduction', [duck_block_paragraph('First')])[2].element_type;
 ----
 paragraph
 
-# Test db_section assigns sequential element_order
+# Test duck_block_section assigns sequential element_order
 query III
-SELECT db_section(2, 'Title', [db_paragraph('A'), db_paragraph('B')])[1].element_order,
-       db_section(2, 'Title', [db_paragraph('A'), db_paragraph('B')])[2].element_order,
-       db_section(2, 'Title', [db_paragraph('A'), db_paragraph('B')])[3].element_order;
+SELECT duck_block_section(2, 'Title', [duck_block_paragraph('A'), duck_block_paragraph('B')])[1].element_order,
+       duck_block_section(2, 'Title', [duck_block_paragraph('A'), duck_block_paragraph('B')])[2].element_order,
+       duck_block_section(2, 'Title', [duck_block_paragraph('A'), duck_block_paragraph('B')])[3].element_order;
 ----
 0	1	2
 
-# Test db_section with no children (2-arg version)
+# Test duck_block_section with no children (2-arg version)
 query I
-SELECT len(db_section(3, 'Just a Heading'));
+SELECT len(duck_block_section(3, 'Just a Heading'));
 ----
 1
 
 query I
-SELECT db_section(3, 'Just a Heading')[1].element_type;
+SELECT duck_block_section(3, 'Just a Heading')[1].element_type;
 ----
 heading
 
-# Test db_section with inline children for heading
+# Test duck_block_section with inline children for heading
 query I
-SELECT len(db_section(1, [db_text('Hello '), db_bold('World')]));
+SELECT len(duck_block_section(1, [duck_block_text('Hello '), duck_block_bold('World')]));
 ----
 3
 
 query I
-SELECT db_section(1, [db_text('Hello '), db_bold('World')])[1].element_type;
+SELECT duck_block_section(1, [duck_block_text('Hello '), duck_block_bold('World')])[1].element_type;
 ----
 heading
 
 query I
-SELECT db_section(1, [db_text('Hello '), db_bold('World')])[1].content IS NULL;
+SELECT duck_block_section(1, [duck_block_text('Hello '), duck_block_bold('World')])[1].content IS NULL;
 ----
 true
 
 # ============================================================================
-# db_rebase_levels Tests (v2: takes LIST(duck_block), which is flattened builder output)
+# duck_blocks_rebase_levels Tests (v2: takes LIST(duck_block), which is flattened builder output)
 # ============================================================================
 
-# Test db_rebase_levels increases heading levels
+# Test duck_blocks_rebase_levels increases heading levels
 query I
-SELECT db_rebase_levels(db_heading(1, 'Title'), 1)[1].attributes['heading_level'];
+SELECT duck_blocks_rebase_levels(duck_block_heading(1, 'Title'), 1)[1].attributes['heading_level'];
 ----
 2
 
 query I
-SELECT db_rebase_levels(db_heading(2, 'Title'), 2)[1].attributes['heading_level'];
+SELECT duck_blocks_rebase_levels(duck_block_heading(2, 'Title'), 2)[1].attributes['heading_level'];
 ----
 4
 
-# Test db_rebase_levels decreases heading levels
+# Test duck_blocks_rebase_levels decreases heading levels
 query I
-SELECT db_rebase_levels(db_heading(3, 'Title'), -1)[1].attributes['heading_level'];
+SELECT duck_blocks_rebase_levels(duck_block_heading(3, 'Title'), -1)[1].attributes['heading_level'];
 ----
 2
 
-# Test db_rebase_levels clamps to minimum level 1
+# Test duck_blocks_rebase_levels clamps to minimum level 1
 query I
-SELECT db_rebase_levels(db_heading(1, 'Title'), -5)[1].attributes['heading_level'];
+SELECT duck_blocks_rebase_levels(duck_block_heading(1, 'Title'), -5)[1].attributes['heading_level'];
 ----
 1
 
-# Test db_rebase_levels clamps to maximum level 6
+# Test duck_blocks_rebase_levels clamps to maximum level 6
 query I
-SELECT db_rebase_levels(db_heading(5, 'Title'), 10)[1].attributes['heading_level'];
+SELECT duck_blocks_rebase_levels(duck_block_heading(5, 'Title'), 10)[1].attributes['heading_level'];
 ----
 6
 
-# Test db_rebase_levels doesn't affect non-heading blocks
+# Test duck_blocks_rebase_levels doesn't affect non-heading blocks
 query I
-SELECT db_rebase_levels(db_paragraph('Text'), 1)[1].element_type;
+SELECT duck_blocks_rebase_levels(duck_block_paragraph('Text'), 1)[1].element_type;
 ----
 paragraph
 
-# Test db_rebase_levels with mixed blocks (flattened)
+# Test duck_blocks_rebase_levels with mixed blocks (flattened)
 query I
-SELECT len(db_rebase_levels(flatten([
-    db_heading(1, 'Title'),
-    db_paragraph('Text'),
-    db_heading(2, 'Subtitle')
+SELECT len(duck_blocks_rebase_levels(flatten([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Text'),
+    duck_block_heading(2, 'Subtitle')
 ]), 1));
 ----
 3
 
 query I
-SELECT db_rebase_levels(flatten([
-    db_heading(1, 'Title'),
-    db_paragraph('Text'),
-    db_heading(2, 'Subtitle')
+SELECT duck_blocks_rebase_levels(flatten([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Text'),
+    duck_block_heading(2, 'Subtitle')
 ]), 1)[1].attributes['heading_level'];
 ----
 2
 
 query I
-SELECT db_rebase_levels(flatten([
-    db_heading(1, 'Title'),
-    db_paragraph('Text'),
-    db_heading(2, 'Subtitle')
+SELECT duck_blocks_rebase_levels(flatten([
+    duck_block_heading(1, 'Title'),
+    duck_block_paragraph('Text'),
+    duck_block_heading(2, 'Subtitle')
 ]), 1)[3].attributes['heading_level'];
 ----
 3
 
 # ============================================================================
-# db_concat Tests (v2: takes flattened lists)
+# duck_blocks_concat Tests (v2: takes flattened lists)
 # ============================================================================
 
-# Test db_concat combines lists
+# Test duck_blocks_concat combines lists
 query I
-SELECT len(db_concat(
-    db_heading(1, 'A'),
-    db_paragraph('B')
+SELECT len(duck_blocks_concat(
+    duck_block_heading(1, 'A'),
+    duck_block_paragraph('B')
 ));
 ----
 2
 
-# Test db_concat preserves original element_order (unlike merge)
+# Test duck_blocks_concat preserves original element_order (unlike merge)
 query II
-SELECT db_concat(
-    db_heading(1, 'A'),
-    db_paragraph('B')
+SELECT duck_blocks_concat(
+    duck_block_heading(1, 'A'),
+    duck_block_paragraph('B')
 )[1].element_order,
-db_concat(
-    db_heading(1, 'A'),
-    db_paragraph('B')
+duck_blocks_concat(
+    duck_block_heading(1, 'A'),
+    duck_block_paragraph('B')
 )[2].element_order;
 ----
 0	0
@@ -245,48 +245,48 @@ db_concat(
 
 # Test building a complete document
 query I
-SELECT len(db_assemble([
-    db_metadata('title: My Document'),
-    db_heading(1, 'Introduction'),
-    db_paragraph('Welcome to the document.'),
-    db_heading(2, 'Getting Started'),
-    db_code('bash', 'npm install'),
-    db_paragraph('Now you are ready.'),
-    db_hr()
+SELECT len(duck_blocks_assemble([
+    duck_block_metadata('title: My Document'),
+    duck_block_heading(1, 'Introduction'),
+    duck_block_paragraph('Welcome to the document.'),
+    duck_block_heading(2, 'Getting Started'),
+    duck_block_code('bash', 'npm install'),
+    duck_block_paragraph('Now you are ready.'),
+    duck_block_hr()
 ]));
 ----
 7
 
 # Test nested sections with assemble
 query I
-SELECT len(db_assemble([
-    db_section(1, 'Chapter 1', [db_paragraph('Content 1')]),
-    db_section(1, 'Chapter 2', [db_paragraph('Content 2')])
+SELECT len(duck_blocks_assemble([
+    duck_block_section(1, 'Chapter 1', [duck_block_paragraph('Content 1')]),
+    duck_block_section(1, 'Chapter 2', [duck_block_paragraph('Content 2')])
 ]));
 ----
 4
 
 # Verify structure: heading, para, heading, para
 query I
-SELECT db_assemble([
-    db_section(1, 'Chapter 1', [db_paragraph('Content 1')]),
-    db_section(1, 'Chapter 2', [db_paragraph('Content 2')])
+SELECT duck_blocks_assemble([
+    duck_block_section(1, 'Chapter 1', [duck_block_paragraph('Content 1')]),
+    duck_block_section(1, 'Chapter 2', [duck_block_paragraph('Content 2')])
 ])[1].element_type;
 ----
 heading
 
 query I
-SELECT db_assemble([
-    db_section(1, 'Chapter 1', [db_paragraph('Content 1')]),
-    db_section(1, 'Chapter 2', [db_paragraph('Content 2')])
+SELECT duck_blocks_assemble([
+    duck_block_section(1, 'Chapter 1', [duck_block_paragraph('Content 1')]),
+    duck_block_section(1, 'Chapter 2', [duck_block_paragraph('Content 2')])
 ])[2].element_type;
 ----
 paragraph
 
 query I
-SELECT db_assemble([
-    db_section(1, 'Chapter 1', [db_paragraph('Content 1')]),
-    db_section(1, 'Chapter 2', [db_paragraph('Content 2')])
+SELECT duck_blocks_assemble([
+    duck_block_section(1, 'Chapter 1', [duck_block_paragraph('Content 1')]),
+    duck_block_section(1, 'Chapter 2', [duck_block_paragraph('Content 2')])
 ])[3].element_type;
 ----
 heading
@@ -297,20 +297,20 @@ heading
 
 # Test document with rich inline content
 query I
-SELECT len(db_assemble([
-    db_heading(1, 'User Guide'),
-    db_paragraph([
-        db_text('Welcome to '),
-        db_bold('DuckDB'),
-        db_text(' extensions.')
+SELECT len(duck_blocks_assemble([
+    duck_block_heading(1, 'User Guide'),
+    duck_block_paragraph([
+        duck_block_text('Welcome to '),
+        duck_block_bold('DuckDB'),
+        duck_block_text(' extensions.')
     ]),
-    db_heading(2, 'Installation'),
-    db_paragraph([
-        db_text('Run: '),
-        db_inline_code('INSTALL duck_block_utils')
+    duck_block_heading(2, 'Installation'),
+    duck_block_paragraph([
+        duck_block_text('Run: '),
+        duck_block_inline_code('INSTALL duck_block_utils')
     ]),
-    db_heading(2, 'Links'),
-    db_list_block(false, ['GitHub', 'Documentation'])
+    duck_block_heading(2, 'Links'),
+    duck_block_list_block(false, ['GitHub', 'Documentation'])
 ]));
 ----
 11
@@ -319,25 +319,25 @@ SELECT len(db_assemble([
 # Backward Compatibility Tests
 # ============================================================================
 
-# Test db_rebase_levels reads from level field when heading_level attribute is not set
+# Test duck_blocks_rebase_levels reads from level field when heading_level attribute is not set
 query I
-SELECT db_rebase_levels([
+SELECT duck_blocks_rebase_levels([
     duck_block('heading', 'Old Format', 2, 'text', MAP{}, 0)
 ], 1)[1].attributes['heading_level'];
 ----
 3
 
-# Test db_blocks_headings reads from level field when heading_level attribute is not set
+# Test duck_blocks_headings reads from level field when heading_level attribute is not set
 query I
-SELECT db_blocks_headings([
+SELECT duck_blocks_headings([
     duck_block('heading', 'Old Format', 3, 'text', MAP{}, 0)
 ])[1].level;
 ----
 3
 
-# Test db_blocks_headings prefers heading_level attribute over level field
+# Test duck_blocks_headings prefers heading_level attribute over level field
 query I
-SELECT db_blocks_headings([
+SELECT duck_blocks_headings([
     duck_block('heading', 'New Format', 99, 'text', MAP{'heading_level': '2'}, 0)
 ])[1].level;
 ----
@@ -349,29 +349,29 @@ SELECT db_blocks_headings([
 
 # Test rebasing levels in a document merge
 query I
-SELECT len(db_assemble([
-    db_heading(1, 'Main Doc'),
-    db_rebase_levels(flatten([
-        db_heading(1, 'Subdoc Title'),
-        db_paragraph('Subdoc content')
+SELECT len(duck_blocks_assemble([
+    duck_block_heading(1, 'Main Doc'),
+    duck_blocks_rebase_levels(flatten([
+        duck_block_heading(1, 'Subdoc Title'),
+        duck_block_paragraph('Subdoc content')
     ]), 1)
 ]));
 ----
 3
 
 query II
-SELECT db_assemble([
-    db_heading(1, 'Main Doc'),
-    db_rebase_levels(flatten([
-        db_heading(1, 'Subdoc Title'),
-        db_paragraph('Subdoc content')
+SELECT duck_blocks_assemble([
+    duck_block_heading(1, 'Main Doc'),
+    duck_blocks_rebase_levels(flatten([
+        duck_block_heading(1, 'Subdoc Title'),
+        duck_block_paragraph('Subdoc content')
     ]), 1)
 ])[1].attributes['heading_level'],
-db_assemble([
-    db_heading(1, 'Main Doc'),
-    db_rebase_levels(flatten([
-        db_heading(1, 'Subdoc Title'),
-        db_paragraph('Subdoc content')
+duck_blocks_assemble([
+    duck_block_heading(1, 'Main Doc'),
+    duck_blocks_rebase_levels(flatten([
+        duck_block_heading(1, 'Subdoc Title'),
+        duck_block_paragraph('Subdoc content')
     ]), 1)
 ])[2].attributes['heading_level'];
 ----

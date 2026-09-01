@@ -17,9 +17,29 @@ This extension complements format-specific document extensions (markdown, HTML, 
 - **Pandoc AST conversion**: Bidirectional JSON AST ↔ duck_blocks (no Pandoc required) — complete coverage of pandoc-types 1.23, including document metadata, verified against a real pandoc by `test/pandoc/check_pandoc_alignment.py`
 - **Conversion helpers**: Normalize blocks and track provenance
 - **ANSI terminal rendering**: `PRAGMA duck_block_render` — render documents and query results as styled terminal output, glow-style ([docs](docs/rendering.md))
-- **Page composition & query tables**: `db_page`, `db_query_table`, `db_table` — assemble dashboards that embed live query results as rendered tables
-- **Vocabulary introspection**: `db_block_kinds`, `db_block_types`, `db_block_spec_version` — so sibling extensions can *assert* they agree with the vocabulary rather than mirroring a header
-- **Document queries over blocks**: `db_toc`, `db_get_section`, `db_sections_like` — these take `LIST(duck_block)`, not file paths
+- **Page composition & query tables**: `duck_blocks_page`, `duck_blocks_query_table`, `duck_blocks_table` — assemble dashboards that embed live query results as rendered tables
+- **Vocabulary introspection**: `duck_block_kind_names`, `duck_block_type_names`, `duck_block_spec_version` — so sibling extensions can *assert* they agree with the vocabulary rather than mirroring a header
+- **Document queries over blocks**: `duck_blocks_toc_rows`, `duck_blocks_get_section`, `duck_blocks_sections_like` — these take `LIST(duck_block)`, not file paths
+
+## Naming
+
+Every function is prefixed by what it operates on:
+
+| prefix | means | examples |
+|---|---|---|
+| `duck_block_*` | one element — accessing **or** constructing it | `duck_block_content`, `duck_block_paragraph`, `duck_block_bold` |
+| `duck_blocks_*` | a collection | `duck_blocks_to_text`, `duck_blocks_toc`, `duck_blocks_validate` |
+| `pandoc_*` | Pandoc AST conversion | `pandoc_ast_to_blocks` |
+
+These were `db_*` until v1.1. `db_` reads as *database* everywhere else in SQL, and
+`duck_block_*`/`duck_blocks_*` was already the convention for the accessors and for the
+cross-extension writers (`duck_blocks_to_md`, `duck_blocks_to_html`), so this makes one
+family instead of two.
+
+**For brevity, `PRAGMA duck_block_aliases` gives HTML-style short names** — `p`, `h1`–`h6`,
+`b`, `em`, `s`, `a`, `img`, `ul`, `ol`, `li`, `div`, `span`, `pre`, `bq`, `code`. That is
+where terseness belongs: the builders you type constantly. Everything else is typed rarely
+and reads better spelled out.
 
 ## Scope
 
@@ -42,8 +62,8 @@ There is no general `render(blocks, format)` entry point: format-specific writer
 composed directly, so this extension never has to know they exist.
 
 ```sql
-SELECT db_blocks_to_text(blocks);       -- here
-SELECT db_blocks_render_ansi(blocks);   -- here
+SELECT duck_blocks_to_text(blocks);       -- here
+SELECT duck_blocks_render_ansi(blocks);   -- here
 LOAD markdown;  SELECT duck_blocks_to_md(blocks);
 LOAD webbed;    SELECT duck_blocks_to_html(blocks);
 ```
@@ -67,11 +87,11 @@ Reader dispatch moved to `panduck`. Replacements:
 | `doc_is_supported(path)` | `panduck_can_read(path)` |
 | `doc_supported_extensions()` | `panduck_supported_paths()` |
 | `doc_select_blocks(path, sel)` | `panduck_select_blocks(path, sel)` |
-| `doc_toc(path)` | `db_toc(panduck_read_blocks(path))` |
-| `doc_section(...)` | `db_get_section(...)` — **not** `db_section`, which is an existing builder |
-| `doc_search(...)` | `db_sections_like(...)` |
-| `doc_render(blocks, 'text')` | `db_blocks_to_text(blocks)` |
-| `doc_render(blocks, 'ansi')` | `db_blocks_render_ansi(blocks)` |
+| `doc_toc(path)` | `duck_blocks_toc_rows(panduck_read_blocks(path))` |
+| `doc_section(...)` | `duck_blocks_get_section(...)` — **not** `duck_block_section`, which is an existing builder |
+| `doc_search(...)` | `duck_blocks_sections_like(...)` |
+| `doc_render(blocks, 'text')` | `duck_blocks_to_text(blocks)` |
+| `doc_render(blocks, 'ansi')` | `duck_blocks_render_ansi(blocks)` |
 | `doc_render(blocks, 'md')` | `duck_blocks_to_md(blocks)` — `LOAD markdown` |
 | `doc_render(blocks, 'html')` | `duck_blocks_to_html(blocks)` — `LOAD webbed` |
 
@@ -101,23 +121,23 @@ LOAD markdown;
 LOAD duck_block_utils;
 
 -- Extract all headings as a table of contents
-SELECT * FROM db_blocks_toc(
+SELECT * FROM duck_blocks_toc(
     (SELECT list(b) FROM read_markdown_blocks('README.md') b)
 );
 
 -- Get plain text content
-SELECT db_blocks_to_text(
+SELECT duck_blocks_to_text(
     (SELECT list(b) FROM read_markdown_blocks('doc.md') b)
 );
 
 -- Filter to specific block types
-SELECT unnest(db_blocks_filter(
+SELECT unnest(duck_blocks_filter(
     (SELECT list(b) FROM read_markdown_blocks('doc.md') b),
     ['heading', 'code']
 ));
 
 -- Validate block schema
-SELECT db_blocks_validate(
+SELECT duck_blocks_validate(
     (SELECT list(b) FROM read_markdown_blocks('doc.md') b)
 );
 ```
@@ -174,31 +194,31 @@ STRUCT(
 
 | Function | Description |
 |----------|-------------|
-| `db_blocks_filter(blocks, types[])` | Filter blocks to specific types |
-| `db_blocks_exclude(blocks, types[])` | Exclude specific block types |
+| `duck_blocks_filter(blocks, types[])` | Filter blocks to specific types |
+| `duck_blocks_exclude(blocks, types[])` | Exclude specific block types |
 | `db_blocks_transform(blocks, mappings)` | Apply type/content transformations |
-| `db_blocks_merge(blocks1, blocks2)` | Merge two block sequences |
-| `db_blocks_reorder(blocks)` | Renumber element_order sequentially |
-| `db_blocks_slice(blocks, start, end)` | Extract block range |
+| `duck_blocks_merge(blocks1, blocks2)` | Merge two block sequences |
+| `duck_blocks_reorder(blocks)` | Renumber element_order sequentially |
+| `duck_blocks_slice(blocks, start, end)` | Extract block range |
 
 ### Content Extraction
 
 | Function | Description |
 |----------|-------------|
-| `db_blocks_to_text(blocks)` | Extract plain text content |
-| `db_blocks_headings(blocks)` | Extract heading hierarchy |
-| `db_blocks_toc(blocks)` | Generate table of contents |
-| `db_blocks_code_blocks(blocks)` | Extract code blocks with metadata |
-| `db_blocks_links(blocks)` | Extract all links from content |
+| `duck_blocks_to_text(blocks)` | Extract plain text content |
+| `duck_blocks_headings(blocks)` | Extract heading hierarchy |
+| `duck_blocks_toc(blocks)` | Generate table of contents |
+| `duck_blocks_code_blocks(blocks)` | Extract code blocks with metadata |
+| `duck_blocks_links(blocks)` | Extract all links from content |
 
 ### Validation & Analysis
 
 | Function | Description |
 |----------|-------------|
-| `db_blocks_validate(blocks)` | Check schema compliance |
-| `db_blocks_lint(blocks)` | Check for common issues |
-| `db_blocks_stats(blocks)` | Block type statistics |
-| `db_blocks_structure(blocks)` | Analyze document structure |
+| `duck_blocks_validate(blocks)` | Check schema compliance |
+| `duck_blocks_lint(blocks)` | Check for common issues |
+| `duck_blocks_stats(blocks)` | Block type statistics |
+| `duck_blocks_structure(blocks)` | Analyze document structure |
 
 ### Conversion Helpers
 
@@ -214,16 +234,16 @@ Builders are **config-first, content-last** and each returns a `LIST(duck_block)
 
 | Function | Description |
 |----------|-------------|
-| `db_heading(level, content)` | Create heading block |
-| `db_paragraph(content)` | Create paragraph block |
-| `db_code(language, content)` | Create code block |
-| `db_blockquote(content)` / `db_blockquote(level, content)` | Create blockquote block |
-| `db_list_block(items[])` / `db_list_block(ordered, items[])` | Create list block (strings or rich items) |
-| `db_div(children[])` / `db_div(id, class, children[])` | Create generic container |
-| `db_hr()` | Create horizontal rule |
-| `db_metadata(yaml_content)` | Create metadata block |
-| `db_image(src, alt, title)` | Create image block |
-| `db_raw(format, content)` | Create raw content block |
+| `duck_block_heading(level, content)` | Create heading block |
+| `duck_block_paragraph(content)` | Create paragraph block |
+| `duck_block_code(language, content)` | Create code block |
+| `duck_block_blockquote(content)` / `duck_block_blockquote(level, content)` | Create blockquote block |
+| `duck_block_list_block(items[])` / `duck_block_list_block(ordered, items[])` | Create list block (strings or rich items) |
+| `duck_block_div(children[])` / `duck_block_div(id, class, children[])` | Create generic container |
+| `duck_block_hr()` | Create horizontal rule |
+| `duck_block_metadata(yaml_content)` | Create metadata block |
+| `duck_block_image(src, alt, title)` | Create image block |
+| `duck_block_raw(format, content)` | Create raw content block |
 
 ### Flattening Builder Overloads
 
@@ -231,38 +251,38 @@ These overloads accept a list of children and return a flattened list with paren
 
 | Function | Description |
 |----------|-------------|
-| `db_paragraph(children[])` | Paragraph with inline children |
-| `db_heading(level, children[])` | Heading with inline children |
-| `db_blockquote(level, children[])` | Blockquote with children |
-| `db_code(language, children[])` | Code block with children |
-| `db_bold(children[])` | Bold with inline children |
-| `db_italic(children[])` | Italic with inline children |
-| `db_link(href, children[], title)` | Link with inline children |
+| `duck_block_paragraph(children[])` | Paragraph with inline children |
+| `duck_block_heading(level, children[])` | Heading with inline children |
+| `duck_block_blockquote(level, children[])` | Blockquote with children |
+| `duck_block_code(language, children[])` | Code block with children |
+| `duck_block_bold(children[])` | Bold with inline children |
+| `duck_block_italic(children[])` | Italic with inline children |
+| `duck_block_link(href, children[], title)` | Link with inline children |
 
 ### Inline Builders
 
 | Function | Description |
 |----------|-------------|
-| `db_text(content)` | Create plain text inline |
-| `db_space()` | Create space inline |
-| `db_softbreak()` | Create soft break |
-| `db_linebreak()` | Create line break |
-| `db_bold(content)` | Create bold text |
-| `db_italic(content)` | Create italic text |
-| `db_strikethrough(content)` | Create strikethrough text |
-| `db_superscript(content)` | Create superscript |
-| `db_subscript(content)` | Create subscript |
-| `db_smallcaps(content)` | Create small caps |
-| `db_underline(content)` | Create underlined text |
-| `db_inline_code(content)` | Create inline code |
-| `db_math(content, display)` | Create math expression |
-| `db_link(href, text, title)` | Create hyperlink |
-| `db_inline_image(src, alt, title)` | Create inline image |
-| `db_quoted(content, quote_type)` | Create quoted text |
-| `db_cite(key, prefix, suffix)` | Create citation |
-| `db_note(content)` | Create footnote |
-| `db_span(content, id, classes)` | Create span |
-| `db_raw_inline(content, format)` | Create raw inline |
+| `duck_block_text(content)` | Create plain text inline |
+| `duck_block_space()` | Create space inline |
+| `duck_block_softbreak()` | Create soft break |
+| `duck_block_linebreak()` | Create line break |
+| `duck_block_bold(content)` | Create bold text |
+| `duck_block_italic(content)` | Create italic text |
+| `duck_block_strikethrough(content)` | Create strikethrough text |
+| `duck_block_superscript(content)` | Create superscript |
+| `duck_block_subscript(content)` | Create subscript |
+| `duck_block_smallcaps(content)` | Create small caps |
+| `duck_block_underline(content)` | Create underlined text |
+| `duck_block_inline_code(content)` | Create inline code |
+| `duck_block_math(content, display)` | Create math expression |
+| `duck_block_link(href, text, title)` | Create hyperlink |
+| `duck_block_inline_image(src, alt, title)` | Create inline image |
+| `duck_block_quoted(content, quote_type)` | Create quoted text |
+| `duck_block_cite(key, prefix, suffix)` | Create citation |
+| `duck_block_note(content)` | Create footnote |
+| `duck_block_span(content, id, classes)` | Create span |
+| `duck_block_raw_inline(content, format)` | Create raw inline |
 
 ### Pandoc AST Conversion
 
@@ -276,7 +296,7 @@ These overloads accept a list of children and return a flattened list with paren
 | `write_pandoc_ast(path, blocks)` | Write duck_blocks directly to Pandoc JSON file |
 | `pandoc_inlines_to_text(inlines)` | Convert inline elements to text |
 | `pandoc_inlines_to_db_inlines(inlines)` | Convert Pandoc inlines to duck_block inlines |
-| `db_inlines_to_pandoc(inlines)` | Convert duck_block inlines to Pandoc JSON |
+| `duck_blocks_inlines_to_pandoc(inlines)` | Convert duck_block inlines to Pandoc JSON |
 
 ## Examples
 
@@ -286,7 +306,7 @@ These overloads accept a list of children and return a flattened list with paren
 SELECT
     repeat('  ', level - 1) || '- ' || title as toc_line,
     id
-FROM db_blocks_toc(
+FROM duck_blocks_toc(
     (SELECT list(b) FROM read_markdown_blocks('docs/**/*.md') b)
 )
 ORDER BY doc_order, element_order;
@@ -299,7 +319,7 @@ SELECT
     language,
     content as code,
     file_path
-FROM db_blocks_code_blocks(
+FROM duck_blocks_code_blocks(
     (SELECT list(b) FROM read_markdown_blocks('tutorial/*.md', include_filepath := true) b)
 )
 WHERE language = 'python';
@@ -308,10 +328,10 @@ WHERE language = 'python';
 ### Merge Documents with Separator
 
 ```sql
-SELECT unnest(db_blocks_merge(
-    db_blocks_merge(
+SELECT unnest(duck_blocks_merge(
+    duck_blocks_merge(
         (SELECT list(b) FROM read_markdown_blocks('intro.md') b),
-        [db_hr()]
+        [duck_block_hr()]
     ),
     (SELECT list(b) FROM read_markdown_blocks('main.md') b)
 ));
@@ -320,7 +340,7 @@ SELECT unnest(db_blocks_merge(
 ### Validate and Report Issues
 
 ```sql
-SELECT * FROM db_blocks_lint(
+SELECT * FROM duck_blocks_lint(
     (SELECT list(b) FROM read_markdown_blocks('doc.md') b)
 )
 WHERE severity = 'error';
@@ -331,20 +351,20 @@ WHERE severity = 'error';
 ```sql
 -- Create a paragraph with formatted inline content
 SELECT [
-    db_text('Click '),
-    db_link('https://example.com', 'here'),
-    db_text(' to learn more about '),
-    db_bold('DuckDB'),
-    db_text('.')
+    duck_block_text('Click '),
+    duck_block_link('https://example.com', 'here'),
+    duck_block_text(' to learn more about '),
+    duck_block_bold('DuckDB'),
+    duck_block_text('.')
 ];
 
 -- Compose a paragraph from mixed inline builders
-SELECT db_paragraph([
-    db_text('This is '),
-    db_bold('bold'),
-    db_text(' and '),
-    db_italic('italic'),
-    db_text(' text.')
+SELECT duck_block_paragraph([
+    duck_block_text('This is '),
+    duck_block_bold('bold'),
+    duck_block_text(' and '),
+    duck_block_italic('italic'),
+    duck_block_text(' text.')
 ]);
 ```
 
@@ -367,18 +387,18 @@ LOAD json;  -- Required for COPY FORMAT JSON
 
 -- Basic export - creates Pandoc-compatible JSON
 COPY (
-    SELECT * FROM pandoc_ast(db_assemble([
-        db_heading(1, 'My Document'),
-        db_paragraph('Hello world.')
+    SELECT * FROM pandoc_ast(duck_blocks_assemble([
+        duck_block_heading(1, 'My Document'),
+        duck_block_paragraph('Hello world.')
     ]))
 ) TO 'document.json' (FORMAT JSON);
 
 -- With document metadata (title, author, date)
 COPY (
     SELECT * FROM pandoc_ast(
-        db_assemble([
-            db_heading(1, 'Report'),
-            db_paragraph('Introduction text...')
+        duck_blocks_assemble([
+            duck_block_heading(1, 'Report'),
+            duck_block_paragraph('Introduction text...')
         ]),
         meta := {'title': 'Annual Report', 'author': 'Jane Doe', 'date': '2024-01-05'}
     )
@@ -414,29 +434,29 @@ Render documents — or any query result — as styled ANSI output for the termi
 PRAGMA duck_block_render;
 
 -- Documents: width-aware word wrap, styled headings/lists/tables
-SELECT db_blocks_render_ansi(
-    db_heading(1, 'Report')
-    || db_paragraph([db_text('All systems '), db_bold('nominal'), db_text('.')])
+SELECT duck_blocks_render_ansi(
+    duck_block_heading(1, 'Report')
+    || duck_block_paragraph([duck_block_text('All systems '), duck_block_bold('nominal'), duck_block_text('.')])
 );
 
 -- Any query as a pretty ANSI table
-SELECT rendered FROM db_render_query('SELECT * FROM my_table LIMIT 10');
+SELECT rendered FROM duck_blocks_render_query('SELECT * FROM my_table LIMIT 10');
 ```
 
 ### Composing pages with embedded query results
 
-`db_page(title, blocks)` assembles a titled page, `db_query_table(sql)` embeds a
-query's results as a table block, and `db_table(json)` does the same for a JSON
+`duck_blocks_page(title, blocks)` assembles a titled page, `duck_blocks_query_table(sql)` embeds a
+query's results as a table block, and `duck_blocks_table(json)` does the same for a JSON
 array — a dashboard in one expression:
 
 ```sql
 PRAGMA duck_block_render;
 
-SELECT db_render_blocks(db_page('Sales Report', [
-    db_paragraph('Top rows:'),
-    db_query_table('SELECT * FROM t ORDER BY id'),
-    db_paragraph('Aggregate:'),
-    db_query_table('SELECT count(*) AS n, round(avg(score), 2) AS avg_score FROM t')
+SELECT duck_blocks_render(duck_blocks_page('Sales Report', [
+    duck_block_paragraph('Top rows:'),
+    duck_blocks_query_table('SELECT * FROM t ORDER BY id'),
+    duck_block_paragraph('Aggregate:'),
+    duck_blocks_query_table('SELECT count(*) AS n, round(avg(score), 2) AS avg_score FROM t')
 ]));
 ```
 
@@ -446,7 +466,7 @@ On the terminal-graphics landscape and where a bitmap tier could go, see
 [Terminal Graphics (Notes)](docs/terminal_graphics.md).
 
 Width is auto-detected from the terminal (even when piped to `less -R`); pass
-it explicitly with `db_blocks_render_ansi(blocks, width)`. See
+it explicitly with `duck_blocks_render_ansi(blocks, width)`. See
 [Terminal Rendering](docs/rendering.md) for details, or try
 `examples/duckglow.sql` for glow-style markdown file viewing:
 

@@ -10,18 +10,18 @@ require duck_block_utils
 # ============================================================================
 
 query I
-SELECT db_block_kinds();
+SELECT duck_block_kind_names();
 ----
 [block, inline, value]
 
 query I
-SELECT list_contains(db_block_types(), 'figure') AND list_contains(db_block_types(), 'caption')
-   AND list_contains(db_block_types(), 'generic');
+SELECT list_contains(duck_block_type_names(), 'figure') AND list_contains(duck_block_type_names(), 'caption')
+   AND list_contains(duck_block_type_names(), 'generic');
 ----
 true
 
 query I
-SELECT length(db_block_spec_version()) > 0;
+SELECT length(duck_block_spec_version()) > 0;
 ----
 true
 
@@ -30,7 +30,7 @@ true
 query I
 SELECT count(*) FROM (
   SELECT unnest(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaBool","c":true}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"x"}]}]}')) AS b
-) WHERE NOT list_contains(db_block_kinds(), b.kind);
+) WHERE NOT list_contains(duck_block_kind_names(), b.kind);
 ----
 0
 
@@ -39,43 +39,43 @@ SELECT count(*) FROM (
 # ============================================================================
 
 query I
-SELECT db_blocks_version(db_blocks_stamp(db_paragraph([db_text('x')]))) = db_block_spec_version();
+SELECT duck_blocks_version(duck_blocks_stamp(duck_block_paragraph([duck_block_text('x')]))) = duck_block_spec_version();
 ----
 true
 
 # unstamped blocks report NULL rather than guessing
 query I
-SELECT db_blocks_version(db_paragraph([db_text('x')])) IS NULL;
+SELECT duck_blocks_version(duck_block_paragraph([duck_block_text('x')])) IS NULL;
 ----
 true
 
 # stamping is additive: the document body is untouched and still first
 query I
-SELECT db_blocks_stamp(db_paragraph([db_text('x')]))[1].element_type;
+SELECT duck_blocks_stamp(duck_block_paragraph([duck_block_text('x')]))[1].element_type;
 ----
 paragraph
 
 # the marker is a value element, so block-walking consumers ignore it
 query I
-SELECT db_blocks_to_text(db_blocks_stamp(db_paragraph([db_text('x')])));
+SELECT duck_blocks_to_text(duck_blocks_stamp(duck_block_paragraph([duck_block_text('x')])));
 ----
 x
 
 # and it does NOT leak into pandoc document metadata
 query I
-SELECT duck_blocks_to_pandoc_ast(db_blocks_stamp(db_paragraph([db_text('x')]))).meta::VARCHAR;
+SELECT duck_blocks_to_pandoc_ast(duck_blocks_stamp(duck_block_paragraph([duck_block_text('x')]))).meta::VARCHAR;
 ----
 {}
 
 # ============================================================================
 # Regression: document metadata must not leak into extracted body text.
-# The first cut of kind='value' shipped this bug -- db_blocks_to_text skipped
+# The first cut of kind='value' shipped this bug -- duck_blocks_to_text skipped
 # `inline` and treated everything else as a block, so value elements fell
 # through, and MetaInlines children were then picked up as a stray inline run.
 # ============================================================================
 
 query I
-SELECT db_blocks_to_text(pandoc_ast_to_blocks(
+SELECT duck_blocks_to_text(pandoc_ast_to_blocks(
   '{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"LEAK"}]},
             "tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"ALSO"}]}]}},
     "blocks":[{"t":"Para","c":[{"t":"Str","c":"Body"}]}]}'));
@@ -84,7 +84,7 @@ Body
 
 # a heading TOC must not pick up metadata either
 query I
-SELECT count(*) FROM (SELECT unnest(db_blocks_toc(pandoc_ast_to_blocks(
+SELECT count(*) FROM (SELECT unnest(duck_blocks_toc(pandoc_ast_to_blocks(
   '{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"LEAK"}]}},
     "blocks":[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"Real"}]]}]}'))) AS t)
 WHERE (t).title = 'LEAK';
@@ -101,7 +101,7 @@ WHERE (t).title = 'LEAK';
 # ============================================================================
 
 query I
-SELECT list_contains(db_block_types(), 'section');
+SELECT list_contains(duck_block_type_names(), 'section');
 ----
 true
 
@@ -148,7 +148,7 @@ true
 # REGRESSION: kind='value' was added without updating the validator, so every
 # document carrying metadata validated as invalid.
 query I
-SELECT (db_blocks_validate(pandoc_ast_to_blocks(
+SELECT (duck_blocks_validate(pandoc_ast_to_blocks(
   '{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"T"}]}},
     "blocks":[{"t":"Para","c":[{"t":"Str","c":"B"}]}]}'))).valid;
 ----
@@ -156,7 +156,7 @@ true
 
 # the kind set comes from the vocabulary, so a new kind cannot orphan it again
 query I
-SELECT (db_blocks_validate([
+SELECT (duck_blocks_validate([
   {'kind':'nonsense','element_type':'paragraph','content':'x','level':NULL,'encoding':'text',
    'attributes':MAP{},'element_order':0}::duck_block])).valid;
 ----
@@ -166,17 +166,17 @@ false
 # never in `level`, which is structural depth. Confusing the two is the oldest
 # trap in this vocabulary and the spec calls it out explicitly.
 query I
-SELECT (db_blocks_validate([
+SELECT (duck_blocks_validate([
   {'kind':'block','element_type':'heading','content':'H','level':NULL,'encoding':'text',
    'attributes':MAP{'heading_level':'2'},'element_order':0}::duck_block])).valid;
 ----
 true
 
-# lint, not validate: this extension's own db_heading() sets level on headings
+# lint, not validate: this extension's own duck_block_heading() sets level on headings
 # while pandoc_ast_to_blocks() leaves it NULL, so failing validation would
 # reject documents built with the builders. Recorded as a real divergence.
 query I
-SELECT len(db_blocks_lint([
+SELECT len(duck_blocks_lint([
   {'kind':'block','element_type':'heading','content':'H','level':3,'encoding':'text',
    'attributes':MAP{'heading_level':'1'},'element_order':0}::duck_block])) > 0;
 ----
@@ -184,7 +184,7 @@ true
 
 # a spec-conformant heading -- level NULL -- warns about nothing
 query I
-SELECT len(db_blocks_lint([
+SELECT len(duck_blocks_lint([
   {'kind':'block','element_type':'heading','content':'H','level':NULL,'encoding':'text',
    'attributes':MAP{'heading_level':'1'},'element_order':0}::duck_block]));
 ----
@@ -192,7 +192,7 @@ SELECT len(db_blocks_lint([
 
 # SEMANTIC: `generic` exists to make a gap visible, so it must say what it was.
 query I
-SELECT len(db_blocks_lint([
+SELECT len(duck_blocks_lint([
   {'kind':'block','element_type':'generic','content':'{}','level':NULL,'encoding':'json',
    'attributes':MAP{},'element_order':0}::duck_block])) > 0;
 ----
@@ -200,7 +200,7 @@ true
 
 # ...and a generic that names what it stood in for is fine
 query I
-SELECT len(db_blocks_lint([
+SELECT len(duck_blocks_lint([
   {'kind':'block','element_type':'generic','content':'{}','level':NULL,'encoding':'json',
    'attributes':MAP{'source_type':'FutureThing'},'element_order':0}::duck_block]));
 ----
@@ -208,7 +208,7 @@ SELECT len(db_blocks_lint([
 
 # SEMANTIC: a value element inside a map must carry its key.
 query I
-SELECT (db_blocks_validate([
+SELECT (duck_blocks_validate([
   {'kind':'value','element_type':'string','content':'v','level':1,'encoding':'text',
    'attributes':MAP{'key':'k'},'element_order':0}::duck_block])).valid;
 ----
@@ -226,52 +226,52 @@ true
 
 # a top-level block built by hand has NULL level, like the converter's
 query I
-SELECT db_paragraph([db_text('a'), db_bold('b')])[1].level IS NULL;
+SELECT duck_block_paragraph([duck_block_text('a'), duck_block_bold('b')])[1].level IS NULL;
 ----
 true
 
 # ...and its inline children still sit at 2, unchanged
 query I
-SELECT db_paragraph([db_text('a'), db_bold('b')])[2].level;
+SELECT duck_block_paragraph([duck_block_text('a'), duck_block_bold('b')])[2].level;
 ----
 2
 
 # builder and converter agree on the CONTAINER's level and its children's depth.
-# They differ below that, legitimately: db_bold('b') puts the text in the bold
+# They differ below that, legitimately: duck_block_bold('b') puts the text in the bold
 # element's content, while the converter emits bold plus a text child at 3 --
 # the spec's "content is populated iff the container has a single text child".
 query I
-SELECT db_paragraph([db_text('a'), db_bold('b')])[1].level IS NULL
+SELECT duck_block_paragraph([duck_block_text('a'), duck_block_bold('b')])[1].level IS NULL
    AND pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"a"}]}]')[1].level IS NULL;
 ----
 true
 
 query I
-SELECT db_paragraph([db_text('a'), db_bold('b')])[2].level
+SELECT duck_block_paragraph([duck_block_text('a'), duck_block_bold('b')])[2].level
      = pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"a"},{"t":"Code","c":[["",[],[]],"x"]}]}]')[2].level;
 ----
 true
 
 # headings: NULL level, h1-h6 in the attribute, and no lint warning
 query I
-SELECT db_heading(1, 'T')[1].level IS NULL;
+SELECT duck_block_heading(1, 'T')[1].level IS NULL;
 ----
 true
 
 query I
-SELECT db_heading(1, 'T')[1].attributes['heading_level'];
+SELECT duck_block_heading(1, 'T')[1].attributes['heading_level'];
 ----
 1
 
 query I
-SELECT len(db_blocks_lint(db_assemble([db_heading(1, 'Title'), db_paragraph('Text')])));
+SELECT len(duck_blocks_lint(duck_blocks_assemble([duck_block_heading(1, 'Title'), duck_block_paragraph('Text')])));
 ----
 0
 
 # nested blockquotes still carry their depth -- the one call site that passes a
 # real level rather than 1 must keep working
 query I
-SELECT db_blocks_to_text(db_blockquote('inner')) LIKE '%inner%';
+SELECT duck_blocks_to_text(duck_block_blockquote('inner')) LIKE '%inner%';
 ----
 true
 
@@ -288,7 +288,7 @@ true
 # ============================================================================
 
 query I
-SELECT db_blocks_to_text(pandoc_ast_to_blocks(
+SELECT duck_blocks_to_text(pandoc_ast_to_blocks(
   '{"meta":{"abstract":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"BLOCKLEAK"}]}]}},
     "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}'));
 ----
@@ -296,7 +296,7 @@ REALBODY
 
 # every shape at once: inlines, blocks, bool, list, map
 query I
-SELECT db_blocks_to_text(pandoc_ast_to_blocks(
+SELECT duck_blocks_to_text(pandoc_ast_to_blocks(
   '{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"INLEAK"}]},
             "abstract":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"BLOCKLEAK"}]}]},
             "draft":{"t":"MetaBool","c":true},
@@ -308,7 +308,7 @@ REALBODY
 
 # nested MetaBlocks inside a MetaMap -- two levels deep, still contained
 query I
-SELECT db_blocks_to_text(pandoc_ast_to_blocks(
+SELECT duck_blocks_to_text(pandoc_ast_to_blocks(
   '{"meta":{"outer":{"t":"MetaMap","c":{"inner":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"DEEPLEAK"}]}]}}}},
     "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}'));
 ----
@@ -316,7 +316,7 @@ REALBODY
 
 # the TOC must not pick up a heading buried in metadata either
 query I
-SELECT count(*) FROM (SELECT unnest(db_blocks_toc(pandoc_ast_to_blocks(
+SELECT count(*) FROM (SELECT unnest(duck_blocks_toc(pandoc_ast_to_blocks(
   '{"meta":{"abstract":{"t":"MetaBlocks","c":[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"METAHEAD"}]]}]}},
     "blocks":[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"Real"}]]}]}'))) AS t)
 WHERE (t).title = 'METAHEAD';
@@ -333,27 +333,27 @@ WHERE (t).title = 'METAHEAD';
 #
 # It exists because duckeye's PDF path currently fakes page boundaries by
 # synthesising `## Page N` MARKDOWN HEADINGS, which injects physical pagination
-# into the semantic heading structure -- db_toc then lists "Page 1, Page 2" as
-# though they were sections, and db_get_section will happily slice on one.
+# into the semantic heading structure -- duck_blocks_toc_rows then lists "Page 1, Page 2" as
+# though they were sections, and duck_blocks_get_section will happily slice on one.
 # ============================================================================
 
 query I
-SELECT list_contains(db_block_types(), 'page');
+SELECT list_contains(duck_block_type_names(), 'page_break');
 ----
 true
 
 # a page marker carries its number and no content
 query I
-SELECT (db_blocks_validate([
-  {'kind':'block','element_type':'page','content':'','level':NULL,'encoding':'text',
+SELECT (duck_blocks_validate([
+  {'kind':'block','element_type':'page_break','content':'','level':NULL,'encoding':'text',
    'attributes':MAP{'page_number':'3'},'element_order':0}::duck_block])).valid;
 ----
 true
 
 # it is NOT a heading: the TOC must ignore it
 query I
-SELECT count(*) FROM (SELECT unnest(db_blocks_toc([
-  {'kind':'block','element_type':'page','content':'','level':NULL,'encoding':'text',
+SELECT count(*) FROM (SELECT unnest(duck_blocks_toc([
+  {'kind':'block','element_type':'page_break','content':'','level':NULL,'encoding':'text',
    'attributes':MAP{'page_number':'1'},'element_order':0}::duck_block,
   {'kind':'block','element_type':'heading','content':'Real','level':NULL,'encoding':'text',
    'attributes':MAP{'heading_level':'1'},'element_order':1}::duck_block])) AS t);
@@ -362,8 +362,8 @@ SELECT count(*) FROM (SELECT unnest(db_blocks_toc([
 
 # ...and contributes no text
 query I
-SELECT db_blocks_to_text([
-  {'kind':'block','element_type':'page','content':'','level':NULL,'encoding':'text',
+SELECT duck_blocks_to_text([
+  {'kind':'block','element_type':'page_break','content':'','level':NULL,'encoding':'text',
    'attributes':MAP{'page_number':'1'},'element_order':0}::duck_block,
   {'kind':'block','element_type':'paragraph','content':'Body','level':NULL,'encoding':'text',
    'attributes':MAP{},'element_order':1}::duck_block]);
@@ -374,14 +374,14 @@ Body
 # its nearest honest equivalent, and what a `page` class means to a reader
 query I
 SELECT duck_blocks_to_pandoc_blocks([
-  {'kind':'block','element_type':'page','content':'','level':NULL,'encoding':'text',
+  {'kind':'block','element_type':'page_break','content':'','level':NULL,'encoding':'text',
    'attributes':MAP{'page_number':'7'},'element_order':0}::duck_block]) LIKE '%"t":"Div"%';
 ----
 true
 
 query I
 SELECT duck_blocks_to_pandoc_blocks([
-  {'kind':'block','element_type':'page','content':'','level':NULL,'encoding':'text',
+  {'kind':'block','element_type':'page_break','content':'','level':NULL,'encoding':'text',
    'attributes':MAP{'page_number':'7'},'element_order':0}::duck_block]) LIKE '%page%';
 ----
 true
