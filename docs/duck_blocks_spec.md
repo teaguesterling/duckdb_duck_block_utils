@@ -250,6 +250,15 @@ less*, `get_pages` is for addressing pages inside blocks you already hold. Both 
 real; neither is redundant. Raised by duckeye against exactly this mistake in my own
 description of the macro.
 
+The same rule holds for `duck_blocks_get_section` versus a reader-level section flag,
+but only the page case can actually lose anything — and the difference says when
+pushdown is even available. **A section is defined by structure that exists only AFTER
+parsing, so there is nothing to push down. A page range is knowable from the path
+alone, so pushdown is available and declining it costs real work.** duckeye's
+distinction. So: push a selection down wherever the selector is knowable before
+parsing; where it is not, the block-level macro is not a compromise, it is the only
+thing there is.
+
 ### `figure` and `caption`
 
 ```
