@@ -21,6 +21,14 @@
 -- disagreement -- this repo shipped exactly that defect in an image's alt text -- so
 -- the two implementations are compared rather than merely both maintained.
 
+-- WHAT THIS BUYS YOU, from the panduck session and sharper than the framing above:
+-- the value is not "the same checks without a dependency". It is TWO CHECKS YOU COULD
+-- NOT HAVE HAD AT ALL. Duplicate element_order and level-jumping-by-more-than-one are
+-- inexpressible in a per-element macro, and the second is the rule whose absence caused
+-- a year of drift across four extensions -- so every consumer who copied the
+-- per-element macro this spec published until 2026-09-01 was unguarded against
+-- precisely the defect most likely to bite them.
+
 -- USAGE, and read this before the first call fails.
 --
 --   SELECT duck_blocks_are_valid(<a LIST(duck_block) expression>);
