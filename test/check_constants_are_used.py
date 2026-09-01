@@ -136,9 +136,24 @@ def main() -> int:
     # here -- "right by coincidence and wrong in meaning... it compiles, matches, and
     # reads as deliberate."
     #
-    # No mechanical fix: the values genuinely are the same string, so position is the
-    # only signal and this check does not parse. Reviewing a bulk constant conversion
-    # by hand is the only instrument, which is worth knowing before running one.
+    # This check cannot fix it: the values genuinely are the same string, position is
+    # the only signal, and it does not parse.
+    #
+    # BUT "a bulk conversion cannot be verified" was too broad, and panduck corrected
+    # it by auditing their own -- which was clean, and not because they were careful:
+    #
+    #     they matched   attributes["role"]  ->  attributes[ATTR_ROLE]
+    #     I matched      "ordered"           ->  LIST_TYPE_ORDERED
+    #
+    # An INDEXING EXPRESSION carries its position -- `attributes[X]` can only be a key,
+    # so the wrong constant there is a mistake you have to work at. A BARE LITERAL is
+    # position-blind by construction, so one edit is correct in one place and wrong in
+    # another with nothing distinguishing them.
+    #
+    # So the rule is mechanical rather than a matter of attention: WHEN CONVERTING
+    # LITERALS TO CONSTANTS, MATCH THE SURROUNDING EXPRESSION, NOT THE LITERAL. It
+    # narrows the edit to sites where position is already pinned, and the sites it
+    # refuses to match are exactly the ambiguous ones that need eyes.
     print("    (cannot tell WHICH constant is right when two share a value -- see the note)")
     return 0
 
