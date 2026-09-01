@@ -529,3 +529,41 @@ SELECT len(duck_blocks_lint(duck_blocks_normalize([
 ])));
 ----
 0
+
+# ============================================================================
+# THE SPEC'S CONTAINER CLAIM, PINNED.
+#
+# docs/duck_blocks_spec.md said containers "carry no content of their own" in its
+# type table AND in prose, while the content-rule section further down showed
+# `list_item content="tight item"` and `div content="bare text"`. Both were
+# published. An implementer conforming to either was following the spec.
+#
+# That is exactly how the `level` disagreement happened: v1.0 said three different
+# things about `level` in one file and every extension that diverged was
+# conforming to one of them. A spec that contradicts itself does not produce
+# careless implementations, it produces careful ones that disagree.
+#
+# So the surviving claim is asserted here rather than left as prose.
+# ============================================================================
+
+# Every container accepts its own content: valid, and no lint objects. A validator
+# that rejected this would contradict the document four extensions implement from.
+query II
+SELECT bool_and(v), sum(w) FROM (
+  SELECT duck_blocks_validate([{'kind':'block','element_type':t,'content':'CARRIED','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block]).valid AS v,
+         len(duck_blocks_lint([{'kind':'block','element_type':t,'content':'CARRIED','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block])) AS w
+  FROM (SELECT unnest(['blockquote','list_item','div','section','figure','caption']) AS t)
+);
+----
+true	0
+
+# ...and `list` is the documented exception, for a reason that follows from the
+# rule rather than qualifying it: a list's children are list_items, never text, so
+# it can never HAVE a single text child. Asserted so the exception cannot quietly
+# become general -- I widened the spec text to all seven containers before
+# measuring, and this is the case that would have caught it.
+query II
+SELECT duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'div','content':'CARRIED','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block])::VARCHAR LIKE '%CARRIED%',
+       duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'list','content':'CARRIED','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block])::VARCHAR LIKE '%CARRIED%';
+----
+true	false

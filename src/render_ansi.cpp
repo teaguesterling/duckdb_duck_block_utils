@@ -1288,8 +1288,13 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 			RenderHeading(text, GetAttribute(block, "heading_level"), width, theme, lines);
 		} else if (element_type == BlockTypes::TYPE_PARAGRAPH || element_type == BlockTypes::TYPE_PLAIN) {
 			// `plain` renders exactly as a paragraph -- it differs in MEANING and in what
-			// it exports to, not in how it looks. A tight list item's text is a `plain`
-			// since spec 4.0, so omitting it here silently emptied every tight bullet.
+			// it exports to, not in how it looks. Omitting it here silently emptied every
+			// element whose text is a `plain`.
+			//
+			// The reason USED to be "a tight list item's text is a `plain`", which was
+			// true of spec 4.0 and 5.0. Since 6.1 a tight item carries its text in
+			// `content` and `plain` appears only beside block siblings or at top level --
+			// so the branch is still required and the stated reason had expired.
 			RenderParagraph(text, width, lines);
 		} else if (element_type == BlockTypes::TYPE_CODE) {
 			RenderCode(content, GetAttribute(block, "language"), theme, lines);

@@ -105,9 +105,9 @@ now rejects a NULL level outright.
 | `paragraph` | Text paragraph | depth (top level 1) | `text`, `markdown` | |
 | `plain` | Block-level text run with NO paragraph semantics | depth (top level 1) | `text` | |
 | `code` | Code block | NULL | `text` | `language` |
-| `blockquote` | Quoted content | depth (top level 1) | — (container) | |
-| `list` | List container | depth (top level 1) | — (container) | `list_type` (canonical): `bullet`, `ordered`, `definition`. `ordered` (legacy alias). For ordered: `start`, `number_style`, `number_delim` |
-| `list_item` | List item | parent `list` + 1 | — (container) | |
+| `blockquote` | Quoted content | depth (top level 1) | `text` if it carries content, else — | |
+| `list` | List container | depth (top level 1) | — (never carries content; its text lives in its items) | `list_type` (canonical): `bullet`, `ordered`, `definition`. `ordered` (legacy alias). For ordered: `start`, `number_style`, `number_delim` |
+| `list_item` | List item | parent `list` + 1 | `text` if it carries content, else — | |
 | `deflist` | Definition list | NULL | `json` | |
 | `lineblock` | Preserved line breaks | NULL | `text` (lines joined with `\n`) | |
 | `table` | Table | NULL | `json` | |
@@ -116,19 +116,37 @@ now rejects a NULL level outright.
 | `metadata` | YAML frontmatter | 0 | `yaml` | |
 | `image` | Block-level image | depth (top level 1) | `text` | `src`, `alt`, `title` |
 | `raw` | Raw content in a *named* format | NULL | format name | `format` |
-| `div` | Generic container | depth (top level 1) | — (container) | `id`, `class` |
-| `section` | **Semantic** sectioning container | depth (top level 1) | — (container) | `role`, `id`, `class` |
-| `figure` | Figure: content plus a caption | depth (top level 1) | — (container) | `id`, `class` |
-| `caption` | Caption belonging to the container before it | parent + 1 | — (container) | `short_caption` |
+| `div` | Generic container | depth (top level 1) | `text` if it carries content, else — | `id`, `class` |
+| `section` | **Semantic** sectioning container | depth (top level 1) | `text` if it carries content, else — | `role`, `id`, `class` |
+| `figure` | Figure: content plus a caption | depth (top level 1) | `text` if it carries content, else — | `id`, `class` |
+| `caption` | Caption belonging to the container before it | parent + 1 | `text` if it carries content, else — | `short_caption` |
 | `generic` | Structurally valid, type not in this vocabulary | NULL | `json` | `source_type` |
 
 ### Containers nest by `level`
 
-`div`, `section`, `figure`, `caption`, `blockquote`, `list` and `list_item` carry no
-content of their own — the last three as of spec 2.0. Their
-children follow them in document order at `level + 1`, and the container ends at
-the first element back at its own level. This is the same mechanism throughout —
-there is no separate child-list field.
+`div`, `section`, `figure`, `caption`, `blockquote`, `list` and `list_item` hold their
+children by position: children follow them in document order at `level + 1`, and the
+container ends at the first element back at its own level. This is the same mechanism
+throughout — there is no separate child-list field.
+
+**A container MAY carry `content`, and the rule for when is the same one that governs
+every other element** — see the content rule under "`plain` vs `paragraph`" below.
+`content` is populated if and only if the element has a single text child, so
+`<li>text</li>` is `list_item` with `content='text'` and no children, while
+`<li><p>text</p></li>` is `list_item` with a `paragraph` child.
+
+`list` is the one exception, and it follows from the rule rather than qualifying it: a
+list's children are `list_item`s, never text, so a `list` can never *have* a single
+text child and therefore never carries `content`. Text on a `list` is malformed and is
+dropped on export.
+
+> This paragraph said containers "carry no content of their own" until spec 6.1, which
+> **directly contradicted** the content rule stated later in this same document. Both
+> statements were published, and an implementer conforming to either one was following
+> the spec. That is precisely how the `level` disagreement happened — v1.0 said three
+> different things about `level` in one file, and every extension that diverged was
+> conforming to one of them. A specification that contradicts itself does not produce
+> careless implementations; it produces careful implementations that disagree.
 
 ### `section` versus `div` versus `generic`
 

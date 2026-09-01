@@ -421,9 +421,10 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 
 			// Empty content is only worth reporting when the element carries NOTHING --
 			// no content AND no children. As written it fired on every conforming
-			// container, because spec 2.0 says a container carries no content of its
-			// own, and on every rich paragraph, whose text is in inline children. So
-			// the rule reported correct code as suspicious.
+			// container -- it was built while spec 2.0 said a container carries no
+			// content of its own, a rule 6.1 has since replaced with v1's -- and on
+			// every rich paragraph, whose text is in inline children. So the rule
+			// reported correct code as suspicious.
 			//
 			// That is not merely noise. panduck measured a real defect whose only
 			// nearby lint line was one of FOUR identical-looking "empty content" infos,
