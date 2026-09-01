@@ -353,6 +353,51 @@ The `encoding` field indicates how to interpret `content`:
 | `xml` | XML content |
 | `latex` | LaTeX content |
 
+### `encoding='json'` does not say WHOSE json
+
+This is the most under-specified part of the format and it has already produced the
+same four defects in three independent implementations. Read this before writing a
+consumer.
+
+Some block types store their structure as JSON in `content` rather than as child
+elements, because their shape has no flat text rendering. **Decoding them is the
+consumer's obligation.** A consumer that renders `content` directly puts raw AST on
+the screen; one that ignores it renders nothing at all.
+
+Which types carry it depends on the producer, and **the two producers in this repo
+emit incompatible schemas for the same `element_type`**:
+
+| | `duck_block_list(['a','b'])` | `pandoc_ast_to_blocks(...)` |
+|---|---|---|
+| **content** | `["a","b"]` | `[[{"t":"Plain","c":[...]}],...]` |
+| attributes | `ordered=false` | `list_type=bullet` |
+
+Both are `element_type='list'`, `encoding='json'`. A decoder written against one
+silently mis-renders the other — the builder shape renders correctly today and the
+Pandoc shape renders as empty bullets, from the same renderer, same document, one
+variable changed. So `encoding='json'` is a statement about lexical form only. It
+is **not** a schema, and it is not sufficient to decode against.
+
+Types carrying `encoding='json'` from the Pandoc reader, measured on `main`:
+
+| Type | Pandoc content shape |
+|------|----------------------|
+| `list` | `[[Block]]`, and for ordered lists `[[start,style,delim],[[Block]]]` — the start number is inside the JSON, not in an attribute |
+| `table` | the full `Table` tuple: `[Attr, Caption, [ColSpec], TableHead, [TableBody], TableFoot]` — an ARRAY, not an object |
+| `blockquote` | `[Block]`. It has NO child elements; the following block is a SIBLING, so rendering the decoded content does not duplicate anything |
+| `deflist` | `[[[Inline],[[Block]]]]` |
+
+Everything else is `text`, **including `heading` and `paragraph`** — a consumer
+writing a defensive JSON branch for those is guarding nothing.
+
+The set is release-dependent: `deflist` and `lineblock` produce no blocks at all
+from the shipped v1.6.1 binary, so a consumer cannot determine this set by
+experiment without knowing which build it tested. Assert against the running build
+rather than assuming.
+
+*Measured 2026-08-31 by the duckeye and duckdb_markdown sessions against both the
+shipped binary and main, after three implementations hit the same four defects.*
+
 ## Validation Rules
 
 A duck_block is **canonical** if:
