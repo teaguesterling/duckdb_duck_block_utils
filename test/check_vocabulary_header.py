@@ -13,10 +13,14 @@ alone, no other project header, and no linking against this extension.
 
 Two checks:
 
-  1. it compiles standalone
+  1. it compiles AND LINKS with no duckdb include path at all
   2. it declares nothing it does not define -- caught by grep, since a
      declaration-only member compiles fine here and only fails at a consumer's
      link step, which is precisely the failure this file exists to prevent
+  3. it includes nothing but <cstdint> -- any DuckDB include would drag a 290 MB
+     nested duckdb clone into every consumer's CI, because the extension CI
+     templates check out with submodules: 'recursive' and this repo carries its
+     own duckdb submodule
 
 Exits 0 and skips when there is no compiler or no duckdb source tree.
 """
@@ -49,12 +53,17 @@ def main() -> int:
     if cxx is None:
         print("SKIP: no C++ compiler found")
         return 0
-    duckdb_inc = REPO / "duckdb" / "src" / "include"
-    if not duckdb_inc.is_dir():
-        print("SKIP: no duckdb source tree (submodule not initialised)")
-        return 0
-
     failed = False
+
+    # 3. Nothing but <cstdint>. A DuckDB include here is not a style question:
+    #    it is a 290 MB nested clone in four consumers' CI for a 12 KB header.
+    includes = re.findall(r'^\s*#include\s+([<"][^>"]+[>"])', VOCAB.read_text(), re.M)
+    stray = [i for i in includes if i != "<cstdint>"]
+    if stray:
+        failed = True
+        print("FAIL: the vocabulary header must include nothing but <cstdint>:")
+        for i in stray:
+            print(f"        {i}")
 
     # 1. Declarations without definitions. `static TYPE name();` compiles here
     #    and breaks a consumer at link time.
@@ -77,18 +86,19 @@ def main() -> int:
         probe = Path(tmp) / "probe.cpp"
         probe.write_text(PROBE)
         proc = subprocess.run(
-            [cxx, "-std=c++17", "-fsyntax-only", "-I", str(VOCAB.parent), "-I", str(duckdb_inc), str(probe)],
+            # No duckdb include path: a consumer must not need one.
+            [cxx, "-std=c++17", "-o", str(Path(tmp) / "probe"), "-I", str(VOCAB.parent), str(probe)],
             capture_output=True,
             text=True,
         )
         if proc.returncode != 0:
             failed = True
-            print("FAIL: the vocabulary header does not compile standalone:")
+            print("FAIL: the vocabulary header does not compile/link standalone:")
             print("\n".join(proc.stderr.splitlines()[:12]))
 
     if failed:
         return 1
-    print("OK: duck_block_vocabulary.hpp compiles standalone and needs no linking.")
+    print("OK: duck_block_vocabulary.hpp is freestanding -- <cstdint> only, no linking, no duckdb.")
     return 0
 
 

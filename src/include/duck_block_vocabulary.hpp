@@ -24,23 +24,33 @@
 // See docs/duck_blocks_spec.md for what each name means.
 // ============================================================================
 
-#include "duckdb/common/types.hpp"
+// <cstdint> ONLY. This header deliberately pulls in nothing from DuckDB.
+//
+// It used to include duckdb/common/types.hpp for idx_t, which is `typedef
+// uint64_t idx_t` -- so the include bought nothing but a dependency. And it was
+// an expensive one: consumers vendor this repo as a submodule, the DuckDB
+// extension CI templates check out with submodules: 'recursive', and this repo
+// carries its own duckdb submodule. That meant a 290 MB nested DuckDB clone in
+// every consumer's CI to deliver a 12 KB header.
+//
+// Field indices are uint64_t, which is type-identical to idx_t.
+#include <cstdint>
 
 namespace duckdb {
 
 struct DuckBlockVocabulary {
 	// Field indices for duck_block struct
-	static constexpr idx_t KIND_IDX = 0;
-	static constexpr idx_t ELEMENT_TYPE_IDX = 1;
-	static constexpr idx_t CONTENT_IDX = 2;
-	static constexpr idx_t LEVEL_IDX = 3;
-	static constexpr idx_t ENCODING_IDX = 4;
-	static constexpr idx_t ATTRIBUTES_IDX = 5;
-	static constexpr idx_t ELEMENT_ORDER_IDX = 6;
+	static constexpr uint64_t KIND_IDX = 0;
+	static constexpr uint64_t ELEMENT_TYPE_IDX = 1;
+	static constexpr uint64_t CONTENT_IDX = 2;
+	static constexpr uint64_t LEVEL_IDX = 3;
+	static constexpr uint64_t ENCODING_IDX = 4;
+	static constexpr uint64_t ATTRIBUTES_IDX = 5;
+	static constexpr uint64_t ELEMENT_ORDER_IDX = 6;
 
 	// Additional field indices for duck_block_ext
-	static constexpr idx_t SOURCE_FORMAT_IDX = 7;
-	static constexpr idx_t FILE_PATH_IDX = 8;
+	static constexpr uint64_t SOURCE_FORMAT_IDX = 7;
+	static constexpr uint64_t FILE_PATH_IDX = 8;
 
 	// Kind values
 	static constexpr const char *KIND_BLOCK = "block";
