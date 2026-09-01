@@ -1111,27 +1111,76 @@ SELECT pandoc_ast_to_blocks('[{"t":"LineBlock","c":[[{"t":"Str","c":"solo"}]]}]'
 solo
 
 # ============================================================================
-# DefinitionList -- follows the BulletList/OrderedList precedent (json encoding),
-# because [([Inline],[[Block]])] has no flat text rendering.
+# DefinitionList is A LIST KIND -- `list` with list_type='definition', terms and
+# definitions as list_items tagged by attributes['role'].
+#
+# That is the extensibility `list_type` was made canonical FOR: a boolean cannot
+# say "definition". Zero new types, and every consumer that already walks lists
+# gets definition lists free.
+#
+# It was opaque JSON before, which meant it RENDERED ITS OWN AST to the screen
+# and its serialisation polluted search -- worse than table, which merely
+# rendered nothing.
 # ============================================================================
 
-query I
-SELECT pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')[1].element_type;
+query IIII
+SELECT b.element_type, coalesce(b.attributes['list_type'],'-'), coalesce(b.attributes['role'],'-'), coalesce(b.content,'')
+FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')) AS b);
 ----
-deflist
+list	definition	-	(empty)
+list_item	-	term	(empty)
+plain	-	-	term
+list_item	-	definition	(empty)
+plain	-	-	def
 
-query I
-SELECT pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')[1].encoding;
+# DISCRIMINATING: a definition list must be a LIST but must NOT be an ordinary
+# bullet list. list_type is what carries that, and a consumer reading only
+# `ordered` sees 'false' for both -- which is exactly why a boolean could not grow.
+query II
+SELECT (SELECT b.attributes['list_type'] FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"t"}],[[{"t":"Plain","c":[{"t":"Str","c":"d"}]}]]]]}]')) AS b) WHERE b.element_type='list'),
+       (SELECT b.attributes['list_type'] FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"x"}]}]]}]')) AS b) WHERE b.element_type='list');
 ----
-json
+definition	bullet
 
+# Its text is the terms and definitions, not its serialisation.
+query II
+SELECT duck_blocks_to_text(pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')) LIKE '%term%',
+       duck_blocks_to_text(pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')) LIKE '%"t":%';
+----
+true	false
+
+# encoding is TEXT now, not json -- the container carries no serialisation at all.
+query II
+SELECT pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')[1].encoding,
+       pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')[1].content = '';
+----
+text	true
+
+# The term is reachable as a CHILD rather than by grepping a JSON blob.
 query I
-SELECT pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')[1].content LIKE '%term%';
+SELECT pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')[3].content;
+----
+term
+
+# ...and so is the definition, as its own list_item's child.
+query II
+SELECT pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')[4].attributes['role'],
+       pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')[5].content;
+----
+definition	def
+
+# Round trip is byte-identical: term/definition items pair back into
+# DefinitionList's [([Inline],[[Block]])].
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]'))::VARCHAR = '[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]';
 ----
 true
 
+# DISCRIMINATING: an ordinary bullet list must still export as a BulletList.
+# Routing every list through the DefinitionList path would pass the assertion
+# above while destroying every normal list in every document.
 query I
-SELECT pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],[[{"t":"Plain","c":[{"t":"Str","c":"def"}]}]]]]}]')[1].content LIKE '%def%';
+SELECT duck_blocks_to_pandoc_blocks(duck_block_list(['a','b']))::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"a"}]}],[{"t":"Plain","c":[{"t":"Str","c":"b"}]}]]}]';
 ----
 true
 

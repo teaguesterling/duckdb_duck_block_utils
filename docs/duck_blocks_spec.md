@@ -99,7 +99,7 @@ now rejects a NULL level outright.
 | `plain` | Block-level text run with NO paragraph semantics | depth (top level 1) | `text` | |
 | `code` | Code block | NULL | `text` | `language` |
 | `blockquote` | Quoted content | depth (top level 1) | — (container) | |
-| `list` | List container | depth (top level 1) | — (container) | `list_type` (canonical), `ordered` (legacy alias), and for ordered `start`, `number_style`, `number_delim` |
+| `list` | List container | depth (top level 1) | — (container) | `list_type` (canonical): `bullet`, `ordered`, `definition`. `ordered` (legacy alias). For ordered: `start`, `number_style`, `number_delim` |
 | `list_item` | List item | parent `list` + 1 | — (container) | |
 | `deflist` | Definition list | NULL | `json` | |
 | `lineblock` | Preserved line breaks | NULL | `text` (lines joined with `\n`) | |
@@ -488,6 +488,29 @@ was `list` storing a JSON items array, not the content rule. It also left blocks
 and inlines on two different rules, since inline containers never stopped
 following v1. Restored in 3.0.
 
+### Definition lists are a LIST KIND
+
+A definition list is `list` with `attributes['list_type'] = 'definition'`. Terms and
+definitions are `list_item`s distinguished by `attributes['role']`:
+
+```
+list         list_type='definition'
+  list_item  role='term'
+    plain    "the term"
+  list_item  role='definition'
+    plain    "the definition"
+```
+
+Zero new types. This is the extensibility `list_type` was made canonical FOR — a
+boolean cannot say "definition" — and it means every consumer that already walks
+lists handles definition lists with no new code.
+
+Before 5.0 `deflist` carried the Pandoc tuple as opaque JSON, which meant it
+RENDERED ITS OWN AST to the screen and its serialisation polluted search. That was
+worse than `table`, which merely rendered nothing. The `deflist` type remains in the
+vocabulary and is still accepted on export so stored data keeps converting, but
+nothing emits it.
+
 ### `plain` vs `paragraph`
 
 `plain` is a block-level run of text that is **not** a paragraph. It is Pandoc's
@@ -550,16 +573,25 @@ JSON, or read `list_item.content`, must read the child elements instead. Both ol
 forms are still ACCEPTED on export, so stored 1.x block lists keep converting —
 but nothing produces them any more.
 
-Only two types still carry `encoding='json'` from the Pandoc reader:
+**As of spec 5.0 only `table` carries JSON, and it carries the NATIVE schema.**
 
-| Type | Pandoc content shape |
-|------|----------------------|
-| `table` | the full `Table` tuple: `[Attr, Caption, [ColSpec], TableHead, [TableBody], TableFoot]` — an ARRAY, not an object |
-| `deflist` | `[[[Inline],[[Block]]]]` |
+| Type | content | also |
+|------|---------|------|
+| `table` | `{"headers": [...], "rows": [[...]]}` | `attributes['pandoc_ast']` holds the full Pandoc tuple |
 
-Both round-trip losslessly but are opaque to rendering and to search. Making them
-structural needs vocabulary that does not exist yet (`table_row`/`table_cell`,
-`term`/`definition`), so it is a deliberate open item rather than an oversight.
+`table` previously emitted the raw Pandoc tuple, which nothing understood: tables
+rendered as NOTHING and `duck_blocks_to_text` returned the raw AST, so cell text
+was unsearchable while `AlignDefault` matched every search. That was the same
+two-schemas-under-one-element_type defect `list` had — the native schema was
+already understood by this extension's renderer, `render_macros.cpp`,
+duckdb_markdown's writer and webbed's decoder, and the reader emitted the other one.
+
+The native projection is lossy — it flattens colspan, rowspan, alignment and
+multiple bodies — which is exactly why `attributes['pandoc_ast']` keeps the tuple
+verbatim. The renderable form lives in `content`, the faithful form beside it, and
+export prefers the tuple so round trips stay byte-identical. Nothing is lost.
+
+`deflist` is no longer emitted at all — see below.
 
 Everything else is `text`, **including `heading` and `paragraph`** — a consumer
 writing a defensive JSON branch for those is guarding nothing.

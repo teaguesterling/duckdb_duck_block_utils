@@ -109,6 +109,59 @@ static string BlockText(const vector<Value> &list, idx_t &i) {
 	return content.empty() ? inline_text : content;
 }
 
+// Cell text of the native table schema {"headers":[...],"rows":[[...]]}.
+//
+// Without this a table's text was its raw JSON: searching a document for a word
+// in a cell failed, while searching for "headers" or "rows" matched every table.
+// Same defect the Pandoc tuple caused before 5.0 -- structure serialised into a
+// field a text extractor reads verbatim -- and it does not go away just because
+// the schema got smaller.
+static string TableJsonToText(const string &json, const string &separator) {
+	string out;
+	bool in_string = false, escaped = false, is_key = false;
+	string current;
+	// The schema is exactly two keys, both mapping to arrays of strings, so every
+	// string that is not one of the two key names is cell text.
+	for (size_t i = 0; i < json.size(); i++) {
+		char c = json[i];
+		if (escaped) {
+			current += c;
+			escaped = false;
+			continue;
+		}
+		if (in_string && c == '\\') {
+			escaped = true;
+			continue;
+		}
+		if (c == '"') {
+			if (in_string) {
+				in_string = false;
+				// A key is a string immediately followed by ':'.
+				size_t k = i + 1;
+				while (k < json.size() && (json[k] == ' ' || json[k] == '\t')) {
+					k++;
+				}
+				is_key = (k < json.size() && json[k] == ':');
+				if (!is_key && !current.empty()) {
+					if (!out.empty()) {
+						out += separator;
+					}
+					out += current;
+				}
+				current.clear();
+			} else {
+				in_string = true;
+				current.clear();
+			}
+			continue;
+		}
+		if (in_string) {
+			current += c;
+		}
+	}
+	return out;
+}
+
 static string BlocksToText(const vector<Value> &blocks_list, const string &separator) {
 	string text_content;
 	bool first = true;
@@ -177,6 +230,13 @@ static string BlocksToText(const vector<Value> &blocks_list, const string &separ
 		auto text = BlockText(blocks_list, i);
 		if (element_type == BlockTypes::TYPE_HR || element_type == BlockTypes::TYPE_RAW) {
 			continue;
+		}
+
+		// A table's text is its CELLS, not its serialisation. Emitting the JSON made
+		// cell words unfindable and made "headers"/"rows" match every table.
+		if (element_type == BlockTypes::TYPE_TABLE &&
+		    GetElementStringField(block, BlockTypes::ENCODING_IDX) == BlockTypes::ENCODING_JSON) {
+			text = TableJsonToText(text, separator);
 		}
 
 		// Skip empty content

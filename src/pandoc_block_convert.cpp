@@ -192,6 +192,118 @@ static string ExtractInlinesTextVal(yyjson_val *inlines_arr) {
 	return result;
 }
 
+// Plain text of a Pandoc [Block] list -- used to project table cells, whose
+// contents are blocks, into the flat {headers, rows} schema.
+static string ExtractBlocksTextVal(yyjson_val *blocks_arr) {
+	if (!blocks_arr || !yyjson_is_arr(blocks_arr)) {
+		return string();
+	}
+	string out;
+	size_t idx, max;
+	yyjson_val *blk;
+	yyjson_arr_foreach(blocks_arr, idx, max, blk) {
+		yyjson_val *bc = blk ? yyjson_obj_get(blk, "c") : nullptr;
+		if (!bc) {
+			continue;
+		}
+		string piece = ExtractInlinesTextVal(bc);
+		if (piece.empty()) {
+			continue;
+		}
+		if (!out.empty()) {
+			out += " ";
+		}
+		out += piece;
+	}
+	return out;
+}
+
+// One Pandoc Row -> a JSON array of its cells' text. Row = [Attr, [Cell]],
+// Cell = [Attr, Alignment, RowSpan, ColSpan, [Block]].
+static void AppendRowCellsJson(yyjson_val *row, string &out) {
+	out += "[";
+	yyjson_val *cells = (row && yyjson_is_arr(row) && yyjson_arr_size(row) >= 2) ? yyjson_arr_get(row, 1) : nullptr;
+	bool first = true;
+	if (cells && yyjson_is_arr(cells)) {
+		size_t idx, max;
+		yyjson_val *cell;
+		yyjson_arr_foreach(cells, idx, max, cell) {
+			if (!first) {
+				out += ",";
+			}
+			first = false;
+			yyjson_val *cell_blocks =
+			    (cell && yyjson_is_arr(cell) && yyjson_arr_size(cell) >= 5) ? yyjson_arr_get(cell, 4) : nullptr;
+			string text = ExtractBlocksTextVal(cell_blocks);
+			out += "\"";
+			for (char c : text) {
+				if (c == '"') {
+					out += "\\\"";
+				} else if (c == '\\') {
+					out += "\\\\";
+				} else if (c == '\n') {
+					out += "\\n";
+				} else {
+					out += c;
+				}
+			}
+			out += "\"";
+		}
+	}
+	out += "]";
+}
+
+// Project a Pandoc Table tuple into the NATIVE {headers, rows} schema that this
+// extension's own renderer, render_macros.cpp, duckdb_markdown's writer and
+// webbed's decoder all already understand.
+//
+// Table = [Attr, Caption, [ColSpec], TableHead, [TableBody], TableFoot]
+// TableHead = [Attr, [Row]];  TableBody = [Attr, RowHeadColumns, [Row], [Row]]
+static string ProjectTableToNativeJson(yyjson_val *c_val) {
+	if (!c_val || !yyjson_is_arr(c_val) || yyjson_arr_size(c_val) < 5) {
+		return string();
+	}
+	string out = "{\"headers\":";
+	yyjson_val *head = yyjson_arr_get(c_val, 3);
+	yyjson_val *head_rows =
+	    (head && yyjson_is_arr(head) && yyjson_arr_size(head) >= 2) ? yyjson_arr_get(head, 1) : nullptr;
+	if (head_rows && yyjson_is_arr(head_rows) && yyjson_arr_size(head_rows) > 0) {
+		AppendRowCellsJson(yyjson_arr_get(head_rows, 0), out);
+	} else {
+		out += "[]";
+	}
+	out += ",\"rows\":[";
+	yyjson_val *bodies = yyjson_arr_get(c_val, 4);
+	bool first_row = true;
+	if (bodies && yyjson_is_arr(bodies)) {
+		size_t bidx, bmax;
+		yyjson_val *body;
+		yyjson_arr_foreach(bodies, bidx, bmax, body) {
+			if (!body || !yyjson_is_arr(body) || yyjson_arr_size(body) < 4) {
+				continue;
+			}
+			// body[2] is intermediate head rows, body[3] the data rows.
+			for (idx_t which : {size_t(2), size_t(3)}) {
+				yyjson_val *rows = yyjson_arr_get(body, which);
+				if (!rows || !yyjson_is_arr(rows)) {
+					continue;
+				}
+				size_t ridx, rmax;
+				yyjson_val *row;
+				yyjson_arr_foreach(rows, ridx, rmax, row) {
+					if (!first_row) {
+						out += ",";
+					}
+					first_row = false;
+					AppendRowCellsJson(row, out);
+				}
+			}
+		}
+	}
+	out += "]}";
+	return out;
+}
+
 static bool InlinesAreTextOnly(const vector<Value> &inlines) {
 	for (auto &el : inlines) {
 		if (el.IsNull()) {
@@ -371,15 +483,82 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 		}
 		return;
 	} else if (strcmp(pandoc_type, "DefinitionList") == 0) {
-		// DefinitionList c = [([Inline], [[Block]])] -- term/definitions pairs. Kept as
-		// JSON like BulletList and OrderedList: the shape has no flat text rendering.
-		block_type = BlockTypes::TYPE_DEFLIST;
-		encoding = "json";
-		content = ValToJsonString(c_val);
+		// A definition list IS A LIST KIND -- `list` with list_type='definition',
+		// terms and definitions as list_items distinguished by attributes['role'].
+		//
+		// That is the extensibility `list_type` was made canonical FOR: a boolean
+		// cannot say "definition", which is why `ordered` lost. Zero new types, and
+		// every consumer that already walks lists gets definition lists free.
+		//
+		// It was opaque JSON before, which meant it RENDERED ITS OWN AST to the screen
+		// and its serialisation polluted search -- worse than table, which merely
+		// rendered nothing.
+		//
+		// DefinitionList c = [([Inline], [[Block]])] -- term/definitions pairs.
+		block_type = BlockTypes::TYPE_LIST;
+		attrs["list_type"] = "definition";
+		attrs["ordered"] = "false";
+		result.push_back(CreateDocBlock(block_type, "", attrs, order++, encoding, block_level));
+
+		if (c_val && yyjson_is_arr(c_val)) {
+			size_t idx, max;
+			yyjson_val *pair;
+			yyjson_arr_foreach(c_val, idx, max, pair) {
+				if (!pair || !yyjson_is_arr(pair) || yyjson_arr_size(pair) < 2) {
+					continue;
+				}
+				yyjson_val *term_inlines = yyjson_arr_get(pair, 0);
+				yyjson_val *definitions = yyjson_arr_get(pair, 1);
+
+				map<string, string> term_attrs;
+				term_attrs["role"] = "term";
+				result.push_back(CreateDocBlock(BlockTypes::TYPE_LIST_ITEM, "", term_attrs, order++, "text",
+				                                Value(effective_level + 1)));
+				// The term is a bare inline run, so its block-level home is `plain`.
+				map<string, string> no_attrs;
+				result.push_back(CreateDocBlock(BlockTypes::TYPE_PLAIN, ExtractInlinesTextVal(term_inlines), no_attrs,
+				                                order++, "text", Value(effective_level + 2)));
+
+				if (definitions && yyjson_is_arr(definitions)) {
+					size_t didx, dmax;
+					yyjson_val *def_blocks;
+					yyjson_arr_foreach(definitions, didx, dmax, def_blocks) {
+						map<string, string> def_attrs;
+						def_attrs["role"] = "definition";
+						result.push_back(CreateDocBlock(BlockTypes::TYPE_LIST_ITEM, "", def_attrs, order++, "text",
+						                                Value(effective_level + 1)));
+						if (def_blocks && yyjson_is_arr(def_blocks)) {
+							size_t bidx, bmax;
+							yyjson_val *blk;
+							yyjson_arr_foreach(def_blocks, bidx, bmax, blk) {
+								ProcessPandocBlockVal(blk, order, result, depth + 1, effective_level + 1);
+							}
+						}
+					}
+				}
+			}
+		}
+		return;
 	} else if (strcmp(pandoc_type, "Table") == 0) {
+		// NATIVE {headers, rows} in content, full Pandoc tuple in an attribute.
+		//
+		// `table` had TWO json schemas under one element_type -- exactly the `list`
+		// defect 2.0 was created to remove, still live for this type. The reader
+		// emitted the Pandoc tuple, which NOTHING understood: tables rendered as
+		// nothing, and to_text emitted the raw AST so table text was unsearchable
+		// while "AlignDefault" polluted every search.
+		//
+		// The projection is lossy -- it flattens colspan, rowspan, alignment and
+		// multiple bodies -- which is exactly why the tuple is kept verbatim beside
+		// it. Nothing is lost; the renderable form is simply the one in `content`.
 		block_type = BlockTypes::TYPE_TABLE;
 		encoding = "json";
-		content = ValToJsonString(c_val);
+		content = ProjectTableToNativeJson(c_val);
+		attrs["pandoc_ast"] = ValToJsonString(c_val);
+		if (content.empty()) {
+			content = ValToJsonString(c_val);
+			attrs.erase("pandoc_ast");
+		}
 	} else if (strcmp(pandoc_type, "LineBlock") == 0) {
 		// LineBlock c = [[Inline]] -- an array OF ARRAYS, one per line. Deliberately
 		// does not set inlines_val_p: handing an array-of-arrays to the inline
@@ -852,7 +1031,8 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 	auto list_type = GetElementAttribute(list_block, "list_type");
 	auto ordered_attr = GetElementAttribute(list_block, "ordered");
 	bool is_ordered = (list_type == "ordered") || (ordered_attr == "true");
-	const char *pandoc_type = is_ordered ? "OrderedList" : "BulletList";
+	const bool is_definition = (list_type == "definition");
+	const char *pandoc_type = is_definition ? "DefinitionList" : (is_ordered ? "OrderedList" : "BulletList");
 
 	struct ListItem {
 		string content;
@@ -861,6 +1041,8 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 		// the distinction dies on the way out -- which is exactly how it was lost
 		// before `plain` existed.
 		bool tight = true;
+		// attributes['role'] -- 'term' or 'definition' in a definition list.
+		string role;
 		vector<string> extra_paragraphs;
 		// Block children this walk does not enumerate -- a code block, blockquote or
 		// horizontal rule inside a list item, all legal Pandoc and all silently
@@ -892,6 +1074,7 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 				}
 				current_item = ListItem();
 				current_item.content = GetElementStringField(child, BlockTypes::CONTENT_IDX);
+				current_item.role = GetElementAttribute(child, "role");
 				in_item = true;
 				j++;
 			} else if (child_type == BlockTypes::TYPE_LIST &&
@@ -1008,6 +1191,46 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 
 	yyjson_mut_val *c_outer = nullptr;
 	yyjson_mut_val *items_arr = yyjson_mut_arr(doc);
+
+	if (is_definition) {
+		// DefinitionList c = [([Inline], [[Block]])]. Terms and definitions arrive as
+		// sibling list_items tagged by role, so pair each term with the definitions
+		// that follow it before the next term.
+		yyjson_mut_obj_add_val(doc, root_obj, "c", items_arr);
+		for (idx_t k = 0; k < items.size();) {
+			if (items[k].role != "term") {
+				k++;
+				continue;
+			}
+			yyjson_mut_val *pair = yyjson_mut_arr(doc);
+			yyjson_mut_val *term_inls = yyjson_mut_arr(doc);
+			yyjson_mut_val *term_str = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, term_str, "t", "Str");
+			yyjson_mut_obj_add_strncpy(doc, term_str, "c", items[k].content.data(), items[k].content.size());
+			yyjson_mut_arr_add_val(term_inls, term_str);
+			yyjson_mut_arr_add_val(pair, term_inls);
+
+			yyjson_mut_val *defs = yyjson_mut_arr(doc);
+			idx_t d = k + 1;
+			for (; d < items.size() && items[d].role == "definition"; d++) {
+				yyjson_mut_val *one_def = yyjson_mut_arr(doc);
+				yyjson_mut_val *pl = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, pl, "t", items[d].tight ? "Plain" : "Para");
+				yyjson_mut_val *inl = yyjson_mut_arr(doc);
+				yyjson_mut_val *s = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, s, "t", "Str");
+				yyjson_mut_obj_add_strncpy(doc, s, "c", items[d].content.data(), items[d].content.size());
+				yyjson_mut_arr_add_val(inl, s);
+				yyjson_mut_obj_add_val(doc, pl, "c", inl);
+				yyjson_mut_arr_add_val(one_def, pl);
+				yyjson_mut_arr_add_val(defs, one_def);
+			}
+			yyjson_mut_arr_add_val(pair, defs);
+			yyjson_mut_arr_add_val(items_arr, pair);
+			k = d;
+		}
+		return root_obj;
+	}
 
 	if (is_ordered) {
 		// Honour the ListAttributes the reader preserved rather than hardcoding
@@ -1670,6 +1893,22 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			}
 			yyjson_mut_val *fig_obj = ConvertFigureToPandocVal(doc, blocks_list, block_idx, fig_level, 1);
 			yyjson_mut_arr_add_val(blocks_arr, fig_obj);
+		} else if (element_type == BlockTypes::TYPE_TABLE && !GetElementAttribute(block, "pandoc_ast").empty()) {
+			// Round trip through the PRESERVED tuple, not the lossy projection. This is
+			// the whole reason the tuple is kept: the renderable form lives in content
+			// and the faithful form lives here, so nothing has to choose between them.
+			auto tuple = GetElementAttribute(block, "pandoc_ast");
+			yyjson_mut_val *tbl_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, tbl_obj, "t", "Table");
+			yyjson_doc *sub_doc = yyjson_read(tuple.c_str(), tuple.size(), 0);
+			if (sub_doc) {
+				yyjson_mut_obj_add_val(doc, tbl_obj, "c", yyjson_val_mut_copy(doc, yyjson_doc_get_root(sub_doc)));
+				yyjson_doc_free(sub_doc);
+			} else {
+				yyjson_mut_obj_add_val(doc, tbl_obj, "c", yyjson_mut_arr(doc));
+			}
+			yyjson_mut_arr_add_val(blocks_arr, tbl_obj);
+			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_TABLE) {
 			yyjson_mut_val *tbl_obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, tbl_obj, "t", "Table");

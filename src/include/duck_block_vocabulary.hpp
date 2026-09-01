@@ -204,9 +204,16 @@ struct DuckBlockVocabulary {
 	//               rendering `paragraph` now receives `plain` for a tight list item
 	//               -- so a MAJOR bump even though the vocabulary change is additive.
 	//               Also makes `list_type` canonical, `ordered` a legacy alias.
+	//   4.0 -> 5.0  `table` emits the NATIVE {headers,rows} schema, with the full
+	//               Pandoc tuple preserved in attributes['pandoc_ast'] so nothing is
+	//               lost; definition lists become `list` with list_type='definition'
+	//               rather than the opaque `deflist`. Both previously serialised
+	//               structure into a field consumers read verbatim: tables rendered
+	//               as NOTHING and deflists rendered their own AST, and both poisoned
+	//               search. Breaking -- a consumer parsing either JSON must migrate.
 	//
 	// The rule above is what will be followed from here.
-	static constexpr const char *SPEC_VERSION = "4.0";
+	static constexpr const char *SPEC_VERSION = "5.0";
 
 	// ========================================================================
 	// Block type names
