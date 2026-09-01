@@ -315,8 +315,21 @@ static bool InlinesAreTextOnly(const vector<Value> &inlines) {
 			continue;
 		}
 		auto element_type = children[BlockTypes::ELEMENT_TYPE_IDX].GetValue<string>();
-		if (element_type != BlockTypes::INLINE_TEXT && element_type != BlockTypes::INLINE_SPACE &&
-		    element_type != BlockTypes::INLINE_SOFTBREAK && element_type != BlockTypes::INLINE_LINEBREAK) {
+		// BREAKS ARE NOT TEXT. They were listed here, which asserted that a run
+		// containing them survives being flattened into `content` -- and it does not:
+		//
+		//   Para[Str a, LineBreak, Str b]  ->  content "a\nb"  ->  Str "a\nb"
+		//   Para[Str a, SoftBreak, Str b]  ->  content "a b"   ->  Str "a b"
+		//
+		// A HARD break came back as a raw newline inside a Str, and a SOFT break was
+		// gone outright. Two distinct constructors collapsing onto one character, and
+		// then onto no constructor at all. Same root cause as the line block that
+		// destroyed its bold and links, one path over -- found by duckdb_markdown, who
+		// went looking here after that fix made their rich case work.
+		//
+		// Consequence: a run containing any break now grows inline children, which is
+		// where the distinction can live. Prose without breaks is untouched.
+		if (element_type != BlockTypes::INLINE_TEXT && element_type != BlockTypes::INLINE_SPACE) {
 			return false;
 		}
 	}
@@ -738,6 +751,25 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 		// InlinesAreTextOnly already counts `linebreak` as text, so a plain-text line
 		// block still keeps its newline-joined `content` and emits no children, exactly
 		// as before. Only a line block that would have LOST something grows children.
+		// Richness is decided PER LINE, before the separators go in. The separators are
+		// `linebreak`s this code inserts itself, and breaks no longer count as text --
+		// so asking the question of the assembled run would call every multi-line block
+		// rich and migrate the plain case that has always lived in `content`.
+		bool any_line_rich = false;
+		{
+			size_t pidx, pmax;
+			yyjson_val *pline;
+			yyjson_arr_foreach(lineblock_lines, pidx, pmax, pline) {
+				int32_t probe_order = 0;
+				vector<Value> probe;
+				PandocInlineConvert::ConvertPandocInlinesValToDbInlines(pline, effective_level + 1, probe_order, probe,
+				                                                        depth);
+				if (!InlinesAreTextOnly(probe)) {
+					any_line_rich = true;
+					break;
+				}
+			}
+		}
 		const int32_t order_before_children = order;
 		size_t idx, max;
 		yyjson_val *line;
@@ -757,7 +789,7 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 			PandocInlineConvert::ConvertPandocInlinesValToDbInlines(line, effective_level + 1, order, inline_children,
 			                                                        depth);
 		}
-		if (InlinesAreTextOnly(inline_children)) {
+		if (!any_line_rich) {
 			inline_children.clear();
 			order = order_before_children;
 		} else {

@@ -2196,3 +2196,53 @@ SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"LineBlock","c":
        duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"LineBlock","c":[[{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"anchor"}],["http://x",""]]}]]}]'))::VARCHAR LIKE '%http://x%';
 ----
 true	true
+
+# ============================================================================
+# A BREAK IS NOT TEXT.
+#
+# InlinesAreTextOnly listed `linebreak` and `softbreak` as text, which asserts
+# that a run containing them survives being flattened into `content`. It does not:
+#
+#   Para[Str a, LineBreak, Str b]  ->  content "a\nb"  ->  Str "a\nb"
+#   Para[Str a, SoftBreak, Str b]  ->  content "a b"   ->  Str "a b"
+#
+# A HARD break came back as a raw newline INSIDE a Str -- not a break at all --
+# and a SOFT break was gone outright. Two distinct constructors collapsing onto
+# one character and then onto none.
+#
+# Same root cause as the line block that destroyed its bold and links, one path
+# over. Found by duckdb_markdown, who went looking here after that fix made their
+# rich case work -- the fix is what made the neighbouring defect visible.
+# ============================================================================
+
+# Both break constructors survive, and they stay DISTINCT from each other.
+query III
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"a"},{"t":"LineBreak"},{"t":"Str","c":"b"}]}]'))::VARCHAR
+     = '[{"t":"Para","c":[{"t":"Str","c":"a"},{"t":"LineBreak"},{"t":"Str","c":"b"}]}]',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"a"},{"t":"SoftBreak"},{"t":"Str","c":"b"}]}]'))::VARCHAR
+     = '[{"t":"Para","c":[{"t":"Str","c":"a"},{"t":"SoftBreak"},{"t":"Str","c":"b"}]}]',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"a"},{"t":"LineBreak"},{"t":"Str","c":"b"}]}]'))::VARCHAR
+     LIKE '%SoftBreak%';
+----
+true	true	false
+
+# ORDINARY PROSE MUST NOT MIGRATE. A paragraph with no break still carries its
+# text in `content` and grows no children -- the content rule, untouched. A fix
+# that moved every paragraph to inline children would pass the assertions above
+# and rewrite every document in the portfolio.
+query II
+SELECT pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"just prose"}]}]')[1].content,
+       len(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"just prose"}]}]'));
+----
+just prose	1
+
+# ...and a PLAIN line block keeps its newline-joined content too, even though this
+# code inserts `linebreak` separators between its lines. Richness is decided per
+# LINE, before the separators go in; asking of the assembled run would call every
+# multi-line block rich and migrate the case that has always lived in content.
+query II
+SELECT pandoc_ast_to_blocks('[{"t":"LineBlock","c":[[{"t":"Str","c":"one"}],[{"t":"Str","c":"two"}]]}]')[1].content
+     = 'one' || chr(10) || 'two',
+       len(pandoc_ast_to_blocks('[{"t":"LineBlock","c":[[{"t":"Str","c":"one"}],[{"t":"Str","c":"two"}]]}]'));
+----
+true	1
