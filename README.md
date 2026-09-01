@@ -19,7 +19,7 @@ This extension complements format-specific document extensions (markdown, HTML, 
 - **ANSI terminal rendering**: `PRAGMA duck_block_render` — render documents and query results as styled terminal output, glow-style ([docs](docs/rendering.md))
 - **Page composition & query tables**: `db_page`, `db_query_table`, `db_table` — assemble dashboards that embed live query results as rendered tables
 - **Vocabulary introspection**: `db_block_kinds`, `db_block_types`, `db_block_spec_version` — so sibling extensions can *assert* they agree with the vocabulary rather than mirroring a header
-- **Document queries over blocks**: `db_toc`, `db_section`, `db_sections_like` — these take `LIST(duck_block)`, not file paths
+- **Document queries over blocks**: `db_toc`, `db_get_section`, `db_sections_like` — these take `LIST(duck_block)`, not file paths
 
 ## Scope
 
@@ -68,7 +68,7 @@ Reader dispatch moved to `panduck`. Replacements:
 | `doc_supported_extensions()` | `panduck_supported_paths()` |
 | `doc_select_blocks(path, sel)` | `panduck_select_blocks(path, sel)` |
 | `doc_toc(path)` | `db_toc(panduck_read_blocks(path))` |
-| `doc_section(...)` | `db_section(...)` |
+| `doc_section(...)` | `db_get_section(...)` — **not** `db_section`, which is an existing builder |
 | `doc_search(...)` | `db_sections_like(...)` |
 | `doc_render(blocks, 'text')` | `db_blocks_to_text(blocks)` |
 | `doc_render(blocks, 'ansi')` | `db_blocks_render_ansi(blocks)` |

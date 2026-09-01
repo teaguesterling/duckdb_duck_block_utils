@@ -52,9 +52,14 @@ CREATE OR REPLACE MACRO db_toc(blocks) AS TABLE
     FROM (SELECT unnest(db_blocks_toc(blocks)) AS toc);
 
 -- Slice a section and its child subsections to the next heading boundary.
+--
+-- NOT `db_section`: that name is already six C++ overloads of a BUILDER
+-- (db_section(title, level, children) makes a heading plus children). Defining
+-- a macro with the same name shadowed all six, breaking the builder for anyone
+-- who ran the pragma -- two functions, one name, opposite meanings.
 -- The `top` CTE selects innermost non-overlapping matches; getting it wrong
 -- returns the wrong slice SILENTLY rather than failing, so treat it as fixed.
-CREATE OR REPLACE MACRO db_section(blocks, section_pattern, output_format := 'text') AS (
+CREATE OR REPLACE MACRO db_get_section(blocks, section_pattern, output_format := 'text') AS (
     [
         (
             SELECT CASE lower(output_format)
@@ -62,7 +67,7 @@ CREATE OR REPLACE MACRO db_section(blocks, section_pattern, output_format := 'te
                        WHEN 'ansi'   THEN db_blocks_render_ansi(sliced)
                        WHEN 'blocks' THEN to_json(sliced)::VARCHAR
                        WHEN 'pandoc' THEN to_json(duck_blocks_to_pandoc_ast(sliced))::VARCHAR
-                       ELSE error('db_section: unsupported output_format ' ||
+                       ELSE error('db_get_section: unsupported output_format ' ||
                                   coalesce(output_format, 'NULL') ||
                                   '; expected text, ansi, blocks or pandoc')
                    END
