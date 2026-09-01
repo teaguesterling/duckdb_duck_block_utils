@@ -1140,6 +1140,44 @@ Extensions that consume duck_blocks:
 - 0.2.0: Added Option C content rules for container types
 - 0.1.0: Initial draft specification
 
+## A heading may carry BOTH a flattened title and rich children
+
+Ruling, 2026-09-01, after duckdb_markdown found their reader silently normalising
+`# **Bold** title` and `# Bold title` to byte-identical output — undeclared and
+irreversible, the exact category the metadata fixtures forbid, on the axis neither of
+us was checking.
+
+Their fix is additive and the shape is worth having in the vocabulary: `content` keeps
+the flattened title because that is what a title IS for — slugs, section lookup and
+`section_id` all read that field — and the formatting lives in inline children beside
+it.
+
+**This is a deliberate, narrow exception to the content rule, and it needs no new
+vocabulary because the structure already carries the marker.**
+
+```
+heading  content='Bold title'   + inline children   -> content is a DERIVED flattening
+heading  content='Plain title'  + no children       -> content IS the text
+```
+
+A single text child lives in `content` and produces no children, so **children present
+alongside non-empty content can only mean the content is derived.** No attribute is
+needed to say so.
+
+- **Children are authoritative whenever both are present.** Measured, not asserted:
+  this repo's exporter already reads the children and ignores the derived content, so
+  markdown's shape round-trips byte-exact through it today.
+- **`heading` only.** A title-string role genuinely distinct from rich content is a
+  property of headings. Elsewhere, two copies of one fact is the shape that hid the
+  image-alt loss here for months — written to both `content` and `attributes['alt']`,
+  read from only one, and every round trip inside one repo came back perfect while any
+  other producer lost it silently.
+
+A consumer that reads only `content` gets a correct plain title and loses the
+formatting, which is the benign failure. A consumer that reads only children gets the
+formatting. Neither gets a wrong answer, which is the property that makes the
+duplication tolerable here and not in general.
+
 ## Two extensions must not register the same function name
 
 Measured by panduck 2026-09-01, before writing any converter code, because the
