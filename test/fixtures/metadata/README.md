@@ -76,8 +76,23 @@ So the rule is:
 - **Skip it when the format's writer emits the element unconditionally.** Presence
   carries nothing, so silence discards nothing.
 
-**The input class bounds this, and the bound has to be stated.** "LibreOffice writes
-them always" is measured through LibreOffice output. Whether Word- or Pages-produced
+**Two producers now, and the second changed the shape of the claim.** panduck measured
+a pandoc-produced file beside the LibreOffice one:
+
+```
+LibreOffice   dc:title, dc:creator, dc:subject, dc:description   all EMPTY
+Pandoc        dc:title, dc:creator EMPTY;  subject/description   ABSENT
+```
+
+Two unrelated writers both emit an empty title and creator into every file, which is
+much stronger evidence for the two fields that matter than one producer was. But they
+DIFFER on the other two — so **"the writer emits the element unconditionally" is true
+per ELEMENT, not per format.** The per-format skip is therefore coarser than the rule it
+implements. It is right for these fields on these producers, and it is what a reader can
+actually implement, but it is an approximation and should be labelled as one wherever it
+appears.
+
+**The input class still bounds this.** The measurement covers LibreOffice and pandoc. Whether Word- or Pages-produced
 docx does the same is a separate measurement, and if some producer writes `<dc:title/>`
 only when a title was set and then cleared, the element IS authorial there and the
 skip is wrong for those files. A reader cannot see which producer wrote a file, so the
