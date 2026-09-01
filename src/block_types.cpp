@@ -1,4 +1,6 @@
 #include "block_types.hpp"
+
+#include <algorithm>
 #include "duckdb/function/cast/default_casts.hpp"
 #include "duckdb/common/operator/string_cast.hpp"
 #include "duckdb/common/vector_operations/unary_executor.hpp"
@@ -122,7 +124,26 @@ const vector<string> &BlockTypes::AllTypeNames() {
 	    BlockTypes::VALUE_LIST,         BlockTypes::VALUE_MAP,        BlockTypes::VALUE_INLINES,
 	    BlockTypes::VALUE_BLOCKS,       BlockTypes::VALUE_VERSION,
 	};
-	return names;
+	// DEDUPLICATED, because four NAMES are shared across two axes: code, image and raw
+	// each exist as a block and an inline, and `list` as a block and a value. The list
+	// above enumerates CONSTANTS; a consumer asking the build what types exist wants
+	// distinct NAMES, and got "code" twice -- so len() read 47 for a 43-type vocabulary.
+	//
+	// Found by running duckdb_markdown's container sweep here: it swept 47 rows against
+	// 43 types and the mismatch was only visible because the arm reported what it had
+	// swept. Every check in this repo built a set() from this function, which is exactly
+	// the coarser measurement that hides multiplicity -- the same mistake as comparing
+	// advisory findings with SELECT DISTINCT, one function over.
+	static const vector<string> distinct_names = [&]() {
+		vector<string> out;
+		for (auto &n : names) {
+			if (std::find(out.begin(), out.end(), n) == out.end()) {
+				out.push_back(n);
+			}
+		}
+		return out;
+	}();
+	return distinct_names;
 }
 
 // Exposed so a consumer can ask the BUILD what encodings exist rather than copying a

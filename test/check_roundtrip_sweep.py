@@ -397,6 +397,54 @@ def main() -> int:
     if not failed:
         print(f"  all {len(NESTED)} constructors survive inside each of {len(CONTAINERS)} containers")
 
+    # FIFTH ARM, from duckdb_markdown, who ran it over their own 43 types after their
+    # reader flattened a multi-block blockquote into one run-together string. The
+    # containment arm above is pandoc-AST-driven and probes five containers; this one is
+    # BUILD-driven and probes every declared type in container position, so it cannot
+    # shrink away from its own claim the way a hand-written list does.
+    #
+    # Two failure modes, because they need different fixes and one assertion sees only
+    # one of them: JOINED (ALPHA + BETA come back as ALPHABETA -- a text extractor ran
+    # where a block walk belonged) and DROPPED (a child is simply gone).
+    print("Container sweep: every declared type holding TWO block children")
+    kids = (
+        f"{{'kind':'block','element_type':'paragraph','content':'ALPHA','level':2,"
+        f"'encoding':'text','attributes':MAP{{}},'element_order':1}}::{STRUCT},"
+        f"{{'kind':'block','element_type':'paragraph','content':'BETA','level':2,"
+        f"'encoding':'text','attributes':MAP{{}},'element_order':2}}::{STRUCT}"
+    )
+    sweep_sql = (
+        "WITH t AS (SELECT unnest(duck_block_type_names()) AS ty),"
+        "     d AS (SELECT ty, duck_blocks_to_pandoc_blocks(["
+        f"{{'kind':'block','element_type':ty,'content':NULL,'level':1,'encoding':'text',"
+        f"'attributes':MAP{{}},'element_order':0}}::{STRUCT},{kids}])::VARCHAR AS ast FROM t)"
+        " SELECT count(*) || ' ' || count(*) FILTER (WHERE ast LIKE '%ALPHABETA%')"
+        " || ' ' || count(*) FILTER (WHERE ast NOT LIKE '%ALPHA%')"
+        " || ' ' || count(*) FILTER (WHERE ast NOT LIKE '%BETA%') FROM d;"
+    )
+    swept, joined, alpha_gone, beta_gone = (int(x) for x in run(duckdb, sweep_sql).split())
+    n_declared = len(declared)
+    if (joined, alpha_gone, beta_gone) != (0, 0, 0):
+        failed = True
+        print(f"\nFAIL: containers that JOINED their children: {joined}; that dropped one: "
+              f"{alpha_gone + beta_gone}.")
+        print("      A container with block children must emit them as blocks. Joining is the")
+        print("      worse half: the words survive, so any check asking whether the text is")
+        print("      still there passes on the destroyed output.")
+    # THE COUNT IS PART OF THE ASSERTION, not decoration. It swept 47 rows against 43
+    # declared types the first time it ran, because duck_block_type_names() enumerated
+    # CONSTANTS and four names live on two axes -- code, image and raw as block and
+    # inline, list as block and value. Every check here built a set() from that function,
+    # which is exactly the measurement that hides multiplicity.
+    if swept != n_declared:
+        failed = True
+        print(f"\nFAIL: swept {swept} rows for {n_declared} declared types.")
+        print("      duck_block_type_names() is returning duplicates, so a consumer counting")
+        print("      it gets the wrong vocabulary size and any join against it double-counts.")
+    if not failed:
+        print(f"  all {swept} types emit two block children as two blocks, neither joined nor dropped")
+        print("    (detector control: 'ALPHABETA' matches the JOINED probe, 'ALPHA' matches DROPPED)")
+
     print("Content sweep: every block type, hand-built, must not lose its own text")
     types = run(duckdb, "SELECT string_agg(t, ' ') FROM (SELECT unnest(duck_block_type_names()) AS t);").split()
     checked = 0
