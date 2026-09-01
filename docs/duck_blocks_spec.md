@@ -298,6 +298,44 @@ dropped on conversion.
 `attributes['key']` is the name under which a value sits in its parent map. Elements
 in a `list` have no key. Nesting uses `level`, exactly as block containers do.
 
+### There are TWO homes for document metadata. Pick by SHAPE, not by preference
+
+| you have | use | example |
+|---|---|---|
+| discrete FIELDS — title, author, date | `kind='value'`, this section | docx `core.xml`, EPUB Dublin Core, odt `meta.xml`, RTF `\info`, LaTeX `\title`, HTML `<head>`, Pandoc `Meta` |
+| a verbatim BLOB you must not reinterpret | `kind='block'`, `element_type='metadata'`, `encoding='yaml'` | a markdown file's YAML frontmatter, kept as written |
+
+They are not interchangeable and neither is a fallback for the other. The first is
+structured and queryable; the second is a preserved artifact whose internal syntax
+this vocabulary does not model.
+
+> This is stated because the spec never said it, and the resulting confusion is
+> documented: three producers each chose differently — one dropped metadata, one
+> dropped it too, one invented a `frontmatter` type outside the vocabulary — and
+> **the author of this document then relayed "metadata at level 1, `kind='value'`"
+> to two of them**, which takes the element_type from one row and the kind from the
+> other and names a shape nothing emits. Ask which of the two shapes you have.
+
+### A realistic document, both together
+
+Metadata and blocks coexist in almost every real document, and the combination is
+where mistakes hide — this exact shape exposed an exporter defect in which a
+document's title REPLACED its body, because every fixture had metadata or blocks and
+none had both:
+
+```
+block  paragraph  L1                  content="body text"
+value  inlines    L1  key=title       (inline text at L2 carries "Report")
+value  list       L1  key=author
+value  inlines    L2                  (inline text at L3 carries "A")
+value  inlines    L2                  (inline text at L3 carries "B")
+value  string     L1  key=date        content="2026-09-01"
+value  bool       L1  key=draft       content="true"
+```
+
+A consumer walking blocks MUST stop its inline run at a `kind='value'` element, not
+merely at the next block — the inlines under a `value` belong to that value.
+
 Metadata is appended **after** a document's blocks, so `blocks[1]` still points at the
 first content block — but see the `kind` filtering rule above; ordering is a
 convenience, not a contract.
