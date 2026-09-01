@@ -653,8 +653,29 @@ same divergence this section exists to eliminate, and a consumer that tests
 producers. Do not rely on either form for inlines yet; walk children if present
 and fall back to `content`. Blocks are settled; inlines are scheduled.
 
-Relatedly, "no content of its own" is spelled two ways: the block builders write
-NULL, the Pandoc reader writes an empty string. Treat both as absent.
+Relatedly, "no content of its own" is spelled two ways, and the split is not
+internal to this repo -- it runs between shipped extensions. Measured 2026-09-01:
+
+```
+duckdb_webbed        a container's content is NULL     (list, list_item)
+duck_block_utils     a container's content is ''       (blockquote, the value tree)
+```
+
+**Consumers MUST treat NULL and `''` as the same absence. Producers SHOULD emit
+NULL.** The portable test is `coalesce(content, '') <> ''`, which is what the
+`list_not_structural` advisory rule uses.
+
+The consumer half of this was always stated. What was missing is the producer
+preference and the fact that the two spellings are how two READERS differ, not how
+two builders in one codebase differ -- so a consumer writing `WHERE content IS NULL`
+selects webbed's containers and not this repo's, and no check catches it, because
+every check either coalesces or compares within one implementation.
+
+The cost of ruling this way rather than making the spellings mean different things:
+an INTENTIONALLY empty value cannot be distinguished from a container carrying no
+content. For metadata nothing is lost -- a field present and blank is carried by the
+element existing at all, with its key. If a body case ever needs the distinction, the
+fix is a real one and not a re-spelling.
 
 **`content` is populated IF AND ONLY IF the container has a single text child.**
 This is spec v1.0's rule and it covers inline and block containers alike:
