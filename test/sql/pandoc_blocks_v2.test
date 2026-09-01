@@ -1811,12 +1811,24 @@ true	true	true
 # Found by checking the adjacent function after fixing the container walk, which
 # is the sibling pattern that has caught something every time today. Both walks
 # now share ONE fallback -- the duplication was the root of the class.
+#
+# THE hr ASSERTION USED TO READ `LIKE '%"hr"%'`, which pinned the DEGRADATION
+# rather than the property. An hr in a list item survived only as a Div classed
+# "hr", because the list walk does not enumerate hr the way the container walk
+# does -- so the same constructor exported differently depending on which
+# container it sat in. The shared fallback now writes a real HorizontalRule, and
+# this asserts that instead.
+#
+# Worth noticing as a test-writing failure of its own: an assertion written
+# against the output you happen to get will pass forever, including after the
+# output becomes correct. "Not dropped" and "exported exactly" are different
+# claims and the weaker one was quietly standing in for the stronger.
 # ============================================================================
 
 query III
 SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"item"}]},{"t":"CodeBlock","c":[["",[],[]],"the code"]}]]}]}'))::VARCHAR LIKE '%the code%',
        duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"item"}]},{"t":"BlockQuote","c":[{"t":"Para","c":[{"t":"Str","c":"quoted"}]}]}]]}]}'))::VARCHAR LIKE '%quoted%',
-       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"item"}]},{"t":"HorizontalRule"}]]}]}'))::VARCHAR LIKE '%"hr"%';
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"item"}]},{"t":"HorizontalRule"}]]}]}'))::VARCHAR LIKE '%HorizontalRule%';
 ----
 true	true	true
 

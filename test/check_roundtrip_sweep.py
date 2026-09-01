@@ -251,18 +251,43 @@ def main() -> int:
             f"{n_inherent} recorded as inherent ({', '.join(sorted(INHERENT))})"
         )
 
-    print("Containment sweep: every constructor inside a Div")
-    for name, inner, probe in NESTED:
-        doc = '{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Div","c":[["",[],[]],[' + inner + ']]}]}'
-        got = run(duckdb, f"SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{doc}'))::VARCHAR;")
-        if probe in got:
-            continue
-        failed = True
-        print(f"\nFAIL: `{name}` is DROPPED inside a container -- its content never reaches the output.")
-        print("      A container's child walk must not decide whether a child EXISTS by")
-        print("      enumerating type names. Add a terminal arm that does not need to know.")
+    # Three containers, not one. This arm probed only a Div until 2026-09-01, and that
+    # is exactly why a definition list silently dropped every block after the first for
+    # as long as `list_type='definition'` had existed: the defect was one level down a
+    # container this never opened. A list item and a definition each have their OWN walk
+    # over the same ListItem struct, and the definition walk read one field of it.
+    #
+    # `%s` is where the probe's constructor goes.
+    CONTAINERS = [
+        ("Div", '{"t":"Div","c":[["",[],[]],[%s]]}'),
+        ("a list item", '{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"lead"}]},%s]]}'),
+        (
+            "a definition",
+            '{"t":"DefinitionList","c":[[[{"t":"Str","c":"term"}],'
+            '[[{"t":"Para","c":[{"t":"Str","c":"lead"}]},%s]]]]}',
+        ),
+    ]
+
+    print("Containment sweep: every constructor inside each container that has its own walk")
+    for cname, shell in CONTAINERS:
+        for name, inner, probe in NESTED:
+            doc = '{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[' + (shell % inner) + ']}'
+            got = run(duckdb, f"SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{doc}'))::VARCHAR;")
+            if probe in got:
+                continue
+            failed = True
+            # "not present" covers two different findings and they need different fixes:
+            # the element may be gone, or it may have DEGRADED into something else (a Div
+            # classed with its type name -- the shared fallback's output). Saying DROPPED
+            # for both sends the reader looking for a deletion that is not there.
+            shape = "DEGRADED to a classed Div" if '"Div"' in got else "DROPPED"
+            print(f"\nFAIL: `{name}` is {shape} inside {cname}.")
+            print("      A container's child walk must not decide whether a child EXISTS by")
+            print("      enumerating type names, and must not stop after the FIRST child.")
+            print("      Every container with its own walk needs the same terminal arm; where")
+            print("      two walks read one structure, they must read all of it.")
     if not failed:
-        print(f"  all {len(NESTED)} constructors survive inside a container")
+        print(f"  all {len(NESTED)} constructors survive inside each of {len(CONTAINERS)} containers")
 
     print("Content sweep: every block type, hand-built, must not lose its own text")
     types = run(duckdb, "SELECT string_agg(t, ' ') FROM (SELECT unnest(duck_block_type_names()) AS t);").split()

@@ -997,6 +997,24 @@ static yyjson_mut_val *ConvertUnhandledChildToPandocVal(yyjson_mut_doc *doc, con
                                                         idx_t &idx, idx_t depth, const Value &child,
                                                         const string &child_type, const string &content,
                                                         const vector<Value> &inline_children, int32_t child_level) {
+	// A type Pandoc CAN express exactly should be written exactly, even from the
+	// fallback. `hr` reached here from the list and definition walks -- which do not
+	// enumerate it the way the container walk does -- and came out as a Div classed
+	// "hr": not lost, but degraded, and degraded differently depending on which
+	// container it sat in. The same constructor should not depend on its parent.
+	//
+	// This belongs in the SHARED fallback rather than as another arm in each walk.
+	// Adding it per-caller is what produced the divergence in the first place.
+	if (child_type == BlockTypes::TYPE_HR) {
+		yyjson_mut_val *hr_obj = yyjson_mut_obj(doc);
+		yyjson_mut_obj_add_str(doc, hr_obj, "t", "HorizontalRule");
+		idx_t skip = idx;
+		ConvertContainerChildrenToPandocVal(doc, blocks_list, skip, child_level, depth + 1, yyjson_mut_arr(doc),
+		                                    nullptr, nullptr);
+		idx = skip;
+		return hr_obj;
+	}
+
 	yyjson_mut_val *fallback = yyjson_mut_obj(doc);
 	yyjson_mut_obj_add_str(doc, fallback, "t", "Div");
 	yyjson_mut_val *fc_arr = yyjson_mut_arr(doc);
@@ -1207,16 +1225,56 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 			yyjson_mut_val *defs = yyjson_mut_arr(doc);
 			idx_t d = k + 1;
 			for (; d < items.size() && items[d].role == "definition"; d++) {
+				// A definition is [Block], PLURAL, exactly like a bullet item -- and this
+				// emitted only the FIRST block, so every block after it was silently lost.
+				// `TLS: <para> <code>` came back as `TLS: <para>`.
+				//
+				// The bullet path twenty lines below already collected extra_paragraphs,
+				// extra_blocks and a nested list into each item; the definition path was
+				// written against the same ListItem struct and read one field of it. Two
+				// walks over one structure, one of them incomplete -- the same shape as
+				// the container and list terminal arms that dropped table, deflist and
+				// lineblock, and the reason those were merged into one shared fallback.
 				yyjson_mut_val *one_def = yyjson_mut_arr(doc);
 				yyjson_mut_val *pl = yyjson_mut_obj(doc);
 				yyjson_mut_obj_add_str(doc, pl, "t", items[d].tight ? "Plain" : "Para");
-				yyjson_mut_val *inl = yyjson_mut_arr(doc);
-				yyjson_mut_val *s = yyjson_mut_obj(doc);
-				yyjson_mut_obj_add_str(doc, s, "t", "Str");
-				yyjson_mut_obj_add_strncpy(doc, s, "c", items[d].content.data(), items[d].content.size());
-				yyjson_mut_arr_add_val(inl, s);
-				yyjson_mut_obj_add_val(doc, pl, "c", inl);
+				if (!items[d].inlines.empty()) {
+					// Rich inline content -- a definition containing bold or a link kept
+					// only its flattened text before this.
+					idx_t inl_end = 0;
+					yyjson_mut_obj_add_val(doc, pl, "c",
+					                       PandocInlineConvert::ConvertDbInlinesToPandocVal(
+					                           doc, items[d].inlines, 0, list_level + 2, inl_end, 1));
+				} else {
+					yyjson_mut_val *inl = yyjson_mut_arr(doc);
+					if (!items[d].content.empty()) {
+						yyjson_mut_val *s = yyjson_mut_obj(doc);
+						yyjson_mut_obj_add_str(doc, s, "t", "Str");
+						yyjson_mut_obj_add_strncpy(doc, s, "c", items[d].content.data(), items[d].content.size());
+						yyjson_mut_arr_add_val(inl, s);
+					}
+					yyjson_mut_obj_add_val(doc, pl, "c", inl);
+				}
 				yyjson_mut_arr_add_val(one_def, pl);
+
+				for (auto &extra : items[d].extra_paragraphs) {
+					yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
+					yyjson_mut_obj_add_str(doc, para_obj, "t", "Para");
+					yyjson_mut_val *pinl = yyjson_mut_arr(doc);
+					yyjson_mut_val *pstr = yyjson_mut_obj(doc);
+					yyjson_mut_obj_add_str(doc, pstr, "t", "Str");
+					yyjson_mut_obj_add_strncpy(doc, pstr, "c", extra.data(), extra.size());
+					yyjson_mut_arr_add_val(pinl, pstr);
+					yyjson_mut_obj_add_val(doc, para_obj, "c", pinl);
+					yyjson_mut_arr_add_val(one_def, para_obj);
+				}
+				for (auto *extra : items[d].extra_blocks) {
+					yyjson_mut_arr_add_val(one_def, extra);
+				}
+				if (items[d].nested_list_val) {
+					yyjson_mut_arr_add_val(one_def, items[d].nested_list_val);
+				}
+
 				yyjson_mut_arr_add_val(defs, one_def);
 			}
 			yyjson_mut_arr_add_val(pair, defs);
