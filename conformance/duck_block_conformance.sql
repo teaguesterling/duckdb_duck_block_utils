@@ -63,6 +63,47 @@ CREATE OR REPLACE MACRO duck_block_is_valid(elem) AS (
     AND elem.element_order >= 0
 );
 
+-- Declared element_type names, for the check the EXTENSION does and this file could
+-- not. An element_type outside the vocabulary was invisible to everything until
+-- 2026-09-01: `duck_blocks_validate` accepted any string. duckdb_markdown emits
+-- `frontmatter` where the vocabulary declares `metadata` and nothing objected.
+--
+-- This list is a COPY of duck_block_type_names(), which is the kind of thing that
+-- drifts. test/check_conformance_macro.py compares the two on every `make check` and
+-- FAILS if they differ, so it is a copy that cannot rot silently -- the same reason the
+-- macros above are compared against the real validator rather than merely maintained.
+--
+-- Kept SEPARATE from duck_blocks_are_valid deliberately: an unknown type is a LINT, not
+-- an invalidity. A consumer built against an older vocabulary must still read data from
+-- a newer producer, so a name you do not recognise is reported, not refused. Rejecting
+-- it would make every additive spec release break every consumer who had not upgraded.
+CREATE OR REPLACE MACRO duck_block_declared_types() AS (
+    [
+        'blockquote', 'blocks', 'bold', 'bool', 'caption', 'cite', 'code', 'deflist',
+        'div', 'figure', 'generic', 'heading', 'hr', 'image', 'inlines', 'italic',
+        'lineblock', 'linebreak', 'link', 'list', 'list_item', 'map', 'math', 'metadata',
+        'note', 'page_break', 'paragraph', 'plain', 'quoted', 'raw', 'section',
+        'smallcaps', 'softbreak', 'space', 'span', 'strikethrough', 'string', 'subscript',
+        'superscript', 'table', 'text', 'underline', 'version'
+    ]
+);
+
+-- Which elements carry a type this vocabulary does not declare. Empty is conforming;
+-- anything listed should probably be `generic` with the original name kept in
+-- attributes['source_type'], so it reads as a gap rather than a private invention.
+CREATE OR REPLACE MACRO duck_blocks_undeclared_types(blocks) AS (
+    -- coalesce, because an aggregate over ZERO rows returns NULL, and a conforming
+    -- document has zero rows here. NULL is the one answer this must never give: it
+    -- reads as "could not tell" and as "none" equally, which is the ambiguity every
+    -- check in this file exists to remove. Caught by running it, not by writing it.
+    coalesce(
+        (SELECT list_sort(list_distinct(list(e.element_type)))
+         FROM unnest(blocks) AS t(e)
+         WHERE NOT list_contains(duck_block_declared_types(), e.element_type)),
+        []::VARCHAR[]
+    )
+);
+
 -- Document shape. The other 2, and they are the ones a per-element check CANNOT see:
 --
 --   duplicate element_order  needs the whole list

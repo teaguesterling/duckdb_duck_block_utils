@@ -113,6 +113,38 @@ def main() -> int:
         return 1
 
     print(f"Checking conformance/{MACROS.name} against duck_blocks_validate()")
+
+    # The file embeds the declared element_type names, because the extension can check
+    # a type against the vocabulary and pure SQL cannot without a copy. A copy is
+    # exactly what drifts -- so it is compared here rather than trusted, on the same
+    # reasoning as the macros themselves.
+    listed = subprocess.run(
+        [str(duckdb), "-noheader", "-list"],
+        input=MACROS.read_text() + "\nSELECT unnest(duck_block_declared_types());",
+        capture_output=True,
+        text=True,
+    )
+    declared = subprocess.run(
+        [str(duckdb), "-noheader", "-list", "-c", "SELECT DISTINCT unnest(duck_block_type_names());"],
+        capture_output=True,
+        text=True,
+    )
+    in_file = {x.strip() for x in listed.stdout.split() if x.strip()}
+    in_build = {x.strip() for x in declared.stdout.split() if x.strip()}
+    if in_file != in_build:
+        missing = sorted(in_build - in_file)
+        extra = sorted(in_file - in_build)
+        print("\nFAIL: the type list embedded in the conformance file has drifted from the build.")
+        if missing:
+            print(f"      declared by the build, absent from the file: {missing}")
+            print("      A consumer running the file would report these as UNDECLARED -- a false")
+            print("      positive against conforming data, which is how a check gets muted.")
+        if extra:
+            print(f"      in the file, no longer declared by the build: {extra}")
+            print("      A consumer running the file would accept a type this build has removed.")
+        print("      Regenerate the list from duck_block_type_names().")
+        return 1
+    print(f"  the file's embedded type list matches the build ({len(in_build)} names)")
     failed = False
     for row in rows:
         name, ext, mac = (p.strip() for p in row.split("|"))
