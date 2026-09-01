@@ -2,6 +2,17 @@
 
 Practical guidance for implementing duck_block_utils, bridging the design documents with DuckDB extension patterns.
 
+> **STATUS (2026-09-01): this is an EARLY DESIGN document. Every "Open Question"
+> below has been settled by the shipped build, and two of its recommendations were
+> NOT adopted.** Each is annotated in place rather than deleted, because the options
+> and reasoning are still worth reading — but do not implement from a recommendation
+> here without checking the annotation under it.
+>
+> Left un-annotated, a heading that says "Open Question" is read as an instruction
+> rather than a note. That is the same failure this repo spent 2026-09-01 cataloguing
+> in code comments and in its own spec: a reason has no expiry unless you give it one,
+> and a document reads as history, which is exactly what makes it feel safe to skip.
+
 ## Extension Structure (from template)
 
 The extension template provides the scaffolding:
@@ -77,7 +88,13 @@ void BlockTypes::Register(ExtensionLoader &loader) {
 2. **Check if exists**: Skip registration if type already exists
 3. **Shared definition**: Both extensions use identical struct, just different aliases
 
-**Recommendation**: Use `doc_block` as the generic name. The schema is identical to `markdown_doc_block`, so they're structurally compatible even if registered separately.
+~~**Recommendation**: Use `doc_block` as the generic name.~~
+
+> **SETTLED, recommendation NOT adopted.** The shipped type is `duck_block`, and the
+> vocabulary is shared by publishing `src/include/duck_block_vocabulary.hpp` for
+> consumers to vendor — option 3, "shared definition", rather than option 1. Four
+> extensions now vendor that header; duckdb_markdown no longer registers a separate
+> `markdown_doc_block`. See `docs/duck_blocks_spec.md`.
 
 ## Scalar Function Patterns
 
@@ -265,6 +282,9 @@ SELECT duck_blocks_assemble(list(
 - Bundle yyjson (lightweight, already used by some extensions)
 - Use DuckDB's internal JSON utilities if available
 
+> **SETTLED, recommendation ADOPTED.** yyjson is bundled (`duckdb_yyjson`), so no
+> `json` extension is required at load or at query time.
+
 ### 2. Error Handling Strategy
 **Question**: How should validation failures be reported?
 
@@ -274,7 +294,12 @@ SELECT duck_blocks_assemble(list(
 - Return error struct `{valid: false, error: 'message'}`
 - Use TRY_* variants for non-throwing versions
 
-**Recommendation**: Provide both - strict versions that throw, and `try_*` versions that return NULL/error struct.
+~~**Recommendation**: Provide both - strict versions that throw, and `try_*` versions that return NULL/error struct.~~
+
+> **SETTLED, recommendation NOT adopted.** There are ZERO `try_*` functions. What
+> shipped is the error-struct option alone: `duck_blocks_validate()` returns
+> `{valid, errors}` and `duck_blocks_lint()` returns warnings, neither of which
+> throws. A conversion given malformed input degrades rather than failing the query.
 
 ### 3. Table Function vs Scalar for Extraction
 **Question**: Should `duck_blocks_headings()` be a table function or scalar returning LIST?
@@ -290,6 +315,9 @@ SELECT * FROM duck_blocks_headings((SELECT blocks FROM docs WHERE id = 1));
 ```
 
 **Recommendation**: Scalar returning LIST is more composable. Users can `unnest()` when needed.
+
+> **SETTLED, recommendation ADOPTED.** `duck_blocks_headings` is a scalar returning
+> LIST, as are the other extraction functions.
 
 ### 4. Performance: Materialization vs Streaming
 **Question**: Should LIST-returning functions materialize all blocks, or can we stream?
