@@ -50,7 +50,9 @@ SELECT duck_block_type_names();        -- every element_type name
 SELECT duck_block_spec_version(); -- the spec version this build implements
 ```
 
-Sibling extensions should consume the vocabulary as a **submodule**, not a copy:
+Sibling extensions should consume the vocabulary as a **vendored copy**, not a
+submodule — see the "VENDORING THIS FILE" block in the header itself for why, and
+for the drift check a copy requires:
 
 ```cpp
 #include "duck_block_vocabulary.hpp"   // link-free; constants only
@@ -67,8 +69,12 @@ would otherwise notice.
 Renaming or removing a constant is **breaking** for every consumer: bump
 `SPEC_VERSION` and say so.
 
-Even with a submodule, **assert agreement at test time** — the introspection functions
-above catch a submodule that was never synced, which a compile cannot.
+However the header arrives, **assert agreement at test time**. The introspection
+functions above catch a copy that was never re-synced, which a compile cannot —
+and note that constants catch a RENAME but never a changed VALUE, so a check is
+not optional. `SPEC_VERSION` is the only signal a name-and-value comparison emits
+for a pure SHAPE change like 2.0, so give it its own arm rather than lumping it in
+with the type names.
 
 ## Block Types (kind='block')
 
@@ -96,7 +102,8 @@ above catch a submodule that was never synced, which a compile cannot.
 
 ### Containers nest by `level`
 
-`div`, `section`, `figure` and `caption` carry no content of their own. Their
+`div`, `section`, `figure`, `caption`, `blockquote`, `list` and `list_item` carry no
+content of their own — the last three as of spec 2.0. Their
 children follow them in document order at `level + 1`, and the container ends at
 the first element back at its own level. This is the same mechanism throughout —
 there is no separate child-list field.
@@ -400,8 +407,23 @@ NULL, the Pandoc reader writes an empty string. Treat both as absent.
 
 **A container carries no content of its own.** `div`, `section`, `figure`,
 `caption`, `blockquote`, `list` and `list_item` own children at `level + 1`; their
-text, if any, is a `paragraph` child. Leaf types — `paragraph`, `heading`, `code`,
-`raw` — carry their text in `content`. There is no third case.
+text, if any, is a `paragraph` child.
+
+**Leaf types are unchanged by 2.0, and keep their either/or.** `paragraph`,
+`heading`, `code` and `raw` carry text in `content` **when that text is a single
+plain run**. A leaf with rich inline content instead has empty `content` and
+`inline` children at `level + 1`:
+
+```
+paragraph  content="just text"        <- plain: content populated, no children
+paragraph  content=""                 <- rich: content empty, children carry it
+  text   "plain"
+  bold
+    text "x"
+```
+
+This is the 1.x rule and 2.0 did not touch it. A reader emitting ordinary prose
+needs no migration — only `list`, `list_item` and `blockquote` changed shape.
 
 ```
 list        attrs list_type, and for ordered: start, number_style, number_delim
