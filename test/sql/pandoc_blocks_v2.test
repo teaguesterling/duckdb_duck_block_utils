@@ -1807,3 +1807,49 @@ SELECT count(*) FROM (
 ) WHERE et = 'section';
 ----
 7
+
+# ============================================================================
+# TIGHT/LOOSE IS A PROPERTY OF THE RUN, NOT OF THE ITEM HAVING BLOCK CHILDREN.
+#
+# panduck asked which an item's own bare text should be when a nested list sits
+# beside it -- `plain` because it is a bare run, or `paragraph` because the item
+# has block children and is therefore "loose". Real pandoc settles it against the
+# second reading:
+#
+#   - outer          ->  BulletList > Plain > Str      TIGHT, and it has a
+#       - inner                     > BulletList        nested list child
+#
+#   - outer          ->  BulletList > Para  > Str      LOOSE
+#                                    > BulletList
+#     - inner
+#
+# So an item can hold block children and still be tight. The rule stands as
+# written: `plain` is about the run, not about its container.
+# ============================================================================
+
+query IIII
+SELECT b.element_type, b.level, coalesce(b.content,'(empty)'), b.kind
+FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"outer"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"inner"}]}]]}]]}]}')) AS b);
+----
+list	1	(empty)	block
+list_item	2	(empty)	block
+plain	3	outer	block
+list	3	(empty)	block
+list_item	4	(empty)	block
+plain	5	inner	block
+
+# DISCRIMINATING: the LOOSE spelling of the same document must differ, and only
+# in the item's own run. A rule keyed on "the item has block children" would make
+# these two identical, which is exactly the reading pandoc disproves.
+query II
+SELECT (SELECT b.element_type FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"outer"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"inner"}]}]]}]]}]}')) AS b) WHERE b.level = 3 AND b.element_type IN ('plain','paragraph')),
+       (SELECT b.element_type FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"outer"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"inner"}]}]]}]]}]}')) AS b) WHERE b.level = 3 AND b.element_type IN ('plain','paragraph'));
+----
+plain	paragraph
+
+# Both spellings round-trip byte-identically -- the distinction survives export.
+query II
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"outer"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"inner"}]}]]}]]}]}'))::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"outer"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"inner"}]}]]}]]}]',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"outer"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"inner"}]}]]}]]}]}'))::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"outer"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"inner"}]}]]}]]}]';
+----
+true	true
