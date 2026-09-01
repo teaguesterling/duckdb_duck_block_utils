@@ -381,10 +381,15 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 
 			// A heading with no heading_level carries NO rank information under 3.0,
 			// because `level` is structural depth and never semantic. A consumer's only
-			// remaining move is to guess -- and duckdb_markdown's writer guesses by
-			// falling back to `level`, which was a fair reading while the spec said
-			// headings carried NULL there, and under 3.0 renders a heading's DEPTH as
+			// remaining move is to guess. As of 2026-08-31 duckdb_markdown's writer
+			// guessed by falling back to `level` -- a fair reading while the spec said
+			// headings carried NULL there, and under 3.0 it renders a heading's DEPTH as
 			// its RANK: a heading inside two containers becomes h3 whatever it is.
+			//
+			// Stated in the PAST TENSE and dated deliberately. It was reported by that
+			// session rather than measured here, and they have been migrating since, so
+			// writing it as current behaviour would put an unverified claim about
+			// someone else's code into the reason for a lint that outlives both.
 			//
 			// Warning rather than error: the data is recoverable by defaulting to 1,
 			// and both producers here always emit the attribute, so this only reaches

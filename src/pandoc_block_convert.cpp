@@ -254,9 +254,14 @@ static void AppendRowCellsJson(yyjson_val *row, string &out) {
 	out += "]";
 }
 
-// Project a Pandoc Table tuple into the NATIVE {headers, rows} schema that this
-// extension's own renderer, render_macros.cpp, duckdb_markdown's writer and
-// webbed's decoder all already understand.
+// Project a Pandoc Table tuple into the NATIVE {headers, rows} schema.
+//
+// MEASURED: this extension's own renderer and render_macros.cpp consume it.
+// RELAYED (2026-08-31, from those sessions, not verified here): duckdb_markdown's
+// writer and webbed's decoder understand the same schema. That was the argument for
+// choosing it, and it is worth knowing it is second-hand -- both repos changed
+// substantially the same day, and a fact about a moving codebase expires like any
+// other. If it matters to a decision, measure it rather than citing this line.
 //
 // Table = [Attr, Caption, [ColSpec], TableHead, [TableBody], TableFoot]
 // TableHead = [Attr, [Row]];  TableBody = [Attr, RowHeadColumns, [Row], [Row]]
@@ -1123,10 +1128,16 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 
 	struct ListItem {
 		string content;
-		// A tight item's child is `plain`, a loose item's is `paragraph`. Pandoc
-		// spells that Plain vs Para, so the flag has to survive to the emit below or
-		// the distinction dies on the way out -- which is exactly how it was lost
-		// before `plain` existed.
+		// Under SPEC 6.1 a TIGHT item carries its text in `content` and a LOOSE item
+		// has a `paragraph` child. Pandoc spells those Plain and Para, so the flag has
+		// to survive to the emit below or the distinction dies on the way out -- which
+		// is how it was lost before `plain` existed.
+		//
+		// This said "a tight item's child is `plain`" until 6.1 narrowed `plain` out of
+		// leaf position. The flag and the code were unaffected; the SENTENCE described
+		// the shape 5.0 shipped, and would have told the next reader to look for a child
+		// that is no longer emitted. A comment can be falsified by a change that does not
+		// touch it.
 		bool tight = true;
 		// attributes['role'] -- 'term' or 'definition' in a definition list.
 		string role;
