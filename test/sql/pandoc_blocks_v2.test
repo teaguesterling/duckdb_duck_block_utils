@@ -1184,9 +1184,12 @@ true
 
 # the caption container is a SIBLING of the content blocks -- both are children
 # of the figure -- so they sit at the same level. The export walk depends on this.
+# The figure's content is a `plain`, not a `paragraph`: Pandoc's Figure holds
+# Plain[Image], and since spec 4.0 Plain maps to `plain` rather than collapsing
+# onto `paragraph`.
 query I
 SELECT (SELECT b.level FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]')) AS b) WHERE b.element_type = 'caption')
-     = (SELECT b.level FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]')) AS b) WHERE b.element_type = 'paragraph' LIMIT 1);
+     = (SELECT b.level FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]')) AS b) WHERE b.element_type = 'plain' LIMIT 1);
 ----
 true
 
@@ -1327,7 +1330,7 @@ FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":
 ----
 list	block	1	text
 list_item	block	2	text
-paragraph	block	3	text
+plain	block	3	text
 
 # DISCRIMINATING: item COUNT was already right while every item was blank, so
 # counting items would have passed against the defect. The property is that a
@@ -1524,8 +1527,13 @@ true
 
 # Both blocks stay inside the SAME item -- one item holding two paragraphs, not
 # two items. Splitting them would also make 'b' survive while corrupting the list.
+#
+# BYTE-IDENTICAL since spec 4.0: the input's two Paras come back as two Paras.
+# Before `plain` existed the first was forced to Plain, because the exporter had
+# only one constructor for a list item's first block and could not tell a tight
+# item from a loose one.
 query I
-SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"Para","c":[{"t":"Str","c":"b"}]}]]}]}'))::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"a"}]},{"t":"Para","c":[{"t":"Str","c":"b"}]}]]}]';
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"Para","c":[{"t":"Str","c":"b"}]}]]}]}'))::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"Para","c":[{"t":"Str","c":"b"}]}]]}]';
 ----
 true
 
@@ -1597,3 +1605,70 @@ SELECT (SELECT b.attributes['list_type'] FROM (SELECT unnest(pandoc_ast_to_block
        (SELECT b.attributes['ordered'] IS NOT NULL FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"OrderedList","c":[[1,{"t":"Decimal"},{"t":"Period"}],[[{"t":"Plain","c":[{"t":"Str","c":"a"}]}]]]}]}')) AS b) WHERE b.element_type='list');
 ----
 ordered	true
+
+# ============================================================================
+# `plain` -- Pandoc's Plain constructor, and HTML text not wrapped in a <p>.
+#
+# This reader mapped Plain and Para BOTH to `paragraph`, so the TIGHT vs LOOSE
+# list distinction was lost. webbed lost the same distinction independently, by
+# flattening list items to strings -- two readers, two mechanisms, same loss,
+# neither aware. That is why it is answered in the vocabulary rather than in
+# either reader.
+# ============================================================================
+
+# tight and loose are now DIFFERENT shapes, and each round-trips to its own
+# constructor.
+query II
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"x"}]}]]}]}'))::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"x"}]}]]}]',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"x"}]}]]}]}'))::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"x"}]}]]}]';
+----
+true	true
+
+# DISCRIMINATING: before `plain`, BOTH of the above round-tripped to Plain, so
+# asserting the tight one alone would have passed against the defect. The
+# property is that the two inputs produce DIFFERENT outputs.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"x"}]}]]}]}'))::VARCHAR
+    <> duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"x"}]}]]}]}'))::VARCHAR;
+----
+true
+
+# A `plain` must survive EVERY container. Found by sweeping rather than reasoning:
+# inside a div, blockquote or figure it was dropped entirely, because the child
+# walk tested one type name and the fallthrough ate the rest.
+query III
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Div","c":[["",[],[]],[{"t":"Plain","c":[{"t":"Str","c":"in"}]}]]}]}'))::VARCHAR LIKE '%"t":"Plain"%',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BlockQuote","c":[{"t":"Plain","c":[{"t":"Str","c":"in"}]}]}]}'))::VARCHAR LIKE '%"t":"Plain"%',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[],["i.png",""]]}]}]]}]}'))::VARCHAR LIKE '%"t":"Plain"%';
+----
+true	true	true
+
+# A top-level plain must not fall to the terminal Para fallback.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Plain","c":[{"t":"Str","c":"bare"}]}]}'))::VARCHAR = '[{"t":"Plain","c":[{"t":"Str","c":"bare"}]}]';
+----
+true
+
+# It renders and extracts exactly like a paragraph -- ignoring it costs spacing,
+# not content.
+query II
+SELECT regexp_replace(duck_blocks_render_ansi(duck_block_plain('bare'), 30), '\x1b\[[0-9;]*m', '', 'g') LIKE '%bare%',
+       duck_blocks_to_text(duck_block_plain('bare'));
+----
+true	bare
+
+# The builder exists, so a type a reader can emit is one a builder can produce.
+query II
+SELECT duck_block_plain('bare')[1].element_type,
+       duck_block_plain([duck_block_text('a '), duck_block_bold('b')])[1].content IS NULL;
+----
+plain	true
+
+# `list_type` is canonical; `ordered` is a legacy alias. Both emitted.
+query IIII
+SELECT (SELECT b.attributes['list_type'] FROM (SELECT unnest(duck_block_list(true,['a'])) AS b) WHERE b.element_type='list'),
+       (SELECT b.attributes['ordered'] FROM (SELECT unnest(duck_block_list(true,['a'])) AS b) WHERE b.element_type='list'),
+       (SELECT b.attributes['list_type'] FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"a"}]}]]}]}')) AS b) WHERE b.element_type='list'),
+       (SELECT b.attributes['ordered'] FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"a"}]}]]}]}')) AS b) WHERE b.element_type='list');
+----
+ordered	true	bullet	false

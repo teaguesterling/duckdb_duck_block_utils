@@ -43,6 +43,7 @@ private:
 
 	// duck_block_paragraph(content) -> LIST(duck_block)
 	static void DbParagraphV2Fun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbPlainV2Fun(DataChunk &args, ExpressionState &state, Vector &result);
 
 	// duck_block_code(content) -> LIST(duck_block) (no language)
 	// duck_block_code(language VARCHAR, content) -> LIST(duck_block)

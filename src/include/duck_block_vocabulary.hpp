@@ -198,15 +198,32 @@ struct DuckBlockVocabulary {
 	//               blocks and inlines, and `level` is never semantic. Breaking.
 	//               The NULL-at-top-level convention 1.x and 2.0 documented was
 	//               never approved -- see docs/duck_blocks_spec.md.
+	//   3.0 -> 4.0  `plain` added: Pandoc's Plain constructor, which this reader had
+	//               been collapsing onto `paragraph`, losing the tight vs loose list
+	//               distinction. BREAKING by this contract's own rule -- a consumer
+	//               rendering `paragraph` now receives `plain` for a tight list item
+	//               -- so a MAJOR bump even though the vocabulary change is additive.
+	//               Also makes `list_type` canonical, `ordered` a legacy alias.
 	//
 	// The rule above is what will be followed from here.
-	static constexpr const char *SPEC_VERSION = "3.0";
+	static constexpr const char *SPEC_VERSION = "4.0";
 
 	// ========================================================================
 	// Block type names
 	// ========================================================================
 	static constexpr const char *TYPE_HEADING = "heading";
 	static constexpr const char *TYPE_PARAGRAPH = "paragraph";
+	// A block-level text run with NO paragraph semantics -- Pandoc's `Plain`, and
+	// HTML text that is not wrapped in a <p>: `<li>text</li>`, `<td>text</td>`,
+	// `<dd>text</dd>`, `<figcaption>text</figcaption>`.
+	//
+	// This existed in Pandoc all along and this reader collapsed it onto
+	// `paragraph`, which is how the TIGHT vs LOOSE list distinction was being lost
+	// -- and lost independently in webbed, by a different mechanism, with neither
+	// reader aware. Modelling it as its own type rather than an attribute keeps the
+	// mapping honest: it is a constructor we were failing to represent, not a
+	// variation we were failing to annotate.
+	static constexpr const char *TYPE_PLAIN = "plain";
 	static constexpr const char *TYPE_CODE = "code";
 	static constexpr const char *TYPE_BLOCKQUOTE = "blockquote";
 	static constexpr const char *TYPE_LIST = "list";

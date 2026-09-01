@@ -92,6 +92,7 @@ static void BlockTypesFun(DataChunk &args, ExpressionState &state, Vector &resul
 	    // blocks
 	    BlockTypes::TYPE_HEADING,
 	    BlockTypes::TYPE_PARAGRAPH,
+	    BlockTypes::TYPE_PLAIN,
 	    BlockTypes::TYPE_CODE,
 	    BlockTypes::TYPE_BLOCKQUOTE,
 	    BlockTypes::TYPE_LIST,

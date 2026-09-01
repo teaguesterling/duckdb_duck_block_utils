@@ -95,10 +95,11 @@ now rejects a NULL level outright.
 | Type | Description | level Usage | encoding Values | Key Attributes |
 |------|-------------|-------------|-----------------|----------------|
 | `heading` | Section heading | depth (top level 1) | `text` | `heading_level` (1-6) |
-| `paragraph` | Text paragraph | NULL | `text`, `markdown` | |
+| `paragraph` | Text paragraph | depth (top level 1) | `text`, `markdown` | |
+| `plain` | Block-level text run with NO paragraph semantics | depth (top level 1) | `text` | |
 | `code` | Code block | NULL | `text` | `language` |
 | `blockquote` | Quoted content | depth (top level 1) | — (container) | |
-| `list` | List container | depth (top level 1) | — (container) | `ordered` (canonical, per v1.0), `list_type` (alias), and for ordered `start`, `number_style`, `number_delim` |
+| `list` | List container | depth (top level 1) | — (container) | `list_type` (canonical), `ordered` (legacy alias), and for ordered `start`, `number_style`, `number_delim` |
 | `list_item` | List item | parent `list` + 1 | — (container) | |
 | `deflist` | Definition list | NULL | `json` | |
 | `lineblock` | Preserved line breaks | NULL | `text` (lines joined with `\n`) | |
@@ -378,13 +379,18 @@ is `level` 1 with `attributes['heading_level']` = 2, and the two numbers are
 independent. A consumer needing quote or list nesting depth counts containers by
 walking the structure rather than reading it off this number.
 
-**Two names for list orderedness, and `ordered` is the canonical one.** Spec 1.0
-documents `attributes['ordered']` = 'true'/'false'. `list_type` = 'ordered'/'bullet'
-arrived later with the Pandoc reader and nothing ever said which won, so for a
-while the reader emitted only `list_type` — meaning a consumer written against the
-published v1 spec read nothing at all from a Pandoc-produced list. Both are now
-emitted by both producers. Producers SHOULD emit both; consumers MUST tolerate
-either, and `ordered` is the name to prefer when writing new code.
+**`list_type` is the canonical attribute for what kind of list this is.**
+`attributes['ordered']` = 'true'/'false' is a legacy alias, kept because spec 1.0
+documented it and the exporter has read both since v1.1.0.
+
+`list_type` wins because a boolean cannot grow. Ordered and bullet are two of a set
+that already wants more members — definition lists, navigation lists — and
+`ordered='false'` says only what a list is *not*. Current values are `bullet` and
+`ordered`; the set is open.
+
+Producers SHOULD emit both names. Consumers MUST tolerate either and should prefer
+`list_type`. A consumer reading only `ordered` sees nothing meaningful the first
+time a third list kind appears.
 
 **Do NOT fall back to `level` when a semantic attribute is missing.** A heading
 without `attributes['heading_level']` has no rank information at all — reading its
@@ -481,6 +487,29 @@ content", which was broader than the defect required: what actually needed fixin
 was `list` storing a JSON items array, not the content rule. It also left blocks
 and inlines on two different rules, since inline containers never stopped
 following v1. Restored in 3.0.
+
+### `plain` vs `paragraph`
+
+`plain` is a block-level run of text that is **not** a paragraph. It is Pandoc's
+`Plain` constructor, and in HTML it is text not wrapped in a `<p>`:
+
+```
+<li>tight item</li>          list_item > plain
+<li><p>loose item</p></li>   list_item > paragraph
+<td>cell</td>                cell content with no paragraph
+<dd>definition</dd>          definition with no paragraph
+```
+
+It behaves exactly like `paragraph` — same either/or content rule, same children —
+and differs only in what it means and what it exports to. A renderer that treats an
+unknown `plain` as a paragraph degrades gracefully: the cost of ignoring it is
+spacing, not content.
+
+**Why a type and not an attribute.** Pandoc has had this distinction all along and
+this reader collapsed both constructors onto `paragraph`, which is how tight-vs-loose
+list items were being lost — and lost independently in webbed, by a different
+mechanism, with neither reader aware. The gap was a constructor we failed to
+represent, not a variation we failed to annotate.
 
 **Leaf types are unchanged by 2.0, and keep their either/or.** `paragraph`,
 `heading`, `code` and `raw` carry text in `content` **when that text is a single

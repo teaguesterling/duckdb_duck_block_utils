@@ -254,7 +254,10 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 			inlines_val_p = inlines_val;
 		}
 	} else if (strcmp(pandoc_type, "Para") == 0 || strcmp(pandoc_type, "Plain") == 0) {
-		block_type = BlockTypes::TYPE_PARAGRAPH;
+		// Plain and Para are DIFFERENT constructors and this collapsed them, which is
+		// how tight-vs-loose list items were lost. Plain is a block-level text run
+		// with no paragraph semantics; Para is a paragraph.
+		block_type = (strcmp(pandoc_type, "Plain") == 0) ? BlockTypes::TYPE_PLAIN : BlockTypes::TYPE_PARAGRAPH;
 		if (c_val) {
 			content = ExtractInlinesTextVal(c_val);
 			inlines_val_p = c_val;
@@ -755,6 +758,11 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 
 	struct ListItem {
 		string content;
+		// A tight item's child is `plain`, a loose item's is `paragraph`. Pandoc
+		// spells that Plain vs Para, so the flag has to survive to the emit below or
+		// the distinction dies on the way out -- which is exactly how it was lost
+		// before `plain` existed.
+		bool tight = true;
 		vector<string> extra_paragraphs;
 		vector<Value> inlines;
 		yyjson_mut_val *nested_list_val = nullptr;
@@ -790,7 +798,8 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 				} else {
 					j++;
 				}
-			} else if (child_type == BlockTypes::TYPE_PARAGRAPH && child_level == list_level + 2 && in_item) {
+			} else if ((child_type == BlockTypes::TYPE_PARAGRAPH || child_type == BlockTypes::TYPE_PLAIN) &&
+			           child_level == list_level + 2 && in_item) {
 				// Two legal item shapes, so accept both. The builders hang the words on
 				// list_item itself; the Pandoc reader emits list_item -> paragraph ->
 				// inlines, because a Pandoc list item holds BLOCKS. Reading only the
@@ -804,6 +813,7 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 				// them, rather than after.
 				auto para_text = GetElementStringField(child, BlockTypes::CONTENT_IDX);
 				if (current_item.content.empty() && current_item.extra_paragraphs.empty()) {
+					current_item.tight = (child_type == BlockTypes::TYPE_PLAIN);
 					current_item.content = para_text;
 				} else {
 					current_item.extra_paragraphs.push_back(para_text);
@@ -863,7 +873,7 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 	for (auto &item : items) {
 		yyjson_mut_val *item_blocks = yyjson_mut_arr(doc);
 		yyjson_mut_val *plain_obj = yyjson_mut_obj(doc);
-		yyjson_mut_obj_add_str(doc, plain_obj, "t", "Plain");
+		yyjson_mut_obj_add_str(doc, plain_obj, "t", item.tight ? "Plain" : "Para");
 
 		if (!item.inlines.empty()) {
 			idx_t inl_end = 0;
@@ -963,9 +973,14 @@ static void ConvertContainerChildrenToPandocVal(yyjson_mut_doc *doc, const vecto
 				}
 			}
 
-			if (child_type == BlockTypes::TYPE_PARAGRAPH) {
+			if (child_type == BlockTypes::TYPE_PARAGRAPH || child_type == BlockTypes::TYPE_PLAIN) {
+				// `plain` rides the paragraph path and differs only in the constructor
+				// emitted. Found by sweeping every container after adding the type
+				// rather than by reasoning about which paths reach it: a `plain` inside
+				// a div, blockquote or figure was DROPPED ENTIRELY, because this branch
+				// tested one type name and the fallthrough consumed the rest.
 				yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
-				yyjson_mut_obj_add_str(doc, para_obj, "t", "Para");
+				yyjson_mut_obj_add_str(doc, para_obj, "t", child_type == BlockTypes::TYPE_PLAIN ? "Plain" : "Para");
 				if (!inline_children.empty()) {
 					idx_t inl_end = 0;
 					yyjson_mut_val *inl_arr = PandocInlineConvert::ConvertDbInlinesToPandocVal(
@@ -1505,6 +1520,28 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			yyjson_mut_arr_add_val(pc_arr, img_obj);
 			yyjson_mut_obj_add_val(doc, para_obj, "c", pc_arr);
 			yyjson_mut_arr_add_val(blocks_arr, para_obj);
+			block_idx++;
+		} else if (element_type == BlockTypes::TYPE_PLAIN) {
+			// Without this branch a `plain` fell to the terminal Para fallback, losing
+			// the very distinction the type exists to carry. Same shape as the deflist
+			// and lineblock gaps found by sweeping the exporter earlier today -- a new
+			// type needs an export branch or it silently becomes something else.
+			yyjson_mut_val *plain_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, plain_obj, "t", "Plain");
+			if (!inline_children.empty()) {
+				idx_t inl_end = 0;
+				yyjson_mut_obj_add_val(
+				    doc, plain_obj, "c",
+				    PandocInlineConvert::ConvertDbInlinesToPandocVal(doc, inline_children, 0, 2, inl_end, 1));
+			} else {
+				yyjson_mut_val *inl_arr = yyjson_mut_arr(doc);
+				yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+				yyjson_mut_obj_add_strncpy(doc, str_obj, "c", content.data(), content.size());
+				yyjson_mut_arr_add_val(inl_arr, str_obj);
+				yyjson_mut_obj_add_val(doc, plain_obj, "c", inl_arr);
+			}
+			yyjson_mut_arr_add_val(blocks_arr, plain_obj);
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_DEFLIST &&
 		           GetElementStringField(block, BlockTypes::ENCODING_IDX) == BlockTypes::ENCODING_JSON &&

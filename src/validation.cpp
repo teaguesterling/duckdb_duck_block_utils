@@ -531,7 +531,7 @@ void ValidationFunctions::DbBlocksStructureFun(DataChunk &args, ExpressionState 
 						max_heading_level = heading_level;
 					if (heading_level < min_heading_level)
 						min_heading_level = heading_level;
-				} else if (element_type == BlockTypes::TYPE_PARAGRAPH) {
+				} else if (element_type == BlockTypes::TYPE_PARAGRAPH || element_type == BlockTypes::TYPE_PLAIN) {
 					paragraph_count++;
 				} else if (element_type == BlockTypes::TYPE_CODE) {
 					code_block_count++;

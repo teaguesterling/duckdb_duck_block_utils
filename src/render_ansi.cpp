@@ -1217,7 +1217,8 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 			if (item_text.empty() && consumed < blocks_list.size()) {
 				auto &next = blocks_list[consumed];
 				if (!next.IsNull() && GetStringField(next, BlockTypes::KIND_IDX) == BlockTypes::KIND_BLOCK &&
-				    GetStringField(next, BlockTypes::ELEMENT_TYPE_IDX) == BlockTypes::TYPE_PARAGRAPH &&
+				    (GetStringField(next, BlockTypes::ELEMENT_TYPE_IDX) == BlockTypes::TYPE_PARAGRAPH ||
+				     GetStringField(next, BlockTypes::ELEMENT_TYPE_IDX) == BlockTypes::TYPE_PLAIN) &&
 				    GetDepth(next) == item_level + 1) {
 					item_text = GetStringField(next, BlockTypes::CONTENT_IDX);
 					idx_t inl = consumed + 1;
@@ -1272,7 +1273,10 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 			RenderBlockquote(text, width, theme, lines);
 		} else if (element_type == BlockTypes::TYPE_HEADING) {
 			RenderHeading(text, GetAttribute(block, "heading_level"), width, theme, lines);
-		} else if (element_type == BlockTypes::TYPE_PARAGRAPH) {
+		} else if (element_type == BlockTypes::TYPE_PARAGRAPH || element_type == BlockTypes::TYPE_PLAIN) {
+			// `plain` renders exactly as a paragraph -- it differs in MEANING and in what
+			// it exports to, not in how it looks. A tight list item's text is a `plain`
+			// since spec 4.0, so omitting it here silently emptied every tight bullet.
 			RenderParagraph(text, width, lines);
 		} else if (element_type == BlockTypes::TYPE_CODE) {
 			RenderCode(content, GetAttribute(block, "language"), theme, lines);

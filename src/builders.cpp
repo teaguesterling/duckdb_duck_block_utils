@@ -510,6 +510,23 @@ void BuilderFunctions::DbHeadingV2Fun(DataChunk &args, ExpressionState &state, V
 	}
 }
 
+// A block-level text run with no paragraph semantics -- Pandoc's `Plain`, HTML text
+// not wrapped in a <p>. Readers emit this type, so builders must be able to produce
+// it: a type one side can emit and the other cannot is the asymmetry that gave
+// `list` three shapes.
+void BuilderFunctions::DbPlainV2Fun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &content_vec = args.data[0];
+	auto count = args.size();
+
+	for (idx_t i = 0; i < count; i++) {
+		auto content = content_vec.GetValue(i);
+		auto parent = CreateBlockWithNullContent(BlockTypes::TYPE_PLAIN, BlockTypes::KIND_BLOCK, Value(1),
+		                                         BlockTypes::ENCODING_TEXT, {});
+		auto result_list = BuildWithContent(parent, content, 1);
+		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
+	}
+}
+
 void BuilderFunctions::DbParagraphV2Fun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto &content_vec = args.data[0];
 	auto count = args.size();
@@ -1028,6 +1045,24 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 		    }
 	    }));
 
+	// duck_block_plain(LIST(LIST(duck_block))) -> LIST(duck_block)
+	// Mirrors the paragraph overload above: rich inline content in a block-level run
+	// that carries no paragraph semantics.
+	loader.RegisterFunction(ScalarFunction(
+	    "duck_block_plain", {duck_block_nested_list_type}, duck_block_list_type,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &nested_vec = args.data[0];
+		    auto count = args.size();
+		    for (idx_t i = 0; i < count; i++) {
+			    auto nested_list = nested_vec.GetValue(i);
+			    auto flat_children = FlattenNestedList(nested_list);
+			    auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			        BlockTypes::TYPE_PLAIN, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, {});
+			    auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
+			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		    }
+	    }));
+
 	// duck_block_paragraph(VARCHAR[]) -> LIST(duck_block)
 	// Converts each string to a duck_block_text inline element (Issue #4)
 	loader.RegisterFunction(ScalarFunction(
@@ -1155,6 +1190,10 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 	// V2: Returns LIST instead of single duck_block
 	loader.RegisterFunction(
 	    ScalarFunction("duck_block_paragraph", {LogicalType::VARCHAR}, duck_block_list_type, DbParagraphV2Fun));
+	loader.RegisterFunction(
+	    ScalarFunction("duck_block_plain", {LogicalType::VARCHAR}, duck_block_list_type, DbPlainV2Fun));
+	loader.RegisterFunction(
+	    ScalarFunction("duck_block_plain", {duck_block_list_type}, duck_block_list_type, DbPlainV2Fun));
 
 	// duck_block_code(language VARCHAR, content VARCHAR) -> LIST(duck_block)
 	loader.RegisterFunction(ScalarFunction("duck_block_code", {LogicalType::VARCHAR, LogicalType::VARCHAR},
