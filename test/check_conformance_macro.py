@@ -250,6 +250,76 @@ def main() -> int:
         print("      an extra one makes it accept data the build rejects.")
         return 1
     print(f"  the file's embedded encoding list matches the build ({len(eb)} values)")
+
+    # THE ADVISORY RULES, compared by WHICH ELEMENTS they flag rather than by message
+    # wording -- the two implementations phrase things differently and always will, and
+    # comparing prose would make this brittle in the direction that gets it muted.
+    #
+    # Added because webbed asked whether the content rule applies to `figure` as well as
+    # `list_item` (it does, universally) and the vendorable file had no way to say so:
+    # validity accepted both shapes, so a producer who cannot load the extension had no
+    # instrument expressing the preference at all.
+    lint_docs = [
+        (
+            "lone plain under a figure",
+            "[{'kind':'block','element_type':'figure','content':NULL,'level':1,'encoding':'text',"
+            "'attributes':MAP{},'element_order':0}::duck_block,"
+            "{'kind':'block','element_type':'plain','content':'t','level':2,'encoding':'text',"
+            "'attributes':MAP{},'element_order':1}::duck_block]",
+        ),
+        (
+            "legitimate plain beside a sibling",
+            "[{'kind':'block','element_type':'section','content':NULL,'level':1,'encoding':'text',"
+            "'attributes':MAP{},'element_order':0}::duck_block,"
+            "{'kind':'block','element_type':'plain','content':'Lead','level':2,'encoding':'text',"
+            "'attributes':MAP{},'element_order':1}::duck_block,"
+            "{'kind':'block','element_type':'heading','content':'H','level':2,'encoding':'text',"
+            "'attributes':MAP{'heading_level':'2'},'element_order':2}::duck_block]",
+        ),
+        (
+            "pre-native table",
+            "[{'kind':'block','element_type':'table','content':'[[\"h\"]]','level':1,'encoding':'json',"
+            "'attributes':MAP{},'element_order':0}::duck_block]",
+        ),
+        (
+            "deflist",
+            "[{'kind':'block','element_type':'deflist','content':'x','level':1,"
+            "'encoding':'text','attributes':MAP{},'element_order':0}::duck_block]",
+        ),
+        (
+            "undeclared type",
+            "[{'kind':'block','element_type':'frontmatter','content':'x','level':1,"
+            "'encoding':'yaml','attributes':MAP{},'element_order':0}::duck_block]",
+        ),
+        ("clean document", "pandoc_ast_to_blocks('[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"x\"}]}]')"),
+    ]
+    for name, doc in lint_docs:
+        ext = subprocess.run(
+            [
+                str(duckdb),
+                "-noheader",
+                "-list",
+                "-c",
+                f"SELECT DISTINCT w.element_order FROM (SELECT unnest(duck_blocks_lint({doc})) AS w) ORDER BY 1;",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        sql = subprocess.run(
+            [str(duckdb), "-noheader", "-list"],
+            input=MACROS.read_text() + f"\nSELECT DISTINCT element_order FROM duck_blocks_warnings({doc}) ORDER BY 1;",
+            capture_output=True,
+            text=True,
+        )
+        a = {x.strip() for x in ext.stdout.split() if x.strip()}
+        b = {x.strip() for x in sql.stdout.split() if x.strip()}
+        if a != b:
+            print(f"\nFAIL: advisory rules disagree on `{name}`.")
+            print(f"      extension flags element_order {sorted(a) or 'none'};" f" SQL flags {sorted(b) or 'none'}")
+            print("      A producer who cannot load the extension gets the SQL answer and no")
+            print("      way to know it differs -- which is the whole reason these rules exist.")
+            return 1
+    print(f"  advisory rules agree on {len(lint_docs)} documents, including a clean one")
     failed = False
     for row in rows:
         name, ext, mac = (p.strip() for p in row.split("|"))
