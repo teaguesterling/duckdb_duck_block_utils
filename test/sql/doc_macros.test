@@ -260,3 +260,86 @@ query I
 SELECT content LIKE '%' || chr(10) || '%' FROM duck_blocks_sections_like((SELECT b FROM sepdoc), 'here', 'text');
 ----
 true
+
+# ============================================================================
+# THE PAGE AXIS, which exists so that pages are queryable WITHOUT being headings.
+#
+# duckeye synthesised `## Page N` headings for exactly one reason: a heading was
+# the only thing that showed up in an outline. That put physical pagination into
+# the semantic structure, where duck_blocks_toc_rows then listed pages as sections.
+# These macros give pages their own surface so the outline can ignore them.
+# ============================================================================
+
+statement ok
+CREATE TEMP TABLE pagedoc AS SELECT [
+  {'kind':'block','element_type':'page_break','content':NULL,'level':1,'encoding':'text','attributes':MAP{'page_number':'1'},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'alpha','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'page_break','content':NULL,'level':1,'encoding':'text','attributes':MAP{'page_number':'2'},'element_order':2}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'beta','level':1,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block,
+  {'kind':'block','element_type':'heading','content':'H','level':1,'encoding':'text','attributes':MAP{'heading_level':'1'},'element_order':4}::duck_block,
+  {'kind':'block','element_type':'page_break','content':NULL,'level':1,'encoding':'text','attributes':MAP{'page_number':'3'},'element_order':5}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'gamma','level':1,'encoding':'text','attributes':MAP{},'element_order':6}::duck_block
+] AS b;
+
+query III
+SELECT page_number, start_order, block_count FROM duck_blocks_page_rows((SELECT b FROM pagedoc));
+----
+1	0	2
+2	2	3
+3	5	2
+
+# A range, which is what `duckeye -P 1-2` needs.
+# The newlines are collapsed because a blank line ENDS a sqllogictest result block,
+# so a multi-line value cannot be written literally here. Collapsing to a visible
+# separator keeps the blank-line separation assertable rather than dropping it --
+# `alpha|||beta` distinguishes correct output from `alphabeta` concatenation, which
+# a words-survive assertion would not.
+query I
+SELECT replace(duck_blocks_get_pages((SELECT b FROM pagedoc), 1, 2), chr(10), '|');
+----
+alpha||beta||H
+
+query I
+SELECT replace(duck_blocks_get_pages((SELECT b FROM pagedoc), 3, 3), chr(10), '|');
+----
+gamma
+
+# DISCRIMINATING, and the whole point of the type: the outline must contain the
+# heading and NOT the three pages. An assertion that pages are listed somewhere
+# would pass just as well if they were listed in the table of contents, which is
+# the defect this replaces.
+query I
+SELECT count(*) FROM duck_blocks_toc_rows((SELECT b FROM pagedoc));
+----
+1
+
+# A break with no page_number takes its ordinal position.
+query II
+SELECT page_number, start_order FROM duck_blocks_page_rows([
+  {'kind':'block','element_type':'page_break','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'a','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'page_break','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block]);
+----
+1	0
+2	2
+
+# Content before the first break belongs to no page: listed with a NULL number so
+# it is never invisible, and not selectable by number.
+query II
+SELECT page_number IS NULL, start_order FROM duck_blocks_page_rows([
+  {'kind':'block','element_type':'paragraph','content':'preamble','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'page_break','content':NULL,'level':1,'encoding':'text','attributes':MAP{'page_number':'1'},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'p1','level':1,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block])
+ORDER BY start_order;
+----
+true	0
+false	1
+
+# A document with NO page_break has no pages -- zero rows, not one implicit page.
+# "No page information" is a different fact from "one page", and inventing the
+# second would be structure the source never carried.
+query I
+SELECT count(*) FROM duck_blocks_page_rows([
+  {'kind':'block','element_type':'paragraph','content':'only','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block]);
+----
+0

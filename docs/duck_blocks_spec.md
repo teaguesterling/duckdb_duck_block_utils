@@ -214,6 +214,32 @@ though they were sections.
 Pandoc has no page constructor, so it exports as `Div` with class `page` carrying
 `page_number`.
 
+**The page axis is queried separately from the heading axis**, which is what makes
+ignoring it in the outline affordable rather than lossy:
+
+```
+duck_blocks_page_rows(blocks)               -> page_number, start_order, end_order, block_count
+duck_blocks_get_pages(blocks, first, last)  -> the blocks of that page range
+```
+
+A reader asking for the outline never sees pages; a reader asking for pages gets them.
+That separation is the whole reason a synthesised `## Page N` heading is the wrong
+answer — it is a page forced through the only surface that existed.
+
+Semantics, because `page_number` was ambiguous until it was written down:
+
+- **A `page_break` marks the START of the page it names.** Its
+  `attributes['page_number']` labels the page BEGINNING there, not the one ending.
+  The break for page N+1 is what ends page N — which is the question a heading
+  structurally cannot answer, and the reason the type exists.
+- **`page_number` is optional**; without it a break takes its ordinal position.
+- **Content before the first break belongs to no page.** It is listed with a NULL
+  `page_number` so it is never invisible, and it is not selectable by number.
+- **A document with no `page_break` has no pages, and reports zero rows** rather than
+  one implicit page. "This document has no page information" is a different fact from
+  "this document is one page", and inventing the second would be structure the source
+  never carried.
+
 ### `figure` and `caption`
 
 ```

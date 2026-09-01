@@ -107,6 +107,44 @@ static const DefaultMacro DOC_SCALAR_MACROS[] = {
      "        )\n"
      "    ][1]\n"
      ")"},
+    {DEFAULT_SCHEMA,
+     "duck_blocks_get_pages",
+     {"blocks", "first_page", "last_page", nullptr},
+     {{"output_format", "'text'"}, {nullptr, nullptr}},
+     "(\n"
+     "    [\n"
+     "        (\n"
+     "            SELECT CASE lower(output_format)\n"
+     "                       WHEN 'text'   THEN duck_blocks_to_text(sliced)\n"
+     "                       WHEN 'ansi'   THEN duck_blocks_render_ansi(sliced)\n"
+     "                       WHEN 'blocks' THEN to_json(sliced)::VARCHAR\n"
+     "                       WHEN 'pandoc' THEN to_json(duck_blocks_to_pandoc_ast(sliced))::VARCHAR\n"
+     "                       ELSE error('duck_blocks_get_pages: unsupported output_format ' ||\n"
+     "                                  coalesce(output_format, 'NULL') ||\n"
+     "                                  '; expected text, ansi, blocks or pandoc')\n"
+     "                   END\n"
+     "            FROM (\n"
+     "                WITH doc AS (SELECT blocks AS b),\n"
+     "         brk AS (SELECT e.element_order AS ord,\n"
+     "                        try_cast(e.attributes['page_number'] AS INTEGER) AS num\n"
+     "                 FROM (SELECT unnest(b) AS e FROM doc)\n"
+     "                 WHERE e.kind = 'block' AND e.element_type = 'page_break'),\n"
+     "         numbered AS (SELECT ord, coalesce(num, (row_number() OVER (ORDER BY ord))::INTEGER)\n"
+     "                             AS page_number FROM brk),\n"
+     "         span AS (SELECT page_number, ord AS s,\n"
+     "                         coalesce(lead(ord) OVER (ORDER BY ord) - 1, 2147483647) AS e\n"
+     "                  FROM numbered\n"
+     "                  UNION ALL\n"
+     "                  SELECT NULL::INTEGER, 0, ((SELECT min(ord) FROM brk) - 1)::INTEGER\n"
+     "                  WHERE (SELECT min(ord) FROM brk) > 0)\n"
+     "                SELECT duck_blocks_slice(doc.b, sel.s, sel.e) AS sliced\n"
+     "                FROM doc, (SELECT min(s) AS s, max(e) AS e FROM span\n"
+     "                           WHERE page_number BETWEEN first_page AND last_page) AS sel\n"
+     "                WHERE sel.s IS NOT NULL\n"
+     "            )\n"
+     "        )\n"
+     "    ][1]\n"
+     ")"},
     {nullptr, nullptr, {nullptr}, {{nullptr, nullptr}}, nullptr}};
 
 static const DefaultTableMacro DOC_TABLE_MACROS[] = {
@@ -120,6 +158,29 @@ static const DefaultTableMacro DOC_TABLE_MACROS[] = {
      "           (toc).indent AS indent,\n"
      "           (toc).element_order AS element_order\n"
      "    FROM (SELECT unnest(duck_blocks_toc(blocks)) AS toc)"},
+    {DEFAULT_SCHEMA,
+     "duck_blocks_page_rows",
+     {"blocks", nullptr},
+     {{nullptr, nullptr}},
+     "WITH doc AS (SELECT blocks AS b),\n"
+     "         brk AS (SELECT e.element_order AS ord,\n"
+     "                        try_cast(e.attributes['page_number'] AS INTEGER) AS num\n"
+     "                 FROM (SELECT unnest(b) AS e FROM doc)\n"
+     "                 WHERE e.kind = 'block' AND e.element_type = 'page_break'),\n"
+     "         numbered AS (SELECT ord, coalesce(num, (row_number() OVER (ORDER BY ord))::INTEGER)\n"
+     "                             AS page_number FROM brk),\n"
+     "         span AS (SELECT page_number, ord AS s,\n"
+     "                         coalesce(lead(ord) OVER (ORDER BY ord) - 1, 2147483647) AS e\n"
+     "                  FROM numbered\n"
+     "                  UNION ALL\n"
+     "                  SELECT NULL::INTEGER, 0, ((SELECT min(ord) FROM brk) - 1)::INTEGER\n"
+     "                  WHERE (SELECT min(ord) FROM brk) > 0)\n"
+     "    SELECT span.page_number AS page_number,\n"
+     "           span.s AS start_order,\n"
+     "           span.e AS end_order,\n"
+     "           len(duck_blocks_slice(doc.b, span.s, span.e)) AS block_count\n"
+     "    FROM doc, span\n"
+     "    ORDER BY span.s"},
     {DEFAULT_SCHEMA,
      "duck_blocks_sections_like",
      {"blocks", "query_term", nullptr},
