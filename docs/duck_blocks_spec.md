@@ -81,23 +81,24 @@ with the type names.
 **`level` is the same rule for every type**, and the column below says it per row
 only because the table predates the rule being stated: a TOP-LEVEL element carries
 NULL, and a child carries its parent's effective depth + 1, where NULL reads as
-depth 1. So a top-level container is NULL, its children are 2, its grandchildren 3.
-A container and a leaf sitting side by side at top level both carry NULL — depth is
-not a property of being a container.
+depth 1. So a top-level container is 1, its children 2, its grandchildren 3. A
+container and a leaf sitting side by side at top level both carry 1 — depth is not
+a property of being a container.
 
-Children start at 2 rather than 1 for a concrete reason: NULL and 1 both resolve to
-depth 1, so a child at 1 under a NULL parent is indistinguishable from its parent's
-sibling. Consumers that express containment through `level` close the container
-before the child renders. That is not hypothetical — it is a live defect in the
-portfolio, and `duck_blocks_lint()` now reports it.
+Spec 1.x and 2.0 documented a NULL at top level. That convention was never
+approved and is removed in 3.0: NULL and 1 both resolved to depth 1, so a child at
+1 under a NULL parent was indistinguishable from its parent's sibling, and
+consumers expressing containment through `level` closed the container before the
+child rendered. That was a live defect in the portfolio. `duck_blocks_validate()`
+now rejects a NULL level outright.
 
 | Type | Description | level Usage | encoding Values | Key Attributes |
 |------|-------------|-------------|-----------------|----------------|
-| `heading` | Section heading | NULL | `text` | `heading_level` (1-6) |
+| `heading` | Section heading | depth (top level 1) | `text` | `heading_level` (1-6) |
 | `paragraph` | Text paragraph | NULL | `text`, `markdown` | |
 | `code` | Code block | NULL | `text` | `language` |
-| `blockquote` | Quoted content | NULL at top level | — (container) | |
-| `list` | List container | NULL at top level | — (container) | `list_type`, and for ordered `start`, `number_style`, `number_delim` |
+| `blockquote` | Quoted content | depth (top level 1) | — (container) | |
+| `list` | List container | depth (top level 1) | — (container) | `list_type`, and for ordered `start`, `number_style`, `number_delim` |
 | `list_item` | List item | parent `list` + 1 | — (container) | |
 | `deflist` | Definition list | NULL | `json` | |
 | `lineblock` | Preserved line breaks | NULL | `text` (lines joined with `\n`) | |
@@ -105,11 +106,11 @@ portfolio, and `duck_blocks_lint()` now reports it.
 | `hr` | Horizontal rule | NULL | `text` | |
 | `page_break` | **Physical** page boundary — a marker, not a container | NULL | `text` | `page_number` |
 | `metadata` | YAML frontmatter | 0 | `yaml` | |
-| `image` | Block-level image | NULL | `text` | `src`, `alt`, `title` |
+| `image` | Block-level image | depth (top level 1) | `text` | `src`, `alt`, `title` |
 | `raw` | Raw content in a *named* format | NULL | format name | `format` |
-| `div` | Generic container | NULL at top level | — (container) | `id`, `class` |
-| `section` | **Semantic** sectioning container | NULL at top level | — (container) | `role`, `id`, `class` |
-| `figure` | Figure: content plus a caption | NULL at top level | — (container) | `id`, `class` |
+| `div` | Generic container | depth (top level 1) | — (container) | `id`, `class` |
+| `section` | **Semantic** sectioning container | depth (top level 1) | — (container) | `role`, `id`, `class` |
+| `figure` | Figure: content plus a caption | depth (top level 1) | — (container) | `id`, `class` |
 | `caption` | Caption belonging to the container before it | parent + 1 | — (container) | `short_caption` |
 | `generic` | Structurally valid, type not in this vocabulary | NULL | `json` | `source_type` |
 
@@ -344,14 +345,43 @@ duck_block_bold([duck_block_text('text')])
 
 ### Level Field Semantics
 
-The `level` field represents **structural nesting depth**, not semantic level:
+**Every element carries an explicit `level`. There are no NULLs, and there are no
+per-type exceptions.**
 
-- **For inlines**: `level = 1` is top-level, `level = N` is nested N levels deep
-- **For blockquotes**: nesting depth (1 = single quote, 2 = nested quote)
-- **For headings**: NULL (semantic level is in `attributes['heading_level']`)
-- **For other blocks**: typically NULL
+`level` is depth in a DEPTH-FIRST ordering of the document tree. Top level is 1;
+a child is its parent's level + 1; siblings share a level. Together, `level` and
+adjacency describe the entire tree — that is the whole reason the field exists, and
+why it cannot be optional. An element without a level cannot be placed.
 
-Children of a container at level N are at level N+1. Siblings share the same level.
+```
+heading      1
+paragraph    1
+  text       2
+  bold       2
+    text     3
+blockquote   1
+  paragraph  2
+    text     3
+list         1
+  list_item  2
+    paragraph 3
+```
+
+Inlines are children of their block like anything else — a `bold` inside a
+top-level paragraph is at 2, not 1. Blocks and inlines share ONE scale. They used
+to be described as separate scales, which is what let a container and its child
+resolve to the same depth and collapse.
+
+**`level` is never semantic.** It does not encode quote nesting, list nesting, or
+heading rank. A semantic level lives in an attribute beside it: a top-level `h2`
+is `level` 1 with `attributes['heading_level']` = 2, and the two numbers are
+independent. A consumer needing quote or list nesting depth counts containers by
+walking the structure rather than reading it off this number.
+
+`duck_blocks_validate()` enforces this: a NULL level, a level below 1, or a level
+that jumps by more than one from the previous element are all errors. The jump is
+an error because depth-first ordering descends one at a time, so a jump means the
+element's parent is not in the list and the tree cannot be reconstructed.
 
 ### Element Order Field Semantics
 
@@ -496,7 +526,7 @@ A duck_block is **canonical** if:
 1. `kind` is `'block'`
 2. `element_type` is a recognized block type (or custom type with `x-` prefix)
 3. `element_order` is non-negative integer
-4. `level` is NULL for headings (heading level is in attributes)
+4. `level` is the element's structural depth; the heading's semantic rank is in `attributes['heading_level']`
 5. For headings: `attributes['heading_level']` is '1'-'6'
 6. `encoding` matches content format
 7. `attributes` keys are valid identifiers
@@ -520,13 +550,15 @@ Extensions can use this macro to validate duck_blocks without depending on duck_
 CREATE OR REPLACE MACRO duck_block_is_valid(elem) AS (
     elem.kind IN ('block', 'inline')
     AND elem.element_type IS NOT NULL
+    AND elem.level >= 1        -- explicit structural depth, never NULL
     AND elem.element_order >= 0
     AND (
         elem.kind != 'block'
         OR elem.element_type != 'heading'
         OR (
-            -- For headings: level should be NULL and heading_level attribute should be 1-6
-            (elem.level IS NULL OR elem.level BETWEEN 1 AND 6)  -- Allow level for backward compat
+            -- A heading carries BOTH: `level` is its structural depth in the tree,
+            -- heading_level its semantic rank. They are independent numbers.
+            elem.level >= 1
             AND (elem.attributes['heading_level'] IS NULL
                  OR elem.attributes['heading_level']::INTEGER BETWEEN 1 AND 6)
         )

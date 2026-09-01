@@ -42,10 +42,9 @@ true
 # duck_blocks_lint Tests
 # ============================================================================
 
-# The builders and pandoc_ast_to_blocks() now agree: a top-level block carries a
-# NULL level. This assertion previously pinned the divergence between them as a
-# known defect; the flatten/assemble/build paths were normalised, so it is gone
-# and a builder-made document lints clean.
+# The builders and pandoc_ast_to_blocks() agree on levels: every element carries
+# an explicit depth, top level 1, children parent+1. This assertion previously
+# pinned a divergence between them.
 query I
 SELECT len(duck_blocks_lint(duck_blocks_assemble([
     duck_block_heading(1, 'Title'),
@@ -58,7 +57,7 @@ SELECT len(duck_blocks_lint(duck_blocks_assemble([
 # a spec-conformant heading -- level NULL -- warns about nothing
 query I
 SELECT len(duck_blocks_lint([
-  {'kind':'block','element_type':'heading','content':'H','level':NULL,'encoding':'text',
+  {'kind':'block','element_type':'heading','content':'H','level':1,'encoding':'text',
    'attributes':MAP{'heading_level':'1'},'element_order':0}::duck_block]));
 ----
 0
@@ -262,8 +261,8 @@ SELECT duck_blocks_structure(duck_blocks_assemble([
 
 query I
 SELECT count(*) FROM (SELECT unnest(duck_blocks_lint([
-  {'kind':'block','element_type':'blockquote','content':NULL,'level':NULL,'encoding':'text','attributes':MAP{},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER),
-  {'kind':'block','element_type':'paragraph','content':'A block quote.','level':NULL,'encoding':'text','attributes':MAP{},'element_order':1}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])) AS w)
+  {'kind':'block','element_type':'blockquote','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER),
+  {'kind':'block','element_type':'paragraph','content':'A block quote.','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])) AS w)
 WHERE w.message LIKE '%owns no children%';
 ----
 1
@@ -274,8 +273,8 @@ WHERE w.message LIKE '%owns no children%';
 # defect. The property is that the STRUCTURAL warning appears.
 query I
 SELECT count(*) > 0 FROM (SELECT unnest(duck_blocks_lint([
-  {'kind':'block','element_type':'blockquote','content':NULL,'level':NULL,'encoding':'text','attributes':MAP{},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER),
-  {'kind':'block','element_type':'paragraph','content':'x','level':NULL,'encoding':'text','attributes':MAP{},'element_order':1}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])) AS w)
+  {'kind':'block','element_type':'blockquote','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER),
+  {'kind':'block','element_type':'paragraph','content':'x','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])) AS w)
 WHERE w.severity = 'warning' AND w.message LIKE '%SIBLING%';
 ----
 true
@@ -315,7 +314,7 @@ SELECT (SELECT count(*) FROM (SELECT unnest(duck_blocks_lint(duck_block_blockquo
 # An element with neither content nor children must still be reported.
 query I
 SELECT count(*) FROM (SELECT unnest(duck_blocks_lint([
-  {'kind':'block','element_type':'paragraph','content':NULL,'level':NULL,'encoding':'text','attributes':MAP{},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])) AS w)
+  {'kind':'block','element_type':'paragraph','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])) AS w)
 WHERE w.message LIKE '%no content and no children%';
 ----
 1
@@ -325,8 +324,57 @@ WHERE w.message LIKE '%no content and no children%';
 query II
 SELECT count(*) FILTER (WHERE w.severity = 'warning'), count(*) FILTER (WHERE w.severity = 'info')
 FROM (SELECT unnest(duck_blocks_lint([
-  {'kind':'block','element_type':'list_item','content':'bullet one','level':NULL,'encoding':'text','attributes':MAP{},'element_order':12}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER),
-  {'kind':'block','element_type':'blockquote','content':NULL,'level':NULL,'encoding':'text','attributes':MAP{},'element_order':14}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER),
-  {'kind':'block','element_type':'paragraph','content':'A block quote.','level':NULL,'encoding':'text','attributes':MAP{},'element_order':15}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])) AS w);
+  {'kind':'block','element_type':'list_item','content':'bullet one','level':1,'encoding':'text','attributes':MAP{},'element_order':12}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER),
+  {'kind':'block','element_type':'blockquote','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':14}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER),
+  {'kind':'block','element_type':'paragraph','content':'A block quote.','level':1,'encoding':'text','attributes':MAP{},'element_order':15}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])) AS w);
 ----
 2	1
+
+# ============================================================================
+# LEVEL IS VALIDATED. `level` and adjacency together describe the entire document
+# tree, so a malformed level does not degrade the structure -- it destroys it.
+#
+# Nothing checked this until spec 3.0, which is exactly how a NULL-at-top-level
+# convention could be introduced here and propagate to four extensions without
+# anything objecting. NULL, 0, -5 and a 1 -> 3 jump with no parent ALL returned
+# valid:true.
+# ============================================================================
+
+query IIII
+SELECT (duck_blocks_validate([{'kind':'block','element_type':'paragraph','content':'x','level':NULL,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block])).valid,
+       (duck_blocks_validate([{'kind':'block','element_type':'paragraph','content':'x','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block])).valid,
+       (duck_blocks_validate([{'kind':'block','element_type':'paragraph','content':'x','level':-5,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block])).valid,
+       (duck_blocks_validate([
+         {'kind':'block','element_type':'paragraph','content':'a','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+         {'kind':'block','element_type':'paragraph','content':'b','level':3,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block])).valid;
+----
+false	false	false	false
+
+# DISCRIMINATING: each names `level` as the offending field, so a validator that
+# happened to reject these for some other reason would not pass.
+query IIII
+SELECT (duck_blocks_validate([{'kind':'block','element_type':'paragraph','content':'x','level':NULL,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block])).errors[1].field,
+       (duck_blocks_validate([{'kind':'block','element_type':'paragraph','content':'x','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block])).errors[1].field,
+       (duck_blocks_validate([{'kind':'block','element_type':'paragraph','content':'x','level':-5,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block])).errors[1].field,
+       (duck_blocks_validate([
+         {'kind':'block','element_type':'paragraph','content':'a','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+         {'kind':'block','element_type':'paragraph','content':'b','level':3,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block])).errors[1].field;
+----
+level	level	level	level
+
+# Conforming output from BOTH producers stays valid -- the rules must not reject
+# what this extension itself emits.
+query II
+SELECT (duck_blocks_validate(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BlockQuote","c":[{"t":"Para","c":[{"t":"Str","c":"q"}]}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"i"}]}]]}]}'))).valid,
+       (duck_blocks_validate(duck_blocks_assemble([duck_block_heading(1,'T'), duck_block_list(['a']), duck_block_blockquote('q')]))).valid;
+----
+true	true
+
+# Descending one at a time is legal to any depth; only a JUMP is an error.
+query I
+SELECT (duck_blocks_validate([
+  {'kind':'block','element_type':'div','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'blockquote','content':NULL,'level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'deep','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block])).valid;
+----
+true

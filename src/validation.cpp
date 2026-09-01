@@ -92,6 +92,8 @@ void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &
 		auto &blocks_list = ListValue::GetChildren(blocks_val);
 		vector<Value> errors;
 		std::set<int32_t> seen_orders;
+		// Depth of the previous element, for the descend-by-one rule below.
+		int32_t prev_level = 0;
 
 		for (auto &block : blocks_list) {
 			if (block.IsNull()) {
@@ -102,6 +104,50 @@ void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &
 			auto kind = GetElementStringField(block, BlockTypes::KIND_IDX);
 			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
 			auto encoding = GetElementStringField(block, BlockTypes::ENCODING_IDX);
+
+			// LEVEL. `level` and adjacency together describe the entire document tree,
+			// so a malformed level does not degrade the structure -- it destroys it.
+			// Nothing checked this until 2026-08-31, which is precisely why a
+			// NULL-at-top-level convention could be introduced here and propagate to
+			// four extensions without anything objecting. NULL, 0, -5 and a 1 -> 3 jump
+			// with no parent all returned valid:true.
+			{
+				auto &lvl_children = StructValue::GetChildren(block);
+				const bool level_null =
+				    BlockTypes::LEVEL_IDX >= lvl_children.size() || lvl_children[BlockTypes::LEVEL_IDX].IsNull();
+				if (level_null) {
+					child_list_t<Value> error_values;
+					error_values.push_back(make_pair("element_order", Value(element_order)));
+					error_values.push_back(make_pair("field", Value("level")));
+					error_values.push_back(make_pair(
+					    "message", Value("level is NULL; every element carries an explicit structural depth")));
+					errors.push_back(Value::STRUCT(std::move(error_values)));
+				} else {
+					const int32_t lvl = lvl_children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+					if (lvl < 1) {
+						child_list_t<Value> error_values;
+						error_values.push_back(make_pair("element_order", Value(element_order)));
+						error_values.push_back(make_pair("field", Value("level")));
+						error_values.push_back(make_pair(
+						    "message", Value("level " + std::to_string(lvl) + " is below 1; top level is 1")));
+						errors.push_back(Value::STRUCT(std::move(error_values)));
+					} else if (prev_level > 0 && lvl > prev_level + 1) {
+						// Depth-first ordering descends one level at a time. A jump means
+						// the parent this element claims is not in the list, so the tree
+						// cannot be reconstructed from level and adjacency.
+						child_list_t<Value> error_values;
+						error_values.push_back(make_pair("element_order", Value(element_order)));
+						error_values.push_back(make_pair("field", Value("level")));
+						error_values.push_back(
+						    make_pair("message", Value("level jumps from " + std::to_string(prev_level) + " to " +
+						                               std::to_string(lvl) +
+						                               "; depth-first ordering descends one at a time, "
+						                               "so this element's parent is missing")));
+						errors.push_back(Value::STRUCT(std::move(error_values)));
+					}
+					prev_level = lvl;
+				}
+			}
 
 			// Check kind is valid
 			if (!kind.empty() && VALID_KINDS.find(kind) == VALID_KINDS.end()) {
@@ -295,20 +341,16 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				// every one of them using the documented field name. Names alone are
 				// not a specification.
 				//
-				// This is a WARNING rather than a validation error because this
-				// extension's own duck_block_heading() sets level on headings while
-				// pandoc_ast_to_blocks() leaves it NULL, so the two disagree today.
-				// Failing validation would reject documents built with the builders.
-				auto &heading_children = StructValue::GetChildren(block);
-				if (!heading_children[BlockTypes::LEVEL_IDX].IsNull() && !heading_level_str.empty()) {
-					child_list_t<Value> warning_values;
-					warning_values.push_back(make_pair("severity", Value("warning")));
-					warning_values.push_back(make_pair(
-					    "message", Value("heading sets both `level` and attributes['heading_level']; `level` is "
-					                     "structural nesting depth and should be NULL on headings")));
-					warning_values.push_back(make_pair("element_order", Value(element_order)));
-					warnings.push_back(Value::STRUCT(std::move(warning_values)));
-				}
+				// A heading carrying BOTH is CORRECT and required, not a conflict. The
+				// two numbers are independent: `level` is the heading's structural depth
+				// in the document tree, attributes['heading_level'] is its semantic rank
+				// (h1..h6). A top-level h2 is level 1 with heading_level 2.
+				//
+				// This used to WARN on exactly that, telling producers `level` "should be
+				// NULL on headings". That rule encoded the NULL-at-top-level convention
+				// which was never approved, and it flagged conforming data as suspect --
+				// a linter arguing against the spec it exists to enforce. Removed rather
+				// than inverted: there is nothing to warn about here.
 			}
 
 			// `generic` exists to make an unmapped construct VISIBLE. Without

@@ -127,7 +127,7 @@ static string GetElementType(const Value &element) {
 // the builders had correctly left NULL, so assembly silently undid the fix.
 static Value CreateElementWithLevel(const Value &element, int32_t new_level) {
 	auto children = StructValue::GetChildren(element);
-	children[BlockTypes::LEVEL_IDX] = (new_level <= 1) ? Value() : Value(new_level);
+	children[BlockTypes::LEVEL_IDX] = Value(new_level);
 	return Value::STRUCT(BlockTypes::DuckBlockType(), std::move(children));
 }
 

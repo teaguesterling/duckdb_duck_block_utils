@@ -58,11 +58,9 @@ Value BuilderFunctions::CreateBlockWithNullContent(const string &block_type, con
 	// each call site because three separate places were stamping 1 -- the
 	// flattener, assembly, and every v2 builder -- so a fix in one was silently
 	// undone by the next. Inlines are unaffected: they legitimately start at 1.
-	const Value normalised_level = (kind == BlockTypes::KIND_BLOCK && !level.IsNull() && level.GetValue<int32_t>() <= 1)
-	                                   ? Value(LogicalType::INTEGER) // TYPED null: this struct is built without an
-	                                                                 // explicit type, so an untyped Value() makes the
-	                                                                 // level field SQLNULL and crashes the binder
-	                                   : level;
+	// Every element carries an EXPLICIT level -- see the note on BuildWithContent.
+	// A NULL arriving here means "unspecified", which for a block is depth 1.
+	const Value normalised_level = (kind == BlockTypes::KIND_BLOCK && level.IsNull()) ? Value(1) : level;
 	struct_values.push_back(make_pair("level", normalised_level));
 	struct_values.push_back(make_pair("encoding", Value(encoding)));
 	struct_values.push_back(make_pair("attributes", CreateAttributesMap(attributes)));
@@ -85,10 +83,12 @@ vector<Value> BuilderFunctions::BuildWithContent(const Value &parent_block, cons
 
 	// Get parent block children for modification
 	auto parent_children = StructValue::GetChildren(parent_block);
-	// Top level means NULL: `level` is structural nesting depth. Children below
-	// still start at base_level + 1, which is computed from base_level rather
-	// than from what is stored here, so they are unaffected.
-	parent_children[BlockTypes::LEVEL_IDX] = (base_level <= 1) ? Value() : Value(base_level);
+	// Every element carries an EXPLICIT structural level -- there are no NULLs.
+	// `level` is depth in a depth-first ordering, and level plus adjacency together
+	// describe the whole document tree, which is why it cannot be optional.
+	// (Teague, 2026-08-31: this was always the rule; the NULL-at-top-level
+	// normalisation was never approved. Spec 3.0 restores it.)
+	parent_children[BlockTypes::LEVEL_IDX] = Value(base_level);
 	parent_children[BlockTypes::ELEMENT_ORDER_IDX] = Value(0);
 
 	if (content_input.IsNull()) {
@@ -163,7 +163,7 @@ static vector<Value> FlattenBlockWithChildren(const Value &parent_block, const V
 	// Children are unaffected: level_offset below is computed from `base_level`,
 	// not from what is stored on the parent, so they still start at base_level + 1.
 	auto parent_children = StructValue::GetChildren(parent_block);
-	parent_children[BlockTypes::LEVEL_IDX] = (base_level <= 1) ? Value() : Value(base_level);
+	parent_children[BlockTypes::LEVEL_IDX] = Value(base_level);
 	parent_children[BlockTypes::ELEMENT_ORDER_IDX] = Value(0);
 	result.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(parent_children)));
 
@@ -658,9 +658,8 @@ void BuilderFunctions::DbListBlockV2Fun(DataChunk &args, ExpressionState &state,
 		// total loss the Pandoc list had, because the exporter walks children and this
 		// builder emitted none. Spec 2.0: one shape per element_type.
 		vector<Value> result_list;
-		result_list.push_back(CreateBlockWithNullContent(BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK,
-		                                                 Value(LogicalType::INTEGER), BlockTypes::ENCODING_TEXT,
-		                                                 attrs));
+		result_list.push_back(CreateBlockWithNullContent(BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK, Value(1),
+		                                                 BlockTypes::ENCODING_TEXT, attrs));
 		int32_t child_order = 1;
 		if (!items.IsNull()) {
 			map<string, string> empty_attrs;
@@ -703,9 +702,8 @@ void BuilderFunctions::DbListBlockV2NoOrderFun(DataChunk &args, ExpressionState 
 		// total loss the Pandoc list had, because the exporter walks children and this
 		// builder emitted none. Spec 2.0: one shape per element_type.
 		vector<Value> result_list;
-		result_list.push_back(CreateBlockWithNullContent(BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK,
-		                                                 Value(LogicalType::INTEGER), BlockTypes::ENCODING_TEXT,
-		                                                 attrs));
+		result_list.push_back(CreateBlockWithNullContent(BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK, Value(1),
+		                                                 BlockTypes::ENCODING_TEXT, attrs));
 		int32_t child_order = 1;
 		if (!items.IsNull()) {
 			map<string, string> empty_attrs;

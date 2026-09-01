@@ -357,7 +357,7 @@ FROM (SELECT duck_blocks_render_ansi([
    'attributes':MAP{'key':'k'},'element_order':0}::duck_block,
   {'kind':'block','element_type':'metadata','content':'META0','level':0,'encoding':'yaml',
    'attributes':MAP{},'element_order':1}::duck_block,
-  {'kind':'block','element_type':'paragraph','content':'BODY','level':NULL,'encoding':'text',
+  {'kind':'block','element_type':'paragraph','content':'BODY','level':1,'encoding':'text',
    'attributes':MAP{},'element_order':2}::duck_block]) AS render_probe);
 ----
 true

@@ -194,9 +194,13 @@ struct DuckBlockVocabulary {
 	//               would have been broken by a release the numbering promised was
 	//               safe.
 	//   1.2 -> 2.0  one shape per BLOCK element_type. Breaking, numbered correctly.
+	//   2.0 -> 3.0  every element carries an EXPLICIT level; no NULLs, one scale for
+	//               blocks and inlines, and `level` is never semantic. Breaking.
+	//               The NULL-at-top-level convention 1.x and 2.0 documented was
+	//               never approved -- see docs/duck_blocks_spec.md.
 	//
 	// The rule above is what will be followed from here.
-	static constexpr const char *SPEC_VERSION = "2.0";
+	static constexpr const char *SPEC_VERSION = "3.0";
 
 	// ========================================================================
 	// Block type names

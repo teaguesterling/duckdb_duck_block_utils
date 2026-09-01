@@ -31,9 +31,9 @@ My Title
 # heading is not nested. The assertion used to expect 1, contradicting its own
 # comment and the spec, and disagreeing with pandoc_ast_to_blocks().
 query I
-SELECT duck_block_heading(2, 'My Title')[1].level IS NULL;
+SELECT duck_block_heading(2, 'My Title')[1].level;
 ----
-true
+1
 
 # Test duck_block_heading stores heading level in attributes
 query I
@@ -83,9 +83,9 @@ Hello world
 
 # Test duck_block_paragraph level is 1 (top-level)
 query I
-SELECT duck_block_paragraph('Hello world')[1].level IS NULL;
+SELECT duck_block_paragraph('Hello world')[1].level;
 ----
-true
+1
 
 # Test duck_block_paragraph with inline children
 query I
@@ -219,9 +219,9 @@ SELECT duck_block_blockquote(2, 'Quote text')[1].level;
 
 # Test duck_block_blockquote single arg defaults level to 1
 query I
-SELECT duck_block_blockquote('Quote text')[1].level IS NULL;
+SELECT duck_block_blockquote('Quote text')[1].level;
 ----
-true
+1
 
 # Test duck_block_blockquote with children
 query I
@@ -351,9 +351,9 @@ SELECT len(duck_block_list_block(true, [
 
 # Test duck_block_list_block with list items - parent level is 1
 query I
-SELECT duck_block_list_block([duck_block_list_item('Test')])[1].level IS NULL;
+SELECT duck_block_list_block([duck_block_list_item('Test')])[1].level;
 ----
-true
+1
 
 # Test duck_block_list_block with list items - parent kind is block
 query I
@@ -649,9 +649,9 @@ true
 
 # Test duck_block_div parent level is 1
 query I
-SELECT duck_block_div(duck_block_paragraph('test'))[1].level IS NULL;
+SELECT duck_block_div(duck_block_paragraph('test'))[1].level;
 ----
-true
+1
 
 # ============================================================================
 # Integration: Using v2 builders with manipulation functions
@@ -780,13 +780,14 @@ SELECT len(duck_blocks_assemble([
 # attribute names carry orderedness.
 # ============================================================================
 
-# A top-level list is NULL like every other top-level block. duck_block_list used
-# to say 1 while duck_block_list_block said NULL for the same concept.
+# A top-level list is at depth 1, like every other top-level block, and both
+# builders agree. They disagreed before -- one said 1 and the other NULL for the
+# same concept -- which is the divergence this section records.
 query II
-SELECT (SELECT b.level FROM (SELECT unnest(duck_block_list(['a'])) AS b) WHERE b.element_type='list') IS NULL,
-       (SELECT b.level FROM (SELECT unnest(duck_block_list_block(false,[duck_block_list_item('a')])) AS b) WHERE b.element_type='list') IS NULL;
+SELECT (SELECT b.level FROM (SELECT unnest(duck_block_list(['a'])) AS b) WHERE b.element_type='list'),
+       (SELECT b.level FROM (SELECT unnest(duck_block_list_block(false,[duck_block_list_item('a')])) AS b) WHERE b.element_type='list');
 ----
-true	true
+1	1
 
 # Both attribute conventions are written, so a consumer reading either is right.
 # The Pandoc reader wrote list_type, the builders wrote only `ordered`, and the
@@ -804,6 +805,6 @@ ordered	true	bullet	false
 # the renderer's JSON path read only `ordered`. Asserting that the ordered builder
 # renders numbers would have passed against that -- it writes both names.
 query I
-SELECT regexp_replace(duck_blocks_render_ansi([{'kind':'block','element_type':'list','content':'["one"]','level':NULL,'encoding':'json','attributes':MAP{'list_type':'ordered'},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)], 30), '\x1b\[[0-9;]*m', '', 'g') LIKE '%1. one%';
+SELECT regexp_replace(duck_blocks_render_ansi([{'kind':'block','element_type':'list','content':'["one"]','level':1,'encoding':'json','attributes':MAP{'list_type':'ordered'},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)], 30), '\x1b\[[0-9;]*m', '', 'g') LIKE '%1. one%';
 ----
 true

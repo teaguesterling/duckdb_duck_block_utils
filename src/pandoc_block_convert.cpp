@@ -216,7 +216,12 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 	}
 
 	const int32_t effective_level = (parent_div_level == 0) ? 1 : parent_div_level + 1;
-	const Value block_level = (parent_div_level == 0) ? Value() : Value(effective_level);
+	// Every element carries an EXPLICIT structural level -- there are no NULLs.
+	// `level` is depth in a depth-first ordering, and level plus adjacency together
+	// describe the whole document tree, which is why it cannot be optional.
+	// (Teague, 2026-08-31: this was always the rule; the NULL-at-top-level
+	// normalisation was never approved. Spec 3.0 restores it.)
+	const Value block_level = Value(effective_level);
 
 	yyjson_val *t_val = yyjson_obj_get(block_val, "t");
 	if (!t_val || !yyjson_is_str(t_val)) {

@@ -420,9 +420,8 @@ SELECT meta FROM pandoc_ast(duck_block_heading(1, 'Test'));
 # Test 1: Nested inline formatting preserves levels
 # ----------------------------------------------------------------------------
 
-# Bold containing text and italic should have correct level hierarchy
-# INLINE builders start at level 1, not NULL. Only BLOCKS carry NULL at top
-# level -- an inline is always inside something, so it always has a depth.
+# Bold containing text and italic should have correct level hierarchy.
+# EVERY element carries an explicit depth -- blocks and inlines alike, no NULLs.
 query I
 SELECT unnest(duck_block_bold([duck_block_text('a'), duck_block_italic('b')])).level;
 ----
@@ -434,7 +433,7 @@ SELECT unnest(duck_block_bold([duck_block_text('a'), duck_block_italic('b')])).l
 query I
 SELECT unnest(duck_block_paragraph([duck_block_bold([duck_block_text('a'), duck_block_italic('b')])])).level;
 ----
-NULL
+1
 2
 3
 3
@@ -443,7 +442,7 @@ NULL
 query I
 SELECT unnest(duck_block_paragraph([duck_block_bold([duck_block_italic([duck_block_text('deep')])])])).level;
 ----
-NULL
+1
 2
 3
 4
@@ -471,15 +470,15 @@ SELECT json_extract(duck_blocks_to_pandoc_blocks(
 # Test 3: Nested lists structure (duck_block level hierarchy)
 # ----------------------------------------------------------------------------
 
-# A top-level list has a NULL level -- `level` is nesting depth and this list is
-# not nested -- with its items at 2. Nested lists still carry real depths; see
-# the next case.
+# A top-level list is at depth 1, its items at 2, their paragraphs at 3. Every
+# element carries an explicit level -- `level` and adjacency together describe
+# the whole tree, so there is nothing for a NULL to mean.
 query II
 SELECT elem.element_type, elem.level FROM (
     SELECT unnest(duck_block_list([duck_block_list_item('A'), duck_block_list_item('B')])) as elem
 );
 ----
-list	NULL
+list	1
 list_item	2
 paragraph	3
 list_item	2
@@ -494,7 +493,7 @@ SELECT elem.element_type, elem.level FROM (
     ])) as elem
 );
 ----
-list	NULL
+list	1
 list_item	2
 paragraph	3
 list	2
@@ -544,7 +543,7 @@ SELECT elem.element_type, elem.level FROM (
     SELECT unnest(duck_block_blockquote(1, [duck_block_text('quoted text')])) as elem
 );
 ----
-blockquote	NULL
+blockquote	1
 text	2
 
 # Blockquote converts to Pandoc with content
@@ -589,7 +588,7 @@ SELECT unnest(duck_block_paragraph([
     duck_block_link('http://x', [duck_block_bold('here')])
 ])).level;
 ----
-NULL
+1
 2
 2
 3
@@ -606,7 +605,7 @@ SELECT elem.element_type, elem.level FROM (
     ])) as elem
 );
 ----
-list	NULL
+list	1
 list_item	2
 bold	3
 text	3
@@ -1331,7 +1330,7 @@ query IIII
 SELECT b.element_type, b.kind, coalesce(b.level::VARCHAR,'NULL'), b.encoding
 FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"alpha"}]}]]}]}')) AS b);
 ----
-list	block	NULL	text
+list	block	1	text
 list_item	block	2	text
 paragraph	block	3	text
 
@@ -1392,7 +1391,7 @@ query IIII
 SELECT b.element_type, b.kind, coalesce(b.level::VARCHAR,'NULL'), b.encoding
 FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BlockQuote","c":[{"t":"Para","c":[{"t":"Str","c":"quoted"}]}]}]}')) AS b);
 ----
-blockquote	block	NULL	text
+blockquote	block	1	text
 paragraph	block	2	text
 
 # DISCRIMINATING: the raw-AST bug still rendered the word "quoted" (inside the
@@ -1515,7 +1514,7 @@ query IIII
 SELECT b.element_type, coalesce(b.level::VARCHAR,'NULL'), coalesce(b.content,'-'), b.kind
 FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"Para","c":[{"t":"Str","c":"b"}]}]]}]}')) AS b);
 ----
-list	NULL	(empty)	block
+list	1	(empty)	block
 list_item	2	(empty)	block
 paragraph	3	a	block
 paragraph	3	b	block
@@ -1555,7 +1554,7 @@ SELECT count(*) FROM (SELECT unnest(duck_blocks_lint(pandoc_ast_to_blocks('{"pan
 # ============================================================================
 
 query I
-SELECT duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'list','content':'["a","b"]','level':NULL,'encoding':'json','attributes':MAP{'ordered':'false'},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"a"}]}],[{"t":"Plain","c":[{"t":"Str","c":"b"}]}]]}]';
+SELECT duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'list','content':'["a","b"]','level':1,'encoding':'json','attributes':MAP{'ordered':'false'},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"a"}]}],[{"t":"Plain","c":[{"t":"Str","c":"b"}]}]]}]';
 ----
 true
 
@@ -1563,13 +1562,13 @@ true
 # a BulletList comes out would have passed against it. The property is that the
 # ITEMS are in it.
 query I
-SELECT duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'list','content':'["a","b"]','level':NULL,'encoding':'json','attributes':MAP{'ordered':'false'},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])::VARCHAR NOT LIKE '%"c":[]%';
+SELECT duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'list','content':'["a","b"]','level':1,'encoding':'json','attributes':MAP{'ordered':'false'},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])::VARCHAR NOT LIKE '%"c":[]%';
 ----
 true
 
 # 1.x ordered lists keep their ordering.
 query I
-SELECT duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'list','content':'["a"]','level':NULL,'encoding':'json','attributes':MAP{'ordered':'true'},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])::VARCHAR LIKE '%OrderedList%';
+SELECT duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'list','content':'["a"]','level':1,'encoding':'json','attributes':MAP{'ordered':'true'},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])::VARCHAR LIKE '%OrderedList%';
 ----
 true
 

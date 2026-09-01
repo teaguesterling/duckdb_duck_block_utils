@@ -35,7 +35,7 @@ true
 query I
 SELECT duck_block_spec_version();
 ----
-2.0
+3.0
 
 # ...and it must be well-formed MAJOR.MINOR, since the contract in the header
 # says consumers assert major equality plus a minor floor. A version that does
@@ -178,35 +178,52 @@ true
 # the kind set comes from the vocabulary, so a new kind cannot orphan it again
 query I
 SELECT (duck_blocks_validate([
-  {'kind':'nonsense','element_type':'paragraph','content':'x','level':NULL,'encoding':'text',
+  {'kind':'nonsense','element_type':'paragraph','content':'x','level':1,'encoding':'text',
    'attributes':MAP{},'element_order':0}::duck_block])).valid;
 ----
 false
 
-# SEMANTIC: a heading's semantic level belongs in attributes['heading_level'],
-# never in `level`, which is structural depth. Confusing the two is the oldest
-# trap in this vocabulary and the spec calls it out explicitly.
+# SEMANTIC vs STRUCTURAL: a heading's semantic level (h1/h2) belongs in
+# attributes['heading_level']; `level` is its structural depth in the document
+# tree. A top-level h2 is level 1 with heading_level 2 -- the two numbers are
+# independent and confusing them is the oldest trap in this vocabulary.
 query I
 SELECT (duck_blocks_validate([
-  {'kind':'block','element_type':'heading','content':'H','level':NULL,'encoding':'text',
+  {'kind':'block','element_type':'heading','content':'H','level':1,'encoding':'text',
    'attributes':MAP{'heading_level':'2'},'element_order':0}::duck_block])).valid;
 ----
 true
 
-# lint, not validate: this extension's own duck_block_heading() sets level on headings
-# while pandoc_ast_to_blocks() leaves it NULL, so failing validation would
-# reject documents built with the builders. Recorded as a real divergence.
+# And a NULL level is now an ERROR, not a convention. `level` and adjacency
+# together describe the whole document tree, so an element without one cannot be
+# placed in it. Nothing checked this until 2026-08-31, which is how a
+# NULL-at-top-level convention spread to four extensions unchallenged.
+query II
+SELECT (duck_blocks_validate([
+  {'kind':'block','element_type':'heading','content':'H','level':NULL,'encoding':'text',
+   'attributes':MAP{'heading_level':'2'},'element_order':0}::duck_block])).valid,
+       (duck_blocks_validate([
+  {'kind':'block','element_type':'heading','content':'H','level':NULL,'encoding':'text',
+   'attributes':MAP{'heading_level':'2'},'element_order':0}::duck_block])).errors[1].field;
+----
+false	level
+
+# A heading carrying BOTH numbers is CORRECT, not a conflict: level 3 is its
+# structural depth, heading_level 1 its semantic rank. The linter used to warn on
+# exactly this, telling producers `level` "should be NULL on headings" -- a rule
+# encoding the unapproved NULL convention, arguing against the spec it exists to
+# enforce. It flagged conforming data, so it is gone.
 query I
 SELECT len(duck_blocks_lint([
   {'kind':'block','element_type':'heading','content':'H','level':3,'encoding':'text',
-   'attributes':MAP{'heading_level':'1'},'element_order':0}::duck_block])) > 0;
+   'attributes':MAP{'heading_level':'1'},'element_order':0}::duck_block]));
 ----
-true
+0
 
 # a spec-conformant heading -- level NULL -- warns about nothing
 query I
 SELECT len(duck_blocks_lint([
-  {'kind':'block','element_type':'heading','content':'H','level':NULL,'encoding':'text',
+  {'kind':'block','element_type':'heading','content':'H','level':1,'encoding':'text',
    'attributes':MAP{'heading_level':'1'},'element_order':0}::duck_block]));
 ----
 0
@@ -214,7 +231,7 @@ SELECT len(duck_blocks_lint([
 # SEMANTIC: `generic` exists to make a gap visible, so it must say what it was.
 query I
 SELECT len(duck_blocks_lint([
-  {'kind':'block','element_type':'generic','content':'{}','level':NULL,'encoding':'json',
+  {'kind':'block','element_type':'generic','content':'{}','level':1,'encoding':'json',
    'attributes':MAP{},'element_order':0}::duck_block])) > 0;
 ----
 true
@@ -222,7 +239,7 @@ true
 # ...and a generic that names what it stood in for is fine
 query I
 SELECT len(duck_blocks_lint([
-  {'kind':'block','element_type':'generic','content':'{}','level':NULL,'encoding':'json',
+  {'kind':'block','element_type':'generic','content':'{}','level':1,'encoding':'json',
    'attributes':MAP{'source_type':'FutureThing'},'element_order':0}::duck_block]));
 ----
 0
@@ -245,11 +262,11 @@ true
 # that made the two halves of this extension disagree about a documented field.
 # ============================================================================
 
-# a top-level block built by hand has NULL level, like the converter's
+# a top-level block built by hand carries level 1, like the converter's
 query I
-SELECT duck_block_paragraph([duck_block_text('a'), duck_block_bold('b')])[1].level IS NULL;
+SELECT duck_block_paragraph([duck_block_text('a'), duck_block_bold('b')])[1].level;
 ----
-true
+1
 
 # ...and its inline children still sit at 2, unchanged
 query I
@@ -262,8 +279,8 @@ SELECT duck_block_paragraph([duck_block_text('a'), duck_block_bold('b')])[2].lev
 # element's content, while the converter emits bold plus a text child at 3 --
 # the spec's "content is populated iff the container has a single text child".
 query I
-SELECT duck_block_paragraph([duck_block_text('a'), duck_block_bold('b')])[1].level IS NULL
-   AND pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"a"}]}]')[1].level IS NULL;
+SELECT duck_block_paragraph([duck_block_text('a'), duck_block_bold('b')])[1].level = 1
+   AND pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"a"}]}]')[1].level = 1;
 ----
 true
 
@@ -275,9 +292,9 @@ true
 
 # headings: NULL level, h1-h6 in the attribute, and no lint warning
 query I
-SELECT duck_block_heading(1, 'T')[1].level IS NULL;
+SELECT duck_block_heading(1, 'T')[1].level;
 ----
-true
+1
 
 query I
 SELECT duck_block_heading(1, 'T')[1].attributes['heading_level'];
@@ -366,7 +383,7 @@ true
 # a page marker carries its number and no content
 query I
 SELECT (duck_blocks_validate([
-  {'kind':'block','element_type':'page_break','content':'','level':NULL,'encoding':'text',
+  {'kind':'block','element_type':'page_break','content':'','level':1,'encoding':'text',
    'attributes':MAP{'page_number':'3'},'element_order':0}::duck_block])).valid;
 ----
 true
@@ -374,9 +391,9 @@ true
 # it is NOT a heading: the TOC must ignore it
 query I
 SELECT count(*) FROM (SELECT unnest(duck_blocks_toc([
-  {'kind':'block','element_type':'page_break','content':'','level':NULL,'encoding':'text',
+  {'kind':'block','element_type':'page_break','content':'','level':1,'encoding':'text',
    'attributes':MAP{'page_number':'1'},'element_order':0}::duck_block,
-  {'kind':'block','element_type':'heading','content':'Real','level':NULL,'encoding':'text',
+  {'kind':'block','element_type':'heading','content':'Real','level':1,'encoding':'text',
    'attributes':MAP{'heading_level':'1'},'element_order':1}::duck_block])) AS t);
 ----
 1
@@ -384,9 +401,9 @@ SELECT count(*) FROM (SELECT unnest(duck_blocks_toc([
 # ...and contributes no text
 query I
 SELECT duck_blocks_to_text([
-  {'kind':'block','element_type':'page_break','content':'','level':NULL,'encoding':'text',
+  {'kind':'block','element_type':'page_break','content':'','level':1,'encoding':'text',
    'attributes':MAP{'page_number':'1'},'element_order':0}::duck_block,
-  {'kind':'block','element_type':'paragraph','content':'Body','level':NULL,'encoding':'text',
+  {'kind':'block','element_type':'paragraph','content':'Body','level':1,'encoding':'text',
    'attributes':MAP{},'element_order':1}::duck_block]);
 ----
 Body
@@ -395,14 +412,14 @@ Body
 # its nearest honest equivalent, and what a `page` class means to a reader
 query I
 SELECT duck_blocks_to_pandoc_blocks([
-  {'kind':'block','element_type':'page_break','content':'','level':NULL,'encoding':'text',
+  {'kind':'block','element_type':'page_break','content':'','level':1,'encoding':'text',
    'attributes':MAP{'page_number':'7'},'element_order':0}::duck_block]) LIKE '%"t":"Div"%';
 ----
 true
 
 query I
 SELECT duck_blocks_to_pandoc_blocks([
-  {'kind':'block','element_type':'page_break','content':'','level':NULL,'encoding':'text',
+  {'kind':'block','element_type':'page_break','content':'','level':1,'encoding':'text',
    'attributes':MAP{'page_number':'7'},'element_order':0}::duck_block]) LIKE '%page%';
 ----
 true
