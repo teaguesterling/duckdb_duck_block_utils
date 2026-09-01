@@ -20,6 +20,29 @@ include extension-ci-tools/makefiles/duckdb_extension.Makefile
 # defect sat behind an earlier failure in the same file, so a test that existed for
 # it never ran and never reported. A suite that stopped early and a suite that passed
 # are indistinguishable from the summary line.
+#
+# HOW TO READ A CHECK YOU ARE PERTURBING. Every "watched it fail" note in test/ says to
+# re-plant the perturbation and confirm the red; none of them said how to LOOK, and that
+# omission is where three false readings came from in one hour on 2026-09-01 -- across
+# two repos, on the evening both were arguing that an ad-hoc measurement is wrong the
+# same way a check is.
+#
+#   1. Run the script UNPIPED. `$?` and `${PIPESTATUS[0]}` after a pipe report the last
+#      command's status, so `python3 check_x.py | tail -5; echo $?` prints tail's 0 while
+#      the check exits 1.
+#   2. ONE input at a time. A glob that expands to two paths hands the second as a
+#      nonsense argument, and the error names neither.
+#   3. WHOLE output. `| tail -n` truncates the error above the line you are reading, and
+#      a truncated print is still a print.
+#   4. CONFIRM THE PERTURBED STATE EXISTS before believing the result -- print the
+#      mutated region, never a count of it. `grep -c` counts LINES, so it reports a match
+#      for text that was already there and your edit never landed.
+#
+# THE LIMIT, from duckdb_markdown, who put this rule in their own build first: it kills
+# the MECHANICAL misreadings and not the interpretive one. You can run the right command,
+# unpiped, on one input, and still read the wrong three lines of correct output. That
+# residue is the class no rule closes -- the one that has needed a second person all
+# along.
 check:
 	@fail=0; \
 	for c in test/check_vocabulary_header.py \
