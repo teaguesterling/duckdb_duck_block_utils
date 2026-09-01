@@ -2286,3 +2286,54 @@ SELECT (SELECT count(*) FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"titl
        (SELECT count(*) FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"TITLE"}]}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"BODY"}]}]}')) AS b) WHERE b.kind = 'inline' AND b.content = 'TITLE');
 ----
 1	1
+
+# ============================================================================
+# THE FLATTENER RECURSES. It did not, and the visible symptom was a heading
+# losing its formatting -- while the SAME helper projects table cells into the
+# native {headers, rows} schema, so a cell whose only content was **BoldCell**
+# came back as "". Not mangled, GONE, inside the schema whose whole purpose is
+# that cell text be searchable.
+#
+# Found by panduck running a heading probe against code they had inherited from
+# here. A shared helper is where a defect in one construct is a defect in
+# another, and the construct nobody looks at is the one that keeps it.
+#
+# Every fixture passed before this, because a PLAIN cell works -- which is why
+# the plain case below is a control rather than decoration.
+# ============================================================================
+
+query I
+SELECT (SELECT b.content FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"Table","c":[["",[],[]],[null,[]],[[{"t":"AlignDefault"},{"t":"ColWidthDefault"}]],[["",[],[]],[[["",[],[]],[[["",[],[]],{"t":"AlignDefault"},1,1,[{"t":"Plain","c":[{"t":"Str","c":"H"}]}]]]]]],[[["",[],[]],0,[],[[["",[],[]],[[["",[],[]],{"t":"AlignDefault"},1,1,[{"t":"Plain","c":[{"t":"Strong","c":[{"t":"Str","c":"BoldCell"}]}]}]]]]]]],[["",[],[]],[]]]}]')) AS b));
+----
+{"headers":["H"],"rows":[["BoldCell"]]}
+
+# CONTROL: the unformatted cell, which worked before and must still work.
+query I
+SELECT (SELECT b.content FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"Table","c":[["",[],[]],[null,[]],[[{"t":"AlignDefault"},{"t":"ColWidthDefault"}]],[["",[],[]],[[["",[],[]],[[["",[],[]],{"t":"AlignDefault"},1,1,[{"t":"Plain","c":[{"t":"Str","c":"H"}]}]]]]]],[[["",[],[]],0,[],[[["",[],[]],[[["",[],[]],{"t":"AlignDefault"},1,1,[{"t":"Plain","c":[{"t":"Str","c":"PlainCell"}]}]]]]]]],[["",[],[]],[]]]}]')) AS b));
+----
+{"headers":["H"],"rows":[["PlainCell"]]}
+
+# A Link's inlines sit in an inner array beside attr and target, and Code carries
+# its text as a BARE STRING in a positional tuple -- unreachable by descending,
+# because a bare string is indistinguishable from a URL. Both recovered.
+query I
+SELECT (SELECT b.content FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"Table","c":[["",[],[]],[null,[]],[[{"t":"AlignDefault"},{"t":"ColWidthDefault"}]],[["",[],[]],[[["",[],[]],[[["",[],[]],{"t":"AlignDefault"},1,1,[{"t":"Plain","c":[{"t":"Str","c":"H"}]}]]]]]],[[["",[],[]],0,[],[[["",[],[]],[[["",[],[]],{"t":"AlignDefault"},1,1,[{"t":"Plain","c":[{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"text"}],["http://x.example/p",""]]},{"t":"Space"},{"t":"Str","c":"and"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"co**de"]}]}]]]]]]],[["",[],[]],[]]]}]')) AS b));
+----
+{"headers":["H"],"rows":[["text and co**de"]]}
+
+# DISCRIMINATING NEGATIVE: recovering the link text must not drag the URL in with
+# it. An assertion that only checked the text is present passes for a flattener
+# that appends everything it walks past.
+query II
+SELECT contains(b.content, 'x.example'), contains(b.content, 'http')
+FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"Table","c":[["",[],[]],[null,[]],[[{"t":"AlignDefault"},{"t":"ColWidthDefault"}]],[["",[],[]],[[["",[],[]],[[["",[],[]],{"t":"AlignDefault"},1,1,[{"t":"Plain","c":[{"t":"Str","c":"H"}]}]]]]]],[[["",[],[]],0,[],[[["",[],[]],[[["",[],[]],{"t":"AlignDefault"},1,1,[{"t":"Plain","c":[{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"text"}],["http://x.example/p",""]]},{"t":"Space"},{"t":"Str","c":"and"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"co**de"]}]}]]]]]]],[["",[],[]],[]]]}]')) AS b);
+----
+false	false
+
+# An image cell keeps its alt and not its src, for the same reason.
+query II
+SELECT b.content, contains(b.content, 'pic.png')
+FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"Table","c":[["",[],[]],[null,[]],[[{"t":"AlignDefault"},{"t":"ColWidthDefault"}]],[["",[],[]],[[["",[],[]],[[["",[],[]],{"t":"AlignDefault"},1,1,[{"t":"Plain","c":[{"t":"Str","c":"H"}]}]]]]]],[[["",[],[]],0,[],[[["",[],[]],[[["",[],[]],{"t":"AlignDefault"},1,1,[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"alt"},{"t":"Space"},{"t":"Str","c":"text"}],["pic.png",""]]}]}]]]]]]],[["",[],[]],[]]]}]')) AS b);
+----
+{"headers":["H"],"rows":[["alt text"]]}	false
+

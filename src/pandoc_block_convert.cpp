@@ -152,10 +152,27 @@ static void StorePandocAttr(const PandocAttr &attr, map<string, string> &attrs) 
 	}
 }
 
-static string ExtractInlinesTextVal(yyjson_val *inlines_arr) {
+// RECURSES. It did not until 2026-09-01, and the visible symptom was the less serious
+// one: a heading's flattened title lost its formatting. The same helper projects TABLE
+// CELLS into the native {headers, rows} schema, so a cell whose only content was
+// `**BoldCell**` came back as "" -- not mangled, GONE, inside the schema whose entire
+// purpose is that cell text be searchable. That is the defect spec 5.0 existed to fix,
+// reintroduced one layer down by a flattener nobody was looking at, and every fixture
+// passed because a PLAIN cell works.
+//
+// Found by panduck running a heading probe I sent them, in code they had just inherited
+// from here. A shared helper is where a defect in one construct is a defect in another,
+// and the construct nobody is looking at is the one that keeps it.
+//
+// Recursing over the whole `c` needs no per-constructor arm: a Link's attr and target,
+// like an Image's, are not Str objects and contribute nothing, so the inlines fall out
+// without enumerating which constructors have them -- and a constructor added later
+// works without being added here.
+static string ExtractInlinesTextVal(yyjson_val *inlines_arr, idx_t depth = 0) {
 	if (!inlines_arr) {
 		return "";
 	}
+	CheckPandocDepth(depth);
 	if (yyjson_is_str(inlines_arr)) {
 		return string(yyjson_get_str(inlines_arr), yyjson_get_len(inlines_arr));
 	}
@@ -178,6 +195,21 @@ static string ExtractInlinesTextVal(yyjson_val *inlines_arr) {
 			result += " ";
 		} else if (strcmp(t, "LineBreak") == 0) {
 			result += "\n";
+		} else if (strcmp(t, "Code") == 0 || strcmp(t, "Math") == 0 || strcmp(t, "RawInline") == 0) {
+			// Text carried as a BARE STRING in a positional tuple: [attr, text],
+			// [mathtype, text], [format, text]. It cannot be reached by descending,
+			// because a bare string is indistinguishable from a Link's URL or an
+			// attr id, and taking every string would leak those into cell text.
+			if (c_val && yyjson_is_arr(c_val) && yyjson_arr_size(c_val) >= 2) {
+				yyjson_val *text_val = yyjson_arr_get(c_val, 1);
+				if (text_val && yyjson_is_str(text_val)) {
+					result.append(yyjson_get_str(text_val), yyjson_get_len(text_val));
+				}
+			}
+		} else if (c_val) {
+			// Every other constructor: descend rather than skip. A terminal arm that
+			// drops is structural work an enumeration should not be doing.
+			result += ExtractInlinesTextVal(c_val, depth + 1);
 		}
 	};
 
@@ -185,7 +217,15 @@ static string ExtractInlinesTextVal(yyjson_val *inlines_arr) {
 		size_t idx, max;
 		yyjson_val *item;
 		yyjson_arr_foreach(inlines_arr, idx, max, item) {
-			process_item(item);
+			if (yyjson_is_arr(item)) {
+				// A positional tuple: Link/Image hold their inlines in an inner ARRAY
+				// beside attr and target. Descending reaches them; the sibling arrays
+				// hold no Str objects and contribute nothing, so no per-constructor
+				// arm is needed to skip them.
+				result += ExtractInlinesTextVal(item, depth + 1);
+			} else {
+				process_item(item);
+			}
 		}
 	} else if (yyjson_is_obj(inlines_arr)) {
 		process_item(inlines_arr);
