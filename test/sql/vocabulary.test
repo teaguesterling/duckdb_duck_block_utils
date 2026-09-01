@@ -322,3 +322,66 @@ SELECT count(*) FROM (SELECT unnest(db_blocks_toc(pandoc_ast_to_blocks(
 WHERE (t).title = 'METAHEAD';
 ----
 0
+
+# ============================================================================
+# `page` -- a physical pagination boundary.
+#
+# A MARKER, not a container: like `hr`, it carries no content and owns no
+# children. element_order already gives grouping ("blocks between marker N and
+# N+1"), so a container would re-nest whole documents one level deeper for
+# nothing.
+#
+# It exists because duckeye's PDF path currently fakes page boundaries by
+# synthesising `## Page N` MARKDOWN HEADINGS, which injects physical pagination
+# into the semantic heading structure -- db_toc then lists "Page 1, Page 2" as
+# though they were sections, and db_get_section will happily slice on one.
+# ============================================================================
+
+query I
+SELECT list_contains(db_block_types(), 'page');
+----
+true
+
+# a page marker carries its number and no content
+query I
+SELECT (db_blocks_validate([
+  {'kind':'block','element_type':'page','content':'','level':NULL,'encoding':'text',
+   'attributes':MAP{'page_number':'3'},'element_order':0}::duck_block])).valid;
+----
+true
+
+# it is NOT a heading: the TOC must ignore it
+query I
+SELECT count(*) FROM (SELECT unnest(db_blocks_toc([
+  {'kind':'block','element_type':'page','content':'','level':NULL,'encoding':'text',
+   'attributes':MAP{'page_number':'1'},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'heading','content':'Real','level':NULL,'encoding':'text',
+   'attributes':MAP{'heading_level':'1'},'element_order':1}::duck_block])) AS t);
+----
+1
+
+# ...and contributes no text
+query I
+SELECT db_blocks_to_text([
+  {'kind':'block','element_type':'page','content':'','level':NULL,'encoding':'text',
+   'attributes':MAP{'page_number':'1'},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'Body','level':NULL,'encoding':'text',
+   'attributes':MAP{},'element_order':1}::duck_block]);
+----
+Body
+
+# Pandoc has no page constructor, so it exports as a Div carrying the number --
+# its nearest honest equivalent, and what a `page` class means to a reader
+query I
+SELECT duck_blocks_to_pandoc_blocks([
+  {'kind':'block','element_type':'page','content':'','level':NULL,'encoding':'text',
+   'attributes':MAP{'page_number':'7'},'element_order':0}::duck_block]) LIKE '%"t":"Div"%';
+----
+true
+
+query I
+SELECT duck_blocks_to_pandoc_blocks([
+  {'kind':'block','element_type':'page','content':'','level':NULL,'encoding':'text',
+   'attributes':MAP{'page_number':'7'},'element_order':0}::duck_block]) LIKE '%page%';
+----
+true

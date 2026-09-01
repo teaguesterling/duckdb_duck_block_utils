@@ -84,6 +84,7 @@ above catch a submodule that was never synced, which a compile cannot.
 | `lineblock` | Preserved line breaks | NULL | `text` (lines joined with `\n`) | |
 | `table` | Table | NULL | `json` | |
 | `hr` | Horizontal rule | NULL | `text` | |
+| `page` | **Physical** page boundary — a marker, not a container | NULL | `text` | `page_number` |
 | `metadata` | YAML frontmatter | 0 | `yaml` | |
 | `image` | Block-level image | NULL | `text` | `src`, `alt`, `title` |
 | `raw` | Raw content in a *named* format | NULL | format name | `format` |
@@ -120,6 +121,22 @@ These are three different statements and should not be used interchangeably:
   For an **open** one where most elements are presentational (HTML tags, RTF control
   words), emitting `generic` for everything unrecognised floods the output and buries
   real gaps — there, scope it to constructs that carry document meaning.
+
+### `page` is physical, not semantic
+
+`page` marks a pagination boundary — a PDF page break, a DOCX explicit page break.
+It is a **marker**: it carries no content and owns no children. `element_order`
+already groups "blocks between marker N and N+1", so making it a container would
+re-nest whole documents one level deeper for nothing.
+
+**Consumers that walk semantic structure must ignore it.** A table of contents and a
+section slicer care about headings, not about where the paper ran out. This type
+exists because the alternative — a reader synthesising `## Page N` headings — puts
+physical pagination into the heading structure, where `db_toc` then lists pages as
+though they were sections.
+
+Pandoc has no page constructor, so it exports as `Div` with class `page` carrying
+`page_number`.
 
 ### `figure` and `caption`
 

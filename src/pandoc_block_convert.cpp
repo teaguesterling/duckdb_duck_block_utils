@@ -1201,6 +1201,22 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			int32_t div_level = GetElementLevel(block);
 			yyjson_mut_val *div_obj = ConvertDivToPandocVal(doc, blocks_list, block_idx, div_level, 1);
 			yyjson_mut_arr_add_val(blocks_arr, div_obj);
+		} else if (element_type == BlockTypes::TYPE_PAGE) {
+			// Pandoc has no page constructor. A Div classed `page` carrying the
+			// number is its nearest honest equivalent, and reads correctly to
+			// anything that understands classes.
+			auto page_number = GetElementAttribute(block, "page_number");
+			yyjson_mut_val *pg = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, pg, "t", "Div");
+			yyjson_mut_val *pg_c = yyjson_mut_arr(doc);
+			yyjson_mut_arr_add_val(pg_c, CreatePandocAttrVal(doc, block, "page"));
+			yyjson_mut_arr_add_val(pg_c, yyjson_mut_arr(doc)); // a marker owns no blocks
+			yyjson_mut_obj_add_val(doc, pg, "c", pg_c);
+			yyjson_mut_arr_add_val(blocks_arr, pg);
+			// A leaf advances the cursor itself, like TYPE_HR. Container branches
+			// advance by reference inside their converter; leaving this out looped
+			// forever appending Divs until memory ran out.
+			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_SECTION) {
 			// Pandoc has no Section constructor, so a section degrades to a Div whose
 			// class carries the role -- pandoc's nearest honest equivalent, and what

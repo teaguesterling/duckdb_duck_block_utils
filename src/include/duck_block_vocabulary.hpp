@@ -97,6 +97,15 @@ struct DuckBlockVocabulary {
 	// Pandoc has no Section constructor, so this exports as a Div whose class is
 	// the role; that is pandoc's nearest honest equivalent.
 	static constexpr const char *TYPE_SECTION = "section";
+	// A physical pagination boundary -- a MARKER, not a container. Like `hr` it
+	// carries no content and owns no children; element_order already groups
+	// "blocks between marker N and N+1", so a container would re-nest whole
+	// documents for nothing. The number lives in attributes['page_number'].
+	//
+	// Physical, NOT semantic: a table of contents and a section slicer must
+	// IGNORE pages, which is precisely what they cannot do when a reader fakes
+	// them as headings.
+	static constexpr const char *TYPE_PAGE = "page";
 	static constexpr const char *TYPE_LINEBLOCK = "lineblock";
 	static constexpr const char *TYPE_DEFLIST = "deflist";
 	static constexpr const char *TYPE_FIGURE = "figure";

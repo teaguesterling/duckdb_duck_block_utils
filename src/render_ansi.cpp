@@ -1152,6 +1152,13 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 			}
 		} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE) {
 			RenderBlockquote(text, width, theme, lines);
+		} else if (element_type == BlockTypes::TYPE_PAGE) {
+			// A page boundary is structural, not prose: draw it dimmed and label it
+			// so a reader can tell it from a horizontal rule the document authored.
+			auto page_number = GetAttribute(block, "page_number");
+			string label = page_number.empty() ? "page break" : "page " + page_number;
+			lines.push_back(Sgr(theme.dim) + string("\u2500\u2500 ") + label + " " +
+			                string(width > label.size() + 8 ? width - label.size() - 8 : 2, '-') + RESET);
 		} else if (element_type == BlockTypes::TYPE_HR) {
 			RenderHr(width, theme, lines);
 		} else if (element_type == BlockTypes::TYPE_METADATA) {
