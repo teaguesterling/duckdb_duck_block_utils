@@ -26,6 +26,7 @@ misleads someone.
 Exits 0 and skips when pandoc is absent.
 """
 
+import os
 import json
 import shutil
 import subprocess
@@ -88,6 +89,21 @@ INLINES = {
 CONSTRUCTORS = BLOCKS | INLINES
 
 
+# A skipped check reports success, which is how a guard quietly stops guarding.
+# The webbed session found their duck_block conformance test had never run
+# ANYWHERE -- `require duck_block_utils` skipped it every time, so it had zero
+# directions of coverage while looking green. Locally a skip is right: a dev
+# without pandoc should not be blocked. In CI it is not, because CI is where the
+# guarantee is supposed to hold. Set DUCK_BLOCK_CHECKS_STRICT=1 there.
+def skip(reason: str) -> int:
+    if os.environ.get("DUCK_BLOCK_CHECKS_STRICT") == "1":
+        print(f"FAIL: {reason}")
+        print("      DUCK_BLOCK_CHECKS_STRICT=1 is set, so a skipped check is a failed check.")
+        return 1
+    print(f"SKIP: {reason}")
+    return 0
+
+
 def duckdb_bin() -> Path | None:
     for candidate in ("build/release/duckdb", "build/debug/duckdb"):
         path = REPO / candidate
@@ -110,12 +126,10 @@ def collect_constructors(node, out: set) -> None:
 
 def main() -> int:
     if shutil.which("pandoc") is None:
-        print("SKIP: pandoc is not installed")
-        return 0
+        return skip("pandoc is not installed")
     duckdb = duckdb_bin()
     if duckdb is None:
-        print("SKIP: no built duckdb binary (run `make` first)")
-        return 0
+        return skip("no built duckdb binary (run `make` first)")
 
     version = subprocess.run(["pandoc", "--version"], capture_output=True, text=True).stdout.splitlines()[0]
     print(f"Checking duck_block_utils' AST mapping against {version}")

@@ -18,6 +18,7 @@ trusting it writes code against something that isn't there.
 Exits 0 and skips when there is no built binary.
 """
 
+import os
 import re
 import subprocess
 import sys
@@ -37,6 +38,21 @@ KINDS = {"block", "inline", "value"}
 ENCODINGS = {"json", "yaml", "html", "xml", "latex", "markdown"}
 
 
+# A skipped check reports success, which is how a guard quietly stops guarding.
+# The webbed session found their duck_block conformance test had never run
+# ANYWHERE -- `require duck_block_utils` skipped it every time, so it had zero
+# directions of coverage while looking green. Locally a skip is right: a dev
+# without pandoc should not be blocked. In CI it is not, because CI is where the
+# guarantee is supposed to hold. Set DUCK_BLOCK_CHECKS_STRICT=1 there.
+def skip(reason: str) -> int:
+    if os.environ.get("DUCK_BLOCK_CHECKS_STRICT") == "1":
+        print(f"FAIL: {reason}")
+        print("      DUCK_BLOCK_CHECKS_STRICT=1 is set, so a skipped check is a failed check.")
+        return 1
+    print(f"SKIP: {reason}")
+    return 0
+
+
 def duckdb_bin():
     for candidate in ("build/release/duckdb", "build/debug/duckdb"):
         path = REPO / candidate
@@ -48,8 +64,7 @@ def duckdb_bin():
 def main() -> int:
     duckdb = duckdb_bin()
     if duckdb is None:
-        print("SKIP: no built duckdb binary (run `make` first)")
-        return 0
+        return skip("no built duckdb binary (run `make` first)")
 
     proc = subprocess.run(
         [str(duckdb), "-noheader", "-list", "-c", "SELECT unnest(duck_block_type_names());"],

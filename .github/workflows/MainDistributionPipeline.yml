@@ -47,3 +47,23 @@ jobs:
       ci_tools_version: v1.5-variegata
       extension_name: duck_block_utils
       format_checks: 'format;tidy'
+
+  # The vocabulary header is a PUBLISHED INTERFACE that four sibling extensions
+  # vendor as a single copied file. Its freestanding-ness is a promise to them,
+  # and until now nothing enforced it anywhere -- the check existed but ran only
+  # when someone typed it.
+  #
+  # Deliberately checks out WITHOUT submodules: needing none is precisely the
+  # claim under test, so the job would be weaker if it had them available.
+  # STRICT=1 so a missing compiler fails rather than skipping green.
+  vocabulary-header:
+    name: Vocabulary header is freestanding
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Header must compile and link with no DuckDB present
+        env:
+          DUCK_BLOCK_CHECKS_STRICT: '1'
+        run: python3 test/check_vocabulary_header.py
