@@ -185,6 +185,23 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 		int32_t last_heading_level = 0;
 		int32_t last_order = -1;
 
+		// A container that owns nothing. Per the spec a container's children follow it
+		// at level + 1, so a container whose next BLOCK is at its own depth or shallower
+		// owns no children -- and the blocks that were meant to be inside it are now
+		// siblings. That renders as an empty container with its content beside it, which
+		// on a rendered page LOOKS CORRECT: the text sits where a reader expects it and
+		// nothing is missing, so eyeballing output never finds it.
+		//
+		// Found live in the portfolio: panduck's epub reader emitted blockquote and its
+		// paragraph both at NULL level, and webbed's HTML writer -- which expresses
+		// containment through level -- closed the blockquote before the paragraph
+		// rendered. Nothing flagged it, because duck_blocks_validate() called that shape
+		// valid and the only lint it produced was "empty content in blockquote", which is
+		// adjacent to the defect rather than on it.
+		int32_t open_container_depth = -1;
+		string open_container_type;
+		int32_t open_container_order = 0;
+
 		for (auto &block : blocks_list) {
 			if (block.IsNull()) {
 				continue;
@@ -193,6 +210,40 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 			auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
 			auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
 			auto element_order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
+			auto block_kind = GetElementStringField(block, BlockTypes::KIND_IDX);
+
+			if (block_kind == BlockTypes::KIND_BLOCK) {
+				// NULL level means depth 1 -- a top-level element is not nested.
+				auto &lvl_children = StructValue::GetChildren(block);
+				const bool level_is_null =
+				    BlockTypes::LEVEL_IDX >= lvl_children.size() || lvl_children[BlockTypes::LEVEL_IDX].IsNull();
+				const int32_t depth = level_is_null ? 1 : GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
+
+				if (open_container_depth >= 0 && depth <= open_container_depth) {
+					child_list_t<Value> warning_values;
+					warning_values.push_back(make_pair("severity", Value("warning")));
+					warning_values.push_back(make_pair(
+					    "message", Value(open_container_type + " owns no children: the next block is at depth " +
+					                     std::to_string(depth) + ", not deeper than the container's " +
+					                     std::to_string(open_container_depth) +
+					                     ". Its content is a SIBLING, so it renders outside the container.")));
+					warning_values.push_back(make_pair("element_order", Value(open_container_order)));
+					warnings.push_back(Value::STRUCT(std::move(warning_values)));
+				}
+
+				const bool is_container =
+				    element_type == BlockTypes::TYPE_DIV || element_type == BlockTypes::TYPE_SECTION ||
+				    element_type == BlockTypes::TYPE_FIGURE || element_type == BlockTypes::TYPE_CAPTION ||
+				    element_type == BlockTypes::TYPE_BLOCKQUOTE || element_type == BlockTypes::TYPE_LIST ||
+				    element_type == BlockTypes::TYPE_LIST_ITEM;
+				if (is_container) {
+					open_container_depth = depth;
+					open_container_type = element_type;
+					open_container_order = element_order;
+				} else {
+					open_container_depth = -1;
+				}
+			}
 
 			// Check for heading level skips
 			if (element_type == BlockTypes::TYPE_HEADING) {

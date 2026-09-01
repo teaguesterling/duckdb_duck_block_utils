@@ -243,3 +243,50 @@ SELECT duck_blocks_structure(duck_blocks_assemble([
 ])).heading_count;
 ----
 2
+
+# ============================================================================
+# A CONTAINER THAT OWNS NOTHING.
+#
+# The spec says a container's children follow it at level + 1. A container whose
+# next block sits at its own depth or shallower owns nothing, and the blocks meant
+# to be inside it are siblings -- so it renders as an empty container with its
+# content beside it. On a rendered page that LOOKS CORRECT: the text is where a
+# reader expects and nothing is missing.
+#
+# Found live: panduck's epub reader emitted blockquote and its paragraph both at
+# NULL level, and webbed's HTML writer -- which expresses containment through
+# level -- closed the blockquote before the paragraph rendered. duck_blocks_validate
+# called that shape VALID, and the only lint was "empty content in blockquote",
+# which is adjacent to the defect rather than on it.
+# ============================================================================
+
+query I
+SELECT count(*) FROM (SELECT unnest(duck_blocks_lint([
+  {'kind':'block','element_type':'blockquote','content':NULL,'level':NULL,'encoding':'text','attributes':MAP{},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER),
+  {'kind':'block','element_type':'paragraph','content':'A block quote.','level':NULL,'encoding':'text','attributes':MAP{},'element_order':1}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])) AS w)
+WHERE w.message LIKE '%owns no children%';
+----
+1
+
+# DISCRIMINATING: the defective shape ALSO produces "empty content in blockquote",
+# which is what the linter already said and what makes this easy to mistake for
+# covered. Asserting that any warning appears would have passed against the
+# defect. The property is that the STRUCTURAL warning appears.
+query I
+SELECT count(*) > 0 FROM (SELECT unnest(duck_blocks_lint([
+  {'kind':'block','element_type':'blockquote','content':NULL,'level':NULL,'encoding':'text','attributes':MAP{},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER),
+  {'kind':'block','element_type':'paragraph','content':'x','level':NULL,'encoding':'text','attributes':MAP{},'element_order':1}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])) AS w)
+WHERE w.severity = 'warning' AND w.message LIKE '%SIBLING%';
+----
+true
+
+# NO FALSE POSITIVES. Every producer in this repo emits conforming containers,
+# including the figure/caption case where the caption is a SIBLING of the content
+# by design and must not be mistaken for an escaped child.
+query IIII
+SELECT (SELECT count(*) FROM (SELECT unnest(duck_blocks_lint(duck_block_blockquote('x'))) AS w) WHERE w.message LIKE '%owns no children%'),
+       (SELECT count(*) FROM (SELECT unnest(duck_blocks_lint(duck_block_list(['a','b']))) AS w) WHERE w.message LIKE '%owns no children%'),
+       (SELECT count(*) FROM (SELECT unnest(duck_blocks_lint(duck_block_list_block([duck_block_list_item('a')]))) AS w) WHERE w.message LIKE '%owns no children%'),
+       (SELECT count(*) FROM (SELECT unnest(duck_blocks_lint(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[],["i.png",""]]}]}]]}]}'))) AS w) WHERE w.message LIKE '%owns no children%');
+----
+0	0	0	0
