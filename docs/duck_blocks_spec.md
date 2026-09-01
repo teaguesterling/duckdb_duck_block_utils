@@ -113,7 +113,7 @@ now rejects a NULL level outright.
 | `table` | Table | NULL | `json` | |
 | `hr` | Horizontal rule | NULL | `text` | |
 | `page_break` | **Physical** page boundary — a marker, not a container | NULL | `text` | `page_number` |
-| `metadata` | YAML frontmatter, verbatim. For a STRUCTURED metadata tree use `kind='value'` instead | depth (top level 1) | `yaml` | |
+| `metadata` | A verbatim metadata blob — *not* the `kind='value'` tree; see "two homes" below | depth (top level 1) | `yaml` | `role` |
 | `image` | Block-level image | depth (top level 1) | `text` | `src`, `alt`, `title` |
 | `raw` | Raw content in a *named* format | NULL | format name | `format` |
 | `div` | Generic container | depth (top level 1) | `text` if it carries content, else — | `id`, `class` |
@@ -297,6 +297,36 @@ dropped on conversion.
 
 `attributes['key']` is the name under which a value sits in its parent map. Elements
 in a `list` have no key. Nesting uses `level`, exactly as block containers do.
+
+### `attributes['role']` on `metadata` — which source construct it was
+
+`metadata` carries a verbatim blob. `role` says what kind of blob, so the TYPE answers
+"which of the two metadata homes is this" and the ROLE answers "what did it come
+from" — genuinely different questions that were being asked of one field.
+
+| role | source |
+|---|---|
+| `frontmatter` | a YAML/TOML frontmatter block at the head of a markdown-family document |
+| *(absent)* | unspecified; a consumer treats it as an opaque blob |
+
+Proposed by Teague; the reasoning is this document's own, four sections up: *"One type
+plus a role attribute, following `heading`+`heading_level` rather than minting a type
+per variant."* `frontmatter` as its own `element_type` is precisely minting a type per
+variant, and `role` is already the general discriminator here — `section` uses it for
+seven sectioning kinds, `list_item` for `term`/`definition`.
+
+It is **additive**: `metadata` stays declared, so a consumer that has never heard of
+`frontmatter` reads the block correctly today and the role is refinement it may ignore.
+A rename would have cost a migration across four extensions and discarded the
+provenance the divergent name was carrying.
+
+**Adding a role is the spec owner's call, not an inference from the principle being
+general.** The principle argues that roles are the right MECHANISM; it does not license
+a producer to mint values. If you have a verbatim blob that is not frontmatter — a
+LaTeX preamble, an RTF `\info` group kept whole — ask for the value rather than
+inventing one, for the same reason `generic` exists: an unrecognised name should be
+visible as a gap, not silently private. `duck_blocks_lint` does not yet check role
+values, so nothing will object if you do.
 
 ### There are TWO homes for document metadata. Pick by SHAPE, not by preference
 

@@ -78,7 +78,30 @@ def main() -> int:
 
     # element_type names are the first column of the spec's type tables.
     documented = set()
+    in_type_table = False
     for line in SPEC.read_text().splitlines():
+        # The TYPE tables have five columns (Type, Description, level, encoding,
+        # attributes). Other tables in this document also lead with a backticked
+        # lowercase name -- the `metadata` role table, for one -- and matching on the
+        # first column alone read those as element types, reporting `frontmatter` as a
+        # type the build was missing.
+        #
+        # Narrowing the pattern rather than adding `frontmatter` to an exclusion list,
+        # deliberately: an exclusion would have suppressed a real signal (a genuinely
+        # undocumented type named the same as a role) and would have needed its own
+        # expiry audit. The heuristic was wrong; the fix is to make it right.
+        #
+        # A column count was the first attempt and was also wrong -- the block table has
+        # five columns, the inline and value tables four -- so it silently dropped 23 of
+        # the 43 types and reported them as undocumented. Tracking the HEADER is exact:
+        # every type table opens `| Type | ...` and no other table in the document does.
+        if line.startswith("| Type |"):
+            in_type_table = True
+            continue
+        if not line.startswith("|"):
+            in_type_table = False
+        if not in_type_table:
+            continue
         m = re.match(r"\|\s*`([a-z_]+)`\s*\|", line)
         if m:
             documented.add(m.group(1))
