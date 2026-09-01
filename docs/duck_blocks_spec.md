@@ -410,6 +410,26 @@ exporter stopped at `kind='block'`, walked past a `value`, and emitted a documen
 **body had been replaced by its title**. It needs a document carrying both metadata and
 blocks, which is the normal case and was in none of its fixtures.
 
+**An element that is not nested in anything carries level 1, including a metadata
+blob.** `level` is not a claim of depth *inside* something — it is the absence of
+nesting. A frontmatter blob sits at the top level of its document exactly as the first
+paragraph does, and an `hr` and a top-level `kind='value'` field carry 1 for the same
+reason. There is no level 0: nothing is shallower than the top, and
+`duck_blocks_validate()` rejects it.
+
+> Raised by duckdb_markdown, whose `read_markdown_blocks` emits frontmatter at level 0
+> because that is their documented section convention — 0 for frontmatter, 1-6 for
+> headings. **That scale is heading RANK, not structural depth**, which is the exact
+> conflation this vocabulary moved out of `level` and into
+> `attributes['heading_level']`. So the two are not the same field with a different
+> base; they are different measurements that collided in one column name. Emitting 1 is
+> not "eating a break" to buy conformance — it is putting depth in the depth field.
+>
+> They asked rather than patching, flagged their own interest in the answer, and said
+> they would rather emit 1 and take the break than have the spec bless a number that
+> means nothing. That instinct is the right one and it is why the answer is not a
+> carve-out.
+
 **A document with NO blocks at all is conformant.** A `.toml` or `.yaml` file read as a
 document is entirely metadata; a bare `kind='value'` tree with nothing of `kind='block'`
 in it is valid, lints clean, and is what `pandoc_ast_to_blocks` itself emits for a

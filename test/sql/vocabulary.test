@@ -663,3 +663,23 @@ query I
 SELECT len(duck_block_encoding_names()) = 8;
 ----
 true
+
+# ============================================================================
+# NOT-NESTED IS LEVEL 1, INCLUDING A METADATA BLOB. THERE IS NO LEVEL 0.
+#
+# `level` is not a claim of depth INSIDE something -- it is the absence of nesting.
+# A frontmatter blob is top-level exactly as the first paragraph is.
+#
+# Raised by duckdb_markdown, whose reader emits frontmatter at level 0 from a
+# documented convention of 0-for-frontmatter and 1-6-for-headings. That scale is
+# heading RANK, which is the conflation this vocabulary moved into
+# attributes['heading_level'] -- two different measurements sharing a column name.
+# ============================================================================
+
+query IIII
+SELECT (SELECT b.level FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"p"}]}]}')) AS b) WHERE b.kind = 'value'),
+       (SELECT b.level FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"HorizontalRule"}]')) AS b)),
+       duck_block_metadata('t: 1')[1].level,
+       duck_blocks_validate([{'kind':'block','element_type':'metadata','content':'x','level':0,'encoding':'yaml','attributes':MAP{'role':'frontmatter'},'element_order':0}::duck_block]).valid;
+----
+1	1	1	false
