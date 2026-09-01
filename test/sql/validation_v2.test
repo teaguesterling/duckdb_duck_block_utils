@@ -608,3 +608,68 @@ query I
 SELECT len(duck_blocks_lint(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"x"}]}]}')));
 ----
 0
+
+# ============================================================================
+# THE FIXPOINT PROPERTY: lint(normalize(x)) must be EMPTY.
+#
+# duck_blocks_normalize emitted a shape duck_blocks_lint warns about. A chain of
+# plains collapsed ONE LEVEL PER CALL:
+#
+#   paragraph > plain > plain > plain('foo')
+#     one pass   -> paragraph > plain('foo')   <- lint objects to this
+#     two passes -> paragraph('foo')           <- correct
+#
+# The normalizer's output failed the normalizer's own published rule, and the
+# linter already said so. Nothing had put the two in the same query.
+#
+# validate() calls the one-pass output VALID, correctly -- it is structurally fine,
+# just not normalized. So no amount of validation could have caught this class;
+# only the fixpoint property can. Found and framed by the panduck session.
+#
+# MY IDEMPOTENCE ASSERTION PASSED THROUGHOUT. It used a single-level case, where
+# one pass IS the fixpoint. A property asserted on the one input I thought to write
+# is a claim about that input -- the same failure I had been trading with
+# duckdb_markdown all evening, in the test written to establish a general property.
+# ============================================================================
+
+# The invariant, over the shapes that actually exercise it.
+query I
+SELECT sum(n) FROM (
+  SELECT len(duck_blocks_lint(duck_blocks_normalize(d))) AS n FROM (VALUES
+    -- a chain: the case that was broken
+    ([{'kind':'block','element_type':'paragraph','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+      {'kind':'block','element_type':'plain','content':NULL,'level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+      {'kind':'block','element_type':'plain','content':NULL,'level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block,
+      {'kind':'block','element_type':'plain','content':'foo','level':4,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block]),
+    -- one level: the case that always worked
+    ([{'kind':'block','element_type':'list','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+      {'kind':'block','element_type':'list_item','content':NULL,'level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+      {'kind':'block','element_type':'plain','content':'x','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block]),
+    -- a legitimate plain, which must survive and must not be warned about
+    ([{'kind':'block','element_type':'section','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+      {'kind':'block','element_type':'plain','content':'Lead','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+      {'kind':'block','element_type':'heading','content':'H','level':2,'encoding':'text','attributes':MAP{'heading_level':'2'},'element_order':2}::duck_block]),
+    -- real reader output
+    (pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaString","c":"T"}},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"o"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"i"}]}]]}]]}]}'))
+  ) AS t(d)
+);
+----
+0
+
+# DISCRIMINATING: one pass must now REACH the fixpoint, not merely be idempotent
+# after two. Asserting normalize(normalize(x)) = normalize(x) alone passes for a
+# function that collapses one level per call and then stalls -- which is exactly
+# what shipped.
+query II
+SELECT duck_blocks_normalize([
+  {'kind':'block','element_type':'paragraph','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'plain','content':NULL,'level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'plain','content':NULL,'level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block,
+  {'kind':'block','element_type':'plain','content':'foo','level':4,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block])[1].content,
+       len(duck_blocks_normalize([
+  {'kind':'block','element_type':'paragraph','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'plain','content':NULL,'level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'plain','content':NULL,'level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block,
+  {'kind':'block','element_type':'plain','content':'foo','level':4,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block]));
+----
+foo	1

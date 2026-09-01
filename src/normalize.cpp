@@ -95,9 +95,28 @@ void NormalizeFunctions::CollapseLonePlainIntoParent(vector<Value> &blocks) {
 		}
 		blocks.erase(blocks.begin() + j);
 
-		// No step-back: the parent now carries content, so it can never itself be the
-		// lone plain child of ITS parent, and element_order need only stay unique and
-		// non-negative -- the gap the erase leaves is not a defect.
+		// STEP BACK and re-examine this parent. Its adopted content may be EMPTY -- a
+		// plain whose own child holds the text -- in which case the parent is still
+		// eligible and its next child may now be a lone plain in turn.
+		//
+		// This said "no step-back: the parent now carries content, so it can never
+		// itself be the lone plain child of ITS parent". That premise is false exactly
+		// when the content adopted is empty, and `str_field` maps NULL and "" to the
+		// same empty string, so a CHAIN of plains collapsed one level per call:
+		//
+		//   paragraph > plain > plain > plain('foo')
+		//     one pass  -> paragraph > plain('foo')      -- and lint objects to that
+		//     two passes -> paragraph('foo')             -- correct
+		//
+		// So the normalizer emitted a shape its own published rule warns about, and
+		// duck_blocks_lint already said so; nothing had put the two in one query.
+		// Found by the panduck session by CALLING it, and it is the reason the fixpoint
+		// property -- lint(normalize(x)) is empty -- is now asserted rather than
+		// idempotence alone. My idempotence test was true only of the single-level case
+		// I happened to write.
+		//
+		// Terminates: every collapse erases exactly one element.
+		i--;
 	}
 }
 
