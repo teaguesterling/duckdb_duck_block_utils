@@ -1055,7 +1055,16 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 		bool tight = true;
 		// attributes['role'] -- 'term' or 'definition' in a definition list.
 		string role;
-		vector<string> extra_paragraphs;
+		// (text, tight). Was a bare vector<string>, which could not carry the
+		// constructor -- so a second Plain block came back as a Para while the FIRST
+		// one round-tripped correctly. `plain` is a first-class distinction as of spec
+		// 6.0, and discarding it from block two onward is the same loss the type was
+		// minted to stop, just moved past the position anyone was looking at.
+		struct ExtraPara {
+			string text;
+			bool tight;
+		};
+		vector<ExtraPara> extra_paragraphs;
 		// Block children this walk does not enumerate -- a code block, blockquote or
 		// horizontal rule inside a list item, all legal Pandoc and all silently
 		// dropped before. Carried through rather than skipped.
@@ -1119,7 +1128,7 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 					current_item.tight = (child_type == BlockTypes::TYPE_PLAIN);
 					current_item.content = para_text;
 				} else {
-					current_item.extra_paragraphs.push_back(para_text);
+					current_item.extra_paragraphs.push_back({para_text, child_type == BlockTypes::TYPE_PLAIN});
 				}
 				j++;
 			} else if (child_level <= list_level) {
@@ -1259,11 +1268,11 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 
 				for (auto &extra : items[d].extra_paragraphs) {
 					yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
-					yyjson_mut_obj_add_str(doc, para_obj, "t", "Para");
+					yyjson_mut_obj_add_str(doc, para_obj, "t", extra.tight ? "Plain" : "Para");
 					yyjson_mut_val *pinl = yyjson_mut_arr(doc);
 					yyjson_mut_val *pstr = yyjson_mut_obj(doc);
 					yyjson_mut_obj_add_str(doc, pstr, "t", "Str");
-					yyjson_mut_obj_add_strncpy(doc, pstr, "c", extra.data(), extra.size());
+					yyjson_mut_obj_add_strncpy(doc, pstr, "c", extra.text.data(), extra.text.size());
 					yyjson_mut_arr_add_val(pinl, pstr);
 					yyjson_mut_obj_add_val(doc, para_obj, "c", pinl);
 					yyjson_mut_arr_add_val(one_def, para_obj);
@@ -1341,15 +1350,19 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 		}
 		yyjson_mut_arr_add_val(item_blocks, plain_obj);
 
-		// A multi-block item's remaining paragraphs. Pandoc's own reader emits Para
-		// for these, so emit Para rather than Plain to stay closer to the input.
+		// A multi-block item's remaining blocks, each with the constructor it arrived
+		// as. This hardcoded "Para" on the reasoning that Pandoc's own reader emits Para
+		// here -- true of Pandoc's MARKDOWN reader and not of the AST, which is what we
+		// are round-tripping. A Plain in block two came back as a Para, so the very
+		// distinction `plain` was minted for was preserved in block one and discarded
+		// immediately after it.
 		for (auto &extra : item.extra_paragraphs) {
 			yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
-			yyjson_mut_obj_add_str(doc, para_obj, "t", "Para");
+			yyjson_mut_obj_add_str(doc, para_obj, "t", extra.tight ? "Plain" : "Para");
 			yyjson_mut_val *pinl = yyjson_mut_arr(doc);
 			yyjson_mut_val *pstr = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, pstr, "t", "Str");
-			yyjson_mut_obj_add_strncpy(doc, pstr, "c", extra.data(), extra.size());
+			yyjson_mut_obj_add_strncpy(doc, pstr, "c", extra.text.data(), extra.text.size());
 			yyjson_mut_arr_add_val(pinl, pstr);
 			yyjson_mut_obj_add_val(doc, para_obj, "c", pinl);
 			yyjson_mut_arr_add_val(item_blocks, para_obj);

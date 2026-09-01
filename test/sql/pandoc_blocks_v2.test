@@ -2102,3 +2102,50 @@ SELECT duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'image','con
      LIKE '%from attr%';
 ----
 true
+
+# ============================================================================
+# A DEFINITION IS [Block], PLURAL -- and every block keeps its own constructor.
+#
+# Two defects, found while generating a real 6.1 sample for duckdb_markdown rather
+# than describing one:
+#
+#   1. The definition branch emitted only items[d].content, so every block after
+#      the FIRST was silently lost. True since list_type='definition' shipped.
+#      Both walks read one ListItem struct and only the bullet one read all of it.
+#
+#   2. extra_paragraphs was a vector<string>, which cannot carry Plain-vs-Para --
+#      so a `plain` in block two came back as a Para while block one round-tripped
+#      correctly. The distinction `plain` was minted for, preserved in the position
+#      everyone was looking at and discarded immediately after it.
+# ============================================================================
+
+# Every block survives, with its constructor, in a definition AND in a bullet item.
+query IIII
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"T"}],[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"Plain","c":[{"t":"Str","c":"b"}]}]]]]}]'))::VARCHAR
+     = '[{"t":"DefinitionList","c":[[[{"t":"Str","c":"T"}],[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"Plain","c":[{"t":"Str","c":"b"}]}]]]]}]',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"Plain","c":[{"t":"Str","c":"b"}]}]]}]'))::VARCHAR
+     = '[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"Plain","c":[{"t":"Str","c":"b"}]}]]}]',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"T"}],[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"CodeBlock","c":[["",[],[]],"XCODE"]}]]]]}]'))::VARCHAR
+     LIKE '%XCODE%',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"T"}],[[{"t":"Plain","c":[{"t":"Str","c":"a "},{"t":"Strong","c":[{"t":"Str","c":"b"}]}]}]]]]}]'))::VARCHAR
+     LIKE '%Strong%';
+----
+true	true	true	true
+
+# DISCRIMINATING on the constructor specifically: block two must differ between
+# these two inputs. Asserting only that the TEXT survives passes for the version
+# that emitted Para unconditionally, which is what shipped.
+query II
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"Plain","c":[{"t":"Str","c":"b"}]}]]}]'))::VARCHAR LIKE '%Plain%',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"Para","c":[{"t":"Str","c":"b"}]}]]}]'))::VARCHAR LIKE '%Plain%';
+----
+true	false
+
+# hr is a REAL HorizontalRule in every container, not a classed Div in some of
+# them. The same constructor must not export differently depending on its parent.
+query III
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Div","c":[["",[],[]],[{"t":"HorizontalRule"}]]}]'))::VARCHAR LIKE '%HorizontalRule%',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"HorizontalRule"}]]}]'))::VARCHAR LIKE '%HorizontalRule%',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"DefinitionList","c":[[[{"t":"Str","c":"T"}],[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"HorizontalRule"}]]]]}]'))::VARCHAR LIKE '%HorizontalRule%';
+----
+true	true	true
