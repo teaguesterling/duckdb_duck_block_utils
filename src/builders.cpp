@@ -632,14 +632,23 @@ void BuilderFunctions::DbListBlockV2Fun(DataChunk &args, ExpressionState &state,
 		string json = ItemsToJson(items);
 
 		map<string, string> attrs;
-		attrs["ordered"] = (!ordered.IsNull() && ordered.GetValue<bool>()) ? "true" : "false";
+		const bool is_ordered = !ordered.IsNull() && ordered.GetValue<bool>();
+		attrs["ordered"] = is_ordered ? "true" : "false";
+		// Emit list_type as well. The Pandoc reader writes list_type and these builders
+		// wrote only `ordered`, so a consumer reading one saw nothing from the other --
+		// which is why every Pandoc ordered list rendered as bullets. Writing both means
+		// a consumer reading either name is correct.
+		attrs["list_type"] = is_ordered ? "ordered" : "bullet";
 
 		// List blocks store items as JSON in content, so we create the block directly
 		child_list_t<Value> struct_values;
 		struct_values.push_back(make_pair("kind", Value(BlockTypes::KIND_BLOCK)));
 		struct_values.push_back(make_pair("element_type", Value(BlockTypes::TYPE_LIST)));
 		struct_values.push_back(make_pair("content", Value(json)));
-		struct_values.push_back(make_pair("level", Value(1)));
+		// NULL, not 1. Every other block builder normalises a top-level block to NULL,
+		// including duck_block_list_block for this same concept, so `list` was the one
+		// element whose depth depended on which builder made it.
+		struct_values.push_back(make_pair("level", Value(LogicalType::INTEGER)));
 		struct_values.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_JSON)));
 		struct_values.push_back(make_pair("attributes", CreateAttributesMap(attrs)));
 		struct_values.push_back(make_pair("element_order", Value(0)));
@@ -660,12 +669,16 @@ void BuilderFunctions::DbListBlockV2NoOrderFun(DataChunk &args, ExpressionState 
 
 		map<string, string> attrs;
 		attrs["ordered"] = "false";
+		attrs["list_type"] = "bullet";
 
 		child_list_t<Value> struct_values;
 		struct_values.push_back(make_pair("kind", Value(BlockTypes::KIND_BLOCK)));
 		struct_values.push_back(make_pair("element_type", Value(BlockTypes::TYPE_LIST)));
 		struct_values.push_back(make_pair("content", Value(json)));
-		struct_values.push_back(make_pair("level", Value(1)));
+		// NULL, not 1. Every other block builder normalises a top-level block to NULL,
+		// including duck_block_list_block for this same concept, so `list` was the one
+		// element whose depth depended on which builder made it.
+		struct_values.push_back(make_pair("level", Value(LogicalType::INTEGER)));
 		struct_values.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_JSON)));
 		struct_values.push_back(make_pair("attributes", CreateAttributesMap(attrs)));
 		struct_values.push_back(make_pair("element_order", Value(0)));

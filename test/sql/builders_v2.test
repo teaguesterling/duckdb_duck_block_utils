@@ -755,3 +755,40 @@ SELECT len(duck_blocks_assemble([
 ]));
 ----
 10
+
+# ============================================================================
+# The list builders disagreed with every other builder, and with each other.
+#
+# Surfaced by the webbed session escalating "duck_block_utils emits more than one
+# shape per element_type" -- the audit that prompted this found THREE shapes for
+# element_type='list', and two of them disagreed on `level` and on which
+# attribute names carry orderedness.
+# ============================================================================
+
+# A top-level list is NULL like every other top-level block. duck_block_list used
+# to say 1 while duck_block_list_block said NULL for the same concept.
+query II
+SELECT (SELECT b.level FROM (SELECT unnest(duck_block_list(['a'])) AS b) WHERE b.element_type='list') IS NULL,
+       (SELECT b.level FROM (SELECT unnest(duck_block_list_block(false,[duck_block_list_item('a')])) AS b) WHERE b.element_type='list') IS NULL;
+----
+true	true
+
+# Both attribute conventions are written, so a consumer reading either is right.
+# The Pandoc reader wrote list_type, the builders wrote only `ordered`, and the
+# renderer read only `ordered` -- which is why every Pandoc ordered list rendered
+# as bullets.
+query IIII
+SELECT b.attributes['list_type'], b.attributes['ordered'],
+       (SELECT c.attributes['list_type'] FROM (SELECT unnest(duck_block_list(['a'])) AS c) WHERE c.element_type='list'),
+       (SELECT c.attributes['ordered'] FROM (SELECT unnest(duck_block_list(['a'])) AS c) WHERE c.element_type='list')
+FROM (SELECT unnest(duck_block_list(true,['a'])) AS b) WHERE b.element_type='list';
+----
+ordered	true	bullet	false
+
+# DISCRIMINATING: a JSON list carrying ONLY list_type rendered as bullets, because
+# the renderer's JSON path read only `ordered`. Asserting that the ordered builder
+# renders numbers would have passed against that -- it writes both names.
+query I
+SELECT regexp_replace(duck_blocks_render_ansi([{'kind':'block','element_type':'list','content':'["one"]','level':NULL,'encoding':'json','attributes':MAP{'list_type':'ordered'},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)], 30), '\x1b\[[0-9;]*m', '', 'g') LIKE '%1. one%';
+----
+true

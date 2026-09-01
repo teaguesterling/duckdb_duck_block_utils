@@ -1280,7 +1280,13 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 			JsonParser parser(content);
 			auto items = parser.Parse();
 			if (items.type == JVal::Type::ARRAY) {
-				RenderListItems(items, GetAttribute(block, "ordered") == "true", 0, width, theme, lines);
+				// Read BOTH names, as the structural path above does. A producer writing
+				// only list_type with JSON content rendered as bullets otherwise -- the
+				// same one-sided read that made every Pandoc ordered list a bullet list.
+				RenderListItems(items,
+				                (GetAttribute(block, "list_type") == "ordered") ||
+				                    (GetAttribute(block, "ordered") == "true"),
+				                0, width, theme, lines);
 			}
 		} else if (element_type == BlockTypes::TYPE_TABLE) {
 			JsonParser parser(content);
