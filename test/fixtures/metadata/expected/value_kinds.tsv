@@ -1,0 +1,22 @@
+0	block	paragraph	1	text	Body.	<NONE>
+1	value	blocks	1	text		abstract
+2	block	paragraph	2	text	First para.	<NONE>
+3	block	paragraph	2	text	Second para.	<NONE>
+4	value	map	1	text		author
+5	value	inlines	2	text		email
+6	inline	text	3	text	a@example.com	<NONE>
+7	value	inlines	2	text		name
+8	inline	text	3	text	Alice	<NONE>
+9	value	bool	1	text	true	draft
+10	value	list	1	text		tags
+11	value	inlines	2	text		<NONE>
+12	inline	text	3	text	one	<NONE>
+13	value	inlines	2	text		<NONE>
+14	inline	text	3	text	two	<NONE>
+15	value	inlines	1	text		title
+16	inline	text	2	text	The	<NONE>
+17	inline	space	2	text	 	<NONE>
+18	inline	italic	2	text		<NONE>
+19	inline	text	3	text	Real	<NONE>
+20	inline	space	2	text	 	<NONE>
+21	inline	text	2	text	Title	<NONE>

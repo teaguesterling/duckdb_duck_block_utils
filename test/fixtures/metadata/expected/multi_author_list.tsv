@@ -1,0 +1,8 @@
+0	block	paragraph	1	text	Body.	<NONE>
+1	value	list	1	text		author
+2	value	inlines	2	text		<NONE>
+3	inline	text	3	text	Alice	<NONE>
+4	value	inlines	2	text		<NONE>
+5	inline	text	3	text	Bob	<NONE>
+6	value	inlines	1	text		title
+7	inline	text	2	text	T	<NONE>

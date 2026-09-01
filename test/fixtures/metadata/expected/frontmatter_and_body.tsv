@@ -1,0 +1,8 @@
+0	block	paragraph	1	text	Body paragraph one.	<NONE>
+1	block	paragraph	1	text	Body paragraph two.	<NONE>
+2	value	inlines	1	text		author
+3	inline	text	2	text	Alice	<NONE>
+4	value	inlines	1	text		title
+5	inline	text	2	text	Both	<NONE>
+6	inline	space	2	text	 	<NONE>
+7	inline	text	2	text	Homes	<NONE>
