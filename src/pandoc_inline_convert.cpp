@@ -1,7 +1,6 @@
 #include "pandoc_inline_convert.hpp"
 #include "pandoc_convert_util.hpp"
 #include "block_types.hpp"
-#include "inline_builders.hpp"
 #include "duckdb/common/types/value.hpp"
 
 #include <sstream>
