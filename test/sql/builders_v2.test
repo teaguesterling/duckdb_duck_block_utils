@@ -818,3 +818,35 @@ query I
 SELECT regexp_replace(duck_blocks_render_ansi([{'kind':'block','element_type':'list','content':'["one"]','level':1,'encoding':'json','attributes':MAP{'list_type':'ordered'},'element_order':0}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)], 30), '\x1b\[[0-9;]*m', '', 'g') LIKE '%1. one%';
 ----
 true
+
+# ============================================================================
+# duck_block_metadata() EMITTED A BLOCK ITS OWN VALIDATOR REJECTS.
+#
+# level 0. `duck_blocks_validate()` errors "level 0 is below 1; top level is 1",
+# and has since spec 3.0. The repo that owns the format shipped a public builder
+# whose output fails the format's own validator, then DOCUMENTED it -- the spec's
+# type table gave `metadata` a level of 0, accurately describing this code.
+#
+# So duckdb_markdown, which emits frontmatter at level 0, did not copy a
+# documentation typo. They conformed to real shipped behaviour, correctly, and were
+# non-conforming as a result. Reported by them measuring their own output with this
+# repo's validator -- an instrument they only had because the ABI happened to allow
+# it, which is a coin flip nobody is tracking.
+#
+# BOTH builders had it. Fixing the first left the REGISTERED one live, and that was
+# caught by calling the function rather than by reading the diff.
+# ============================================================================
+
+query II
+SELECT duck_block_metadata('title: T')[1].level,
+       duck_blocks_validate(duck_block_metadata('title: T')).valid;
+----
+1	true
+
+# DISCRIMINATING: level 0 must still be REJECTED, or "the validator got laxer" reads
+# the assertion above equally well -- and that would be the wrong fix to the same
+# symptom, since it is the level rule that holds the whole tree together.
+query I
+SELECT duck_blocks_validate([{'kind':'block','element_type':'metadata','content':'t','level':0,'encoding':'yaml','attributes':MAP{},'element_order':0}::duck_block]).valid;
+----
+false

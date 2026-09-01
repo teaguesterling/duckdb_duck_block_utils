@@ -113,7 +113,7 @@ now rejects a NULL level outright.
 | `table` | Table | NULL | `json` | |
 | `hr` | Horizontal rule | NULL | `text` | |
 | `page_break` | **Physical** page boundary — a marker, not a container | NULL | `text` | `page_number` |
-| `metadata` | YAML frontmatter | depth (top level 1) | `yaml` | |
+| `metadata` | YAML frontmatter, verbatim. For a STRUCTURED metadata tree use `kind='value'` instead | depth (top level 1) | `yaml` | |
 | `image` | Block-level image | depth (top level 1) | `text` | `src`, `alt`, `title` |
 | `raw` | Raw content in a *named* format | NULL | format name | `format` |
 | `div` | Generic container | depth (top level 1) | `text` if it carries content, else — | `id`, `class` |

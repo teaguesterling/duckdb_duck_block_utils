@@ -21,6 +21,29 @@
 -- disagreement -- this repo shipped exactly that defect in an image's alt text -- so
 -- the two implementations are compared rather than merely both maintained.
 
+-- USAGE, and read this before the first call fails.
+--
+--   SELECT duck_blocks_are_valid(<a LIST(duck_block) expression>);
+--
+-- If your producer is a TABLE function, DuckDB rejects passing it inline:
+--
+--   SELECT duck_blocks_are_valid(my_reader('doc.epub'));
+--     -> Binder Error: Table function cannot contain subqueries
+--
+-- Materialise it first:
+--
+--   CREATE TEMP TABLE b AS SELECT my_reader('doc.epub') AS blk;
+--   SELECT duck_blocks_are_valid(blk) FROM b;
+--
+-- Reported by the panduck session on first use. It is worth stating here because the
+-- error names SUBQUERIES and the caller did not write one, so the fix is not
+-- discoverable from the message -- and checking a producer's output is the whole point
+-- of this file. A scalar producer passes inline fine (measured); the restriction is
+-- specific to table functions.
+--
+-- The macros are `duck_block_is_valid` (one element) and `duck_blocks_are_valid` (a
+-- document). The FILE name is not a macro name -- also panduck, who grepped for it.
+
 -- Per-element shape. Covers 4 of the 6 things duck_blocks_validate reports.
 CREATE OR REPLACE MACRO duck_block_is_valid(elem) AS (
     elem.kind IN ('block', 'inline', 'value')

@@ -338,7 +338,15 @@ void BuilderFunctions::DbMetadataFun(DataChunk &args, ExpressionState &state, Ve
 	auto &entries = StructVector::GetEntries(result);
 
 	for (idx_t i = 0; i < count; i++) {
-		SetBlockFields(entries, i, BlockTypes::TYPE_METADATA, content_vec.GetValue(i), Value(0),
+		// LEVEL 1, not 0. This emitted 0 -- and `duck_blocks_validate()` rejects it
+		// outright: "level 0 is below 1; top level is 1". The repo that owns the spec
+		// shipped a public builder whose output fails the format's own validator.
+		//
+		// It then documented that: the spec's type table gave `metadata` a level of 0,
+		// accurately describing this line. So duckdb_markdown, which emits frontmatter
+		// at level 0, did not copy a documentation typo -- they conformed to real
+		// shipped behaviour, correctly, and were non-conforming as a result.
+		SetBlockFields(entries, i, BlockTypes::TYPE_METADATA, content_vec.GetValue(i), Value(1),
 		               BlockTypes::ENCODING_YAML, CreateAttributesMap({}));
 	}
 }
@@ -802,7 +810,12 @@ void BuilderFunctions::DbMetadataV2Fun(DataChunk &args, ExpressionState &state, 
 		struct_values.push_back(make_pair("kind", Value(BlockTypes::KIND_BLOCK)));
 		struct_values.push_back(make_pair("element_type", Value(BlockTypes::TYPE_METADATA)));
 		struct_values.push_back(make_pair("content", content));
-		struct_values.push_back(make_pair("level", Value(0)));
+		// LEVEL 1, not 0 -- this is the REGISTERED `duck_block_metadata`, and it emitted
+		// a block that `duck_blocks_validate()` rejects outright: "level 0 is below 1".
+		// The V1 function above had the identical bug; fixing only that one left this
+		// one live, which is why the fix was verified by CALLING the function rather
+		// than by reading the diff.
+		struct_values.push_back(make_pair("level", Value(1)));
 		struct_values.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_YAML)));
 		struct_values.push_back(make_pair("attributes", CreateAttributesMap({})));
 		struct_values.push_back(make_pair("element_order", Value(0)));
