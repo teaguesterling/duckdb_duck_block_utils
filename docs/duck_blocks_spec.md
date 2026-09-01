@@ -417,18 +417,23 @@ paragraph does, and an `hr` and a top-level `kind='value'` field carry 1 for the
 reason. There is no level 0: nothing is shallower than the top, and
 `duck_blocks_validate()` rejects it.
 
-> Raised by duckdb_markdown, whose `read_markdown_blocks` emits frontmatter at level 0
-> because that is their documented section convention — 0 for frontmatter, 1-6 for
-> headings. **That scale is heading RANK, not structural depth**, which is the exact
-> conflation this vocabulary moved out of `level` and into
-> `attributes['heading_level']`. So the two are not the same field with a different
-> base; they are different measurements that collided in one column name. Emitting 1 is
-> not "eating a break" to buy conformance — it is putting depth in the depth field.
+> The rule stands on the definition of the field and needs no further argument: `level`
+> is depth in a depth-first ordering, the top of that ordering is 1, and 0 names a place
+> the ordering does not have. A carve-out would have had this document bless a number
+> with no meaning in the rule that defines the field.
 >
-> They asked rather than patching, flagged their own interest in the answer, and said
-> they would rather emit 1 and take the break than have the spec bless a number that
-> means nothing. That instinct is the right one and it is why the answer is not a
-> carve-out.
+> **A NOTE ON HOW THIS WAS DECIDED, because the reasoning published here was wrong
+> before it was corrected.** The ruling originally argued that the producer's `level`
+> column was heading RANK and so a different measurement colliding with this one. That
+> claim was about a function I never read — duckdb_markdown measured it and their
+> `read_markdown_blocks` column was already pure depth, with rank already in
+> `attributes['heading_level']`. The 0-and-1-through-6 scale belongs to a *different*
+> function of theirs. They described one thing, this document reasoned about another,
+> and neither of us checked which until after the ruling shipped.
+>
+> Kept visible rather than quietly deleted: a specification that reaches a correct rule
+> through a false premise is one bad premise away from a wrong rule, and the premise was
+> a present-tense claim about another repository's code that nobody had measured.
 
 **A document with NO blocks at all is conformant.** A `.toml` or `.yaml` file read as a
 document is entirely metadata; a bare `kind='value'` tree with nothing of `kind='block'`
@@ -849,8 +854,9 @@ honest move is to document it in the reader rather than let the label carry it.
 rendered as NOTHING and `duck_blocks_to_text` returned the raw AST, so cell text
 was unsearchable while `AlignDefault` matched every search. That was the same
 two-schemas-under-one-element_type defect `list` had — the native schema was
-already understood by this extension's renderer, `render_macros.cpp`,
-duckdb_markdown's writer and webbed's decoder, and the reader emitted the other one.
+already understood by this extension's renderer and `render_macros.cpp` (measured),
+and — as reported by those sessions on 2026-08-31, not verified here — by
+duckdb_markdown's writer and webbed's decoder. The reader emitted the other one.
 
 The native projection is lossy — it flattens colspan, rowspan, alignment and
 multiple bodies — which is exactly why `attributes['pandoc_ast']` keeps the tuple
@@ -1015,9 +1021,12 @@ Extensions that produce duck_blocks:
   author, date or equivalent, emit it as `kind='value'` (see "Value Types" below)
   rather than dropping it or placing it in the body.
 
-  This is stated because two of the three consuming extensions currently **drop
-  every document's title and author** — webbed never visits `<head>`, and none of
-  panduck's five readers extracts metadata — and this document is a plausible cause:
+  This is stated because, as measured and reported by those sessions on 2026-09-01,
+  two of the three consuming extensions **dropped every document's title and author**
+  — webbed never visited `<head>`, and none of panduck's five readers extracted
+  metadata. Both were migrating when this was written, so treat it as the situation
+  that motivated the rule rather than as current fact. This document is a plausible
+  cause of it:
   until 2026-09-01 it said producers MUST set `kind` to `'block'` or `'inline'`,
   which leaves a conforming producer with **nowhere to put a title**. A producer that
   followed that sentence had two options, both wrong: put it in the body as prose, or
