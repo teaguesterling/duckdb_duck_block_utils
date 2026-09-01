@@ -8,6 +8,10 @@ set(LOADABLE_EXTENSION_NAME ${TARGET_NAME}_loadable_extension)
 
 project(${TARGET_NAME})
 include_directories(src/include)
+# vendor/ holds the files consumers COPY. They are on the include path rather than
+# duplicated into src/include so the extension compiles the same file it publishes --
+# a copy here would be the drift the vendored header's own comment warns about.
+include_directories(vendor)
 
 set(EXTENSION_SOURCES
     src/duck_block_utils_extension.cpp

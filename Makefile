@@ -17,6 +17,7 @@ check:
 	python3 test/pandoc/check_pandoc_alignment.py
 	python3 test/check_roundtrip_sweep.py
 	python3 test/check_conformance_macro.py
+	python3 test/check_vendorable.py
 
 check-strict:
 	DUCK_BLOCK_CHECKS_STRICT=1 $(MAKE) check

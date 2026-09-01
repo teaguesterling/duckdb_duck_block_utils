@@ -773,7 +773,7 @@ A duck_block is **canonical** if:
 Extensions can use these macros to validate duck_blocks without depending on
 duck_block_utils.
 
-> **COPY `conformance/duck_block_conformance.sql`, not the snippet below.** That file
+> **COPY `vendor/duck_block_conformance.sql`, not the snippet below.** That file
 > is the maintained one: `test/check_conformance_macro.py` runs it and the real
 > `duck_blocks_validate()` over the same corpus on every `make check` and FAILS on any
 > disagreement, including cases taken from real reader output rather than hand-built.
@@ -844,6 +844,38 @@ Duck_blocks representation is designed to be convertible to/from Pandoc AST:
 - Container types (Strong, Emph, Link, etc.) become level markers
 - Round-trip conversion should preserve structure
 - The `kind` field maps to Pandoc's block/inline distinction
+
+### Vendorable utilities (SUGGESTED, not required)
+
+`vendor/` holds files meant to be **copied into your own repository**. Using them is
+suggested, never required — conformance is defined by this document, not by any
+implementation of it.
+
+| file | gives you |
+|---|---|
+| `vendor/duck_block_conformance.sql` | `duck_blocks_are_valid`, `duck_blocks_errors` (with `{element_order, field, message}` detail), `duck_blocks_undeclared_types`, and the declared kind/type lists — pure DuckDB SQL |
+| `vendor/duck_block_normalize.hpp` | the content rule as a transform: collapse a lone `plain` into its container, to a fixpoint |
+| `src/include/duck_block_vocabulary.hpp` | the names as C++ constants |
+
+**Why this exists, and it is not convenience.** DuckDB matches extension ABI by exact
+version string, so an extension whose DuckDB submodule is pinned off the release tag
+**cannot load `duck_block_utils` by any route** — and publishing does not change that.
+Two of the three consuming extensions are in that position. Without these files a
+producer must either take a dependency it cannot load, or reimplement the rules by
+hand; the second is how three producers arrived at three different answers for
+document metadata, and how the content rule came to exist in two layers with two
+different bugs.
+
+**Copy or extract what is prepared rather than re-deriving it.** If you need a rule
+that is not here, ask for it to be added — a shared rule with no distributable home is
+the condition that produced every divergence this specification has had to correct.
+
+**Every file there is compared against the extension, not merely maintained.** A
+duplicate that nothing checks is how an image's alt text stayed invisible in this repo
+for months. `make check` fails if the vendorable SQL and the extension disagree on a
+verdict, on error detail, or on either declared list; `duck_block_normalize.hpp` is
+the implementation the extension itself calls, so it has no duplicate to disagree
+with.
 
 ### Extension Responsibilities
 

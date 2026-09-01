@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The published conformance macros must agree with the real validator.
 
-conformance/duck_block_conformance.sql is pure SQL that consumers copy, because an
+vendor/duck_block_conformance.sql is pure SQL that consumers copy, because an
 extension that vendors its own DuckDB submodule CANNOT LOAD duck_block_utils at all --
 DuckDB matches extension ABI by exact version string, so a pin off the release tag
 (`v1.5.5-dev154`) is refused by every route. Raised by the webbed session, whose
@@ -23,7 +23,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
-MACROS = REPO / "conformance" / "duck_block_conformance.sql"
+MACROS = REPO / "vendor" / "duck_block_conformance.sql"
 
 B = (
     "{{'kind':'{k}','element_type':{t},'content':{c},'level':{l},'encoding':'{e}',"
@@ -113,6 +113,60 @@ def main() -> int:
         return 1
 
     print(f"Checking conformance/{MACROS.name} against duck_blocks_validate()")
+
+    # The ERROR DETAIL, not just the verdict. Teague asked for validate-with-detail in
+    # the vendorable file because panduck was bisecting a twelve-fixture gate by hand:
+    # a boolean is the right thing for a gate and the wrong thing for a FAILING one.
+    #
+    # That makes duck_blocks_errors a second implementation of every rule the
+    # validator reports, so it is compared rather than maintained -- as a SET, since
+    # the two emit the same errors in different order and order is not a contract.
+    broken = (
+        "[{'kind':'block','element_type':'div','content':NULL,'level':1,'encoding':'text',"
+        "'attributes':MAP{},'element_order':0}::duck_block,"
+        "{'kind':'block','element_type':'paragraph','content':'x','level':3,'encoding':'text',"
+        "'attributes':MAP{},'element_order':1}::duck_block,"
+        "{'kind':'thing','element_type':'paragraph','content':'y','level':1,'encoding':'klingon',"
+        "'attributes':MAP{},'element_order':1}::duck_block,"
+        "{'kind':'block','element_type':'paragraph','content':'z','level':0,'encoding':'text',"
+        "'attributes':MAP{},'element_order':-1}::duck_block]"
+    )
+    ext_err = subprocess.run(
+        [
+            str(duckdb),
+            "-noheader",
+            "-list",
+            "-c",
+            f"SELECT e.element_order||'|'||e.field||'|'||e.message FROM (SELECT unnest("
+            f"duck_blocks_validate({broken}).errors) AS e);",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    sql_err = subprocess.run(
+        [str(duckdb), "-noheader", "-list"],
+        input=MACROS.read_text()
+        + f"\nSELECT element_order||'|'||field||'|'||message FROM duck_blocks_errors({broken});",
+        capture_output=True,
+        text=True,
+    )
+    a = {l.strip() for l in ext_err.stdout.splitlines() if l.strip()}
+    b = {l.strip() for l in sql_err.stdout.splitlines() if l.strip()}
+    if not a:
+        print("\nFAIL: the extension reported NO errors for the deliberately broken document.")
+        print("      The comparison below would then pass for a SQL macro that reports none")
+        print("      either -- two implementations agreeing that nothing is wrong.")
+        return 1
+    if a != b:
+        print("\nFAIL: the SQL error detail differs from duck_blocks_validate().")
+        for m in sorted(a - b):
+            print(f"      extension reports, SQL does not: {m}")
+        for m in sorted(b - a):
+            print(f"      SQL reports, extension does not: {m}")
+        print("      A consumer who cannot load the extension gets the SQL answer and no")
+        print("      way to know it differs. Fix whichever is wrong.")
+        return 1
+    print(f"  error detail agrees on a broken document ({len(a)} errors, matched by content)")
 
     # The file embeds the declared element_type names, because the extension can check
     # a type against the vocabulary and pure SQL cannot without a copy. A copy is
