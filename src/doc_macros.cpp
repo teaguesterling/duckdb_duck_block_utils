@@ -134,8 +134,22 @@ static const DefaultTableMacro DOC_TABLE_MACROS[] = {
      "                  WHERE coalesce((SELECT min(ord) - 1 FROM h), 2147483647)::INT >= 0),\n"
      "         hit AS (SELECT span.s, span.e, span.title, duck_blocks_slice(doc.b, span.s, span.e) AS sec\n"
      "                 FROM doc, span\n"
-     "                 WHERE duck_blocks_to_text(duck_blocks_slice(doc.b, span.s, span.e)) ILIKE '%' || query_term || "
-     "'%')\n"
+     // SEARCH JOINS WITH A SPACE, not the default '\n\n'. A search predicate wants a
+     // flat text stream; a RENDERING wants paragraph separation, and they are not the
+     // same job. With the default, a phrase spanning a block boundary does not match:
+     //
+     //     to_text(b, ' ') ILIKE '%here second%'  ->  true
+     //     to_text(b)      ILIKE '%here second%'  ->  false
+     //
+     // Found by the duckeye session, who are DELETING their own section/search SQL to
+     // call these macros -- their search passed ' ' and this did not, so a naive swap
+     // would have silently lost every cross-block hit. Wrong answers, no error, which
+     // is the failure this cluster has been chasing all day.
+     //
+     // The output branches below keep the default separator: what you SEE should read
+     // as a document. Only the predicate is flattened.
+     "                 WHERE duck_blocks_to_text(duck_blocks_slice(doc.b, span.s, span.e), ' ') ILIKE '%' || "
+     "query_term || '%')\n"
      "    SELECT hit.title AS section,\n"
      "           hit.s AS start_order,\n"
      "           CASE lower(output_format)\n"

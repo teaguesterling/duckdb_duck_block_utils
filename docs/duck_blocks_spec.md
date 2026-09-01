@@ -811,6 +811,36 @@ but nothing produces them any more.
 
 **Only `table` carries JSON, and it carries the NATIVE schema.**
 
+**`attributes['pandoc_ast']` is a PRESERVATION SLOT, not a requirement.** Asked by the
+panduck session, whose readers parse XHTML and LaTeX directly and never hold a Pandoc
+tuple to preserve.
+
+| you have | do |
+|---|---|
+| a source tuple (you started from Pandoc JSON) | emit `{headers, rows}` **and** keep the tuple verbatim in `attributes['pandoc_ast']` |
+| no source tuple (you parsed HTML, LaTeX, XML…) | emit `{headers, rows}` and **omit** the attribute |
+
+Absence means *no tuple existed*, and a producer that HAS one and drops it is
+non-conformant. **Do not synthesise a tuple you never parsed** — panduck raised that
+option and rejected it themselves, correctly: a constructed tuple puts a fabricated
+artifact in the slot reserved for the authentic one, and any lossiness in the
+construction is then preserved as though it were faithful.
+
+Nothing can enforce this. A consumer cannot tell "no tuple existed" from "the producer
+forgot", because a dropped tuple leaves no trace — so it is a rule rather than a check,
+and it is stated here precisely because no instrument will catch a violation.
+
+**THE PROJECTION IS LOSSY, and for a producer with no tuple the loss is permanent.**
+`{headers, rows}` does not express `colspan`, `rowspan`, per-column alignment, or
+multiple table bodies. Where a tuple is preserved, the truth survives beside the
+projection. Where there is none — panduck's EPUB `<td colspan="2">` — the span is
+simply gone, with nothing holding it.
+
+That is real fidelity lost by conforming, and it is named here rather than left to be
+discovered: a producer in that position should say so plainly rather than let
+"conformant" imply more than it does. panduck's framing, and they are right that the
+honest move is to document it in the reader rather than let the label carry it.
+
 | Type | content | also |
 |------|---------|------|
 | `table` | `{"headers": [...], "rows": [[...]]}` | `attributes['pandoc_ast']` holds the full Pandoc tuple |

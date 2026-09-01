@@ -222,3 +222,41 @@ SELECT duck_blocks_get_section(parse_markdown_to_duck_blocks(
 ----
 true
 
+# ============================================================================
+# SEARCH FLATTENS WITH A SPACE; RENDERING KEEPS PARAGRAPH SEPARATION.
+#
+# duck_blocks_sections_like matched on duck_blocks_to_text() with its DEFAULT
+# separator, which is a blank line -- so a phrase spanning a block boundary did not
+# match:
+#
+#     to_text(b, ' ') ILIKE '%here second%'  ->  true
+#     to_text(b)      ILIKE '%here second%'  ->  false
+#
+# Found by the duckeye session, who are DELETING their own section/search SQL to
+# call these macros. Their search passed ' ' and this did not, so a naive swap would
+# have silently lost every cross-block hit -- wrong answers, no error.
+#
+# A search predicate wants a flat text stream; a rendering wants paragraph
+# separation. Different jobs, and only the predicate is flattened.
+# ============================================================================
+
+statement ok
+PRAGMA duck_block_doc_macros;
+
+statement ok
+CREATE TEMP TABLE sepdoc AS SELECT pandoc_ast_to_blocks('[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"H"}]]},{"t":"Para","c":[{"t":"Str","c":"here"}]},{"t":"Para","c":[{"t":"Str","c":"second"}]}]') AS b;
+
+# A phrase across a block boundary matches, and one inside a block still does.
+query II
+SELECT (SELECT count(*) FROM duck_blocks_sections_like((SELECT b FROM sepdoc), 'here second', 'text')),
+       (SELECT count(*) FROM duck_blocks_sections_like((SELECT b FROM sepdoc), 'second', 'text'));
+----
+1	1
+
+# DISCRIMINATING: the OUTPUT must still use the default separator. Flattening the
+# rendering too would make every section come back as one run-on line, which would
+# satisfy the assertion above perfectly.
+query I
+SELECT content LIKE '%' || chr(10) || '%' FROM duck_blocks_sections_like((SELECT b FROM sepdoc), 'here', 'text');
+----
+true
