@@ -54,11 +54,22 @@ static string GetElementAttribute(const Value &element, const string &key) {
 // Structured inline children (issue #20)
 //
 // Rich text is not stored in a block's `content`; it is the run of kind='inline'
-// elements that immediately follows the block in the flat list. Producers
-// disagree about which representation they use: `markdown` flattens plain text
-// into `content`, while `webbed` leaves `content` NULL and emits inline children
-// for any heading containing <code>, <em>, <a>, ... Consumers therefore have to
-// handle both, exactly as the ANSI renderer's RenderInlineRun already does.
+// elements that immediately follows the block in the flat list.
+//
+// This said "producers DISAGREE about which representation they use", named
+// duckdb_markdown and webbed, and described what each emits. That was written
+// before the content rule was canonical, and by spec 6.1 it is wrong in the way
+// that matters: the rule is ONE shape -- `content` iff the block has a single
+// text child, inline children otherwise -- so a producer picking the other one is
+// non-conforming rather than exercising a choice. A reader of the old comment
+// would conclude the vocabulary is ambiguous here, which is the thing 2.0 through
+// 6.1 exist to remove.
+//
+// Handling both stays correct and stays here: 1.x data exists, and a consumer that
+// only reads `content` loses every heading with a <code> in it. But that is
+// DEFENSIVE, not a description of what any producer currently does -- a claim I do
+// not measure and should not assert on their behalf. The ANSI renderer's
+// RenderInlineRun takes the same posture.
 //
 // This is the plain-text counterpart of that traversal: consume the run of
 // inline elements starting at `i` (advancing `i` past them) and concatenate
