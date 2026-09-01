@@ -737,7 +737,7 @@ Extensions can use this macro to validate duck_blocks without depending on duck_
 ```sql
 -- Validate a single duck_block
 CREATE OR REPLACE MACRO duck_block_is_valid(elem) AS (
-    elem.kind IN ('block', 'inline')
+    elem.kind IN ('block', 'inline', 'value')  -- 'value' since 3.0; omitting it rejects all metadata
     AND elem.element_type IS NOT NULL
     AND elem.level >= 1        -- explicit structural depth, never NULL
     AND elem.element_order >= 0
@@ -789,7 +789,13 @@ Duck_blocks representation is designed to be convertible to/from Pandoc AST:
 
 Extensions that produce duck_blocks:
 - MUST generate valid structures per this spec
-- MUST set `kind` to either `'block'` or `'inline'`
+- MUST set `kind` to one of `'block'`, `'inline'` or `'value'` — the authoritative
+  list is `duck_block_kind_names()`. **This said "either `'block'` or `'inline'`"
+  until 2026-09-01**, which is the instruction that produces the metadata leak: a
+  producer following it has nowhere to put a document's own title, and puts it in the
+  body as prose. `value` has existed since spec 3.0. The conformance macro above had
+  the same omission, and it is published for extensions to copy — copied as written,
+  it rejected every conforming metadata element as invalid.
 - SHOULD use canonical content representation
 - MUST set appropriate encoding for block content
 

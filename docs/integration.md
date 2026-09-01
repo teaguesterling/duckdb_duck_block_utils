@@ -14,7 +14,7 @@ The extension provides a standard interface for working with `duck_block` values
 | `duck_inline(...)` | Create an inline element from components |
 | `to_duck_block(struct)` | Convert compatible struct to duck_block |
 | `duck_block_valid(elem)` | Validate an element |
-| `duck_block_kind(elem)` | Extract kind field ('block' or 'inline') |
+| `duck_block_kind(elem)` | Extract kind field ('block', 'inline' or 'value') |
 | `duck_block_type(elem)` | Extract element_type field |
 | `duck_block_content(elem)` | Extract content field |
 | `duck_block_level(elem)` | Extract level field |

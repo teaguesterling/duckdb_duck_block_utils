@@ -10,7 +10,7 @@ The core document element type used throughout this extension. Both block-level 
 
 ```sql
 STRUCT(
-    kind VARCHAR,                       -- 'block' or 'inline'
+    kind VARCHAR,                       -- 'block', 'inline' or 'value'
     element_type VARCHAR,               -- Element type identifier
     content VARCHAR,                    -- Primary content
     level INTEGER,                      -- Hierarchy level (NULL if not applicable)

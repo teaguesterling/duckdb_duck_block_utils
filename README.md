@@ -148,7 +148,7 @@ Both block-level and inline elements use the same unified type, distinguished by
 
 ```sql
 STRUCT(
-    kind VARCHAR,                       -- 'block' or 'inline'
+    kind VARCHAR,                       -- 'block', 'inline' or 'value'
     element_type VARCHAR,               -- 'heading', 'paragraph', 'text', 'link', etc.
     content VARCHAR,                    -- Primary content
     level INTEGER,                      -- Structural nesting depth (NOT heading level)

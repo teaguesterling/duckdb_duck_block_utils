@@ -10,7 +10,7 @@ The core document element type. Both block-level and inline elements use the sam
 
 ```sql
 STRUCT(
-    kind VARCHAR,                       -- 'block' or 'inline'
+    kind VARCHAR,                       -- 'block', 'inline' or 'value'
     element_type VARCHAR,               -- Element type identifier
     content VARCHAR,                    -- Primary content (NULL if has children)
     level INTEGER,                      -- Hierarchy level (1 = top level)

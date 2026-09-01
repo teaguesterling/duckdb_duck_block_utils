@@ -8,7 +8,7 @@ Both block-level and inline elements use the same type, distinguished by the `ki
 
 ```sql
 STRUCT(
-    kind VARCHAR,                       -- 'block' or 'inline'
+    kind VARCHAR,                       -- 'block', 'inline' or 'value'
     element_type VARCHAR,               -- Element type identifier
     content VARCHAR,                    -- Text content
     level INTEGER,                      -- Semantic level
@@ -143,7 +143,7 @@ duck_block_valid(elem duck_block) → BOOLEAN
 ```
 
 **Validation Rules:**
-- `kind` must be 'block' or 'inline'
+- `kind` must be 'block', 'inline' or 'value' (see docs/duck_blocks_spec.md; `value` since 3.0)
 - `element_type` must be non-empty
 - For blocks: `element_type` must be recognized (heading, paragraph, code, etc.)
 - For inlines: `element_type` must be recognized (text, link, bold, etc.)
@@ -181,7 +181,7 @@ These functions extract individual fields from a `duck_block`. They're useful wh
 duck_block_kind(elem duck_block) → VARCHAR
 ```
 
-Returns the `kind` field ('block' or 'inline').
+Returns the `kind` field ('block', 'inline' or 'value').
 
 ### duck_block_type
 

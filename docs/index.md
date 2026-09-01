@@ -23,7 +23,7 @@ Both block-level and inline elements use the same type, distinguished by the `ki
 
 ```sql
 STRUCT(
-    kind VARCHAR,                       -- 'block' or 'inline'
+    kind VARCHAR,                       -- 'block', 'inline' or 'value'
     element_type VARCHAR,               -- 'heading', 'paragraph', 'text', 'link', etc.
     content VARCHAR,                    -- Primary text content
     level INTEGER,                      -- Hierarchy level (NULL if N/A)

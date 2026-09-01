@@ -15,7 +15,7 @@ This document describes the v2 API redesign for `duck_block_utils`, introducing 
 
 ```sql
 STRUCT(
-    kind VARCHAR,                       -- 'block' or 'inline'
+    kind VARCHAR,                       -- 'block', 'inline' or 'value'
     element_type VARCHAR,               -- 'heading', 'paragraph', 'bold', etc.
     content VARCHAR,                    -- Text content (NULL if has children)
     level INTEGER,                      -- Hierarchy depth (1 = top level)

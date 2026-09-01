@@ -488,3 +488,51 @@ query I
 SELECT pandoc_ast_to_blocks('[{"t":"FutureThing","c":[1,2]}]')[1].attributes['source_type'];
 ----
 FutureThing
+
+# ============================================================================
+# THE PUBLISHED CONFORMANCE MACRO MUST ACCEPT EVERY KIND THIS BUILD EMITS.
+#
+# docs/duck_blocks_spec.md publishes `duck_block_is_valid` for extensions to copy
+# so they can validate WITHOUT depending on duck_block_utils. It read
+# `elem.kind IN ('block', 'inline')` until 2026-09-01 -- so copied as written it
+# rejected every metadata element as invalid, and the spec's Extension
+# Responsibilities said producers MUST set kind to one of those two.
+#
+# That is the instruction that produces the metadata leak: a producer following it
+# has nowhere to put a document's own title and puts it in the body as prose. It is
+# the first defect reported to duckdb_markdown this morning, and the canonical spec
+# was publishing the instruction to commit it, in MUST language, the whole time.
+#
+# `value` has existed since spec 3.0. Six documents in this repo restated the
+# two-kind definition and I had fixed only the type-definition line.
+# ============================================================================
+
+statement ok
+CREATE OR REPLACE MACRO duck_block_is_valid(elem) AS (
+    elem.kind IN ('block', 'inline', 'value')
+    AND elem.element_type IS NOT NULL
+    AND elem.level >= 1
+    AND elem.element_order >= 0
+);
+
+# Every kind the build declares must pass the macro the spec publishes. Driven from
+# duck_block_kind_names() rather than a literal, so a kind added later cannot be
+# forgotten here the way `value` was forgotten in six files.
+query I
+SELECT bool_and(duck_block_is_valid({'kind': k, 'element_type': 'paragraph', 'content': 'x',
+                                     'level': 1, 'encoding': 'text', 'attributes': MAP{},
+                                     'element_order': 0}::duck_block))
+FROM (SELECT unnest(duck_block_kind_names()) AS k);
+----
+true
+
+# DISCRIMINATING, against a real reader emission rather than a synthetic struct:
+# a document with metadata produces a `value` element, and the macro must accept it.
+# Asserting only over the NAMES would pass for a build that declares `value` and
+# never emits one.
+query II
+SELECT count(*) FILTER (WHERE b.kind = 'value'),
+       bool_and(duck_block_is_valid(b))
+FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"body"}]}]}')) AS b);
+----
+1	true

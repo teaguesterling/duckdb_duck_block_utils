@@ -69,7 +69,7 @@ Both block-level and inline elements use the same unified `duck_block` type, dis
 
 ```sql
 STRUCT(
-    kind VARCHAR,                           -- 'block' or 'inline'
+    kind VARCHAR,                           -- 'block', 'inline' or 'value'
     element_type VARCHAR,                   -- Element type identifier
     content VARCHAR,                        -- Text content
     level INTEGER,                          -- Semantic level (heading level, nesting depth)
@@ -257,7 +257,7 @@ STRUCT(valid BOOL, errors LIST(VARCHAR)) duck_blocks_validate(LIST(duck_block) b
 
 // Implementation
 - Check each block:
-  - kind is 'block' or 'inline'
+  - kind is 'block', 'inline' or 'value' (see docs/duck_blocks_spec.md; `value` since 3.0)
   - element_type is non-empty VARCHAR
   - encoding is one of: 'text', 'json', 'yaml', 'html', 'xml', 'latex', 'markdown'
   - If encoding = 'json', content is valid JSON
