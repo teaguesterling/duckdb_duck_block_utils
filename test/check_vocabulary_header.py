@@ -36,15 +36,23 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 VOCAB = REPO / "src" / "include" / "duck_block_vocabulary.hpp"
-EXT = REPO / "build" / "release" / "extension" / "duck_block_utils" / "duck_block_utils.duckdb_extension"
-
-
 def repo_duckdb():
-    for candidate in ("build/release/duckdb", "build/debug/duckdb"):
-        path = REPO / candidate
-        if path.exists() and EXT.exists():
-            return path
-    return None
+    """The duckdb binary AND the extension beside it, or (None, None).
+
+    Both come from the SAME build directory. The first version of this pinned the
+    extension to build/release while letting the binary fall through to build/debug,
+    so a debug-only checkout found no release extension and the whole comparison
+    SKIPPED -- silently, and indistinguishably from passing. Found by control-testing
+    the second candidate, which this repo never takes because build/release always
+    exists. duckdb_markdown found the identical never-taken fallback in their own
+    vendored-header lookup the same evening.
+    """
+    for candidate in ("release", "debug"):
+        binary = REPO / "build" / candidate / "duckdb"
+        ext = REPO / "build" / candidate / "extension" / "duck_block_utils" / "duck_block_utils.duckdb_extension"
+        if binary.exists() and ext.exists():
+            return binary, ext
+    return None, None
 
 PROBE = """
 #include "duck_block_vocabulary.hpp"
@@ -129,7 +137,7 @@ def main() -> int:
     #    A loose `TYPE_[A-Z_]+` matched line 64's illustrative COMMENT about a value
     #    change and the suffix of every LIST_TYPE_* constant, and reported two defects
     #    that do not exist. A measurement can be wrong the same way a check can.
-    duckdb = repo_duckdb()
+    duckdb, ext = repo_duckdb()
     if duckdb is None:
         print("  (skipping the build comparison: no duckdb binary)")
     else:
@@ -137,7 +145,7 @@ def main() -> int:
         declared = {m.group(2) for m in (pat.match(l) for l in VOCAB.read_text().splitlines()) if m}
         proc = subprocess.run(
             [str(duckdb), "-unsigned", "-noheader", "-list", "-c",
-             f"LOAD '{EXT}'; SELECT unnest(duck_block_type_names());"],
+             f"LOAD '{ext}'; SELECT unnest(duck_block_type_names());"],
             capture_output=True, text=True)
         enumerated = {x.strip() for x in proc.stdout.split() if x.strip()}
         if proc.returncode != 0 or not enumerated:
