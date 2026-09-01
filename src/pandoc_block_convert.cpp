@@ -744,6 +744,7 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 
 	struct ListItem {
 		string content;
+		vector<string> extra_paragraphs;
 		vector<Value> inlines;
 		yyjson_mut_val *nested_list_val = nullptr;
 	};
@@ -784,8 +785,17 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 				// inlines, because a Pandoc list item holds BLOCKS. Reading only the
 				// builder shape is what made a Pandoc list export as an empty
 				// BulletList -- right number of items, every one of them blank.
-				if (current_item.content.empty()) {
-					current_item.content = GetElementStringField(child, BlockTypes::CONTENT_IDX);
+				//
+				// EVERY paragraph, not just the first. A Pandoc list item holds a list
+				// of blocks and <li><p>a</p><p>b</p></li> is ordinary in EPUB and HTML;
+				// keeping only the first silently dropped the rest on export. Found by
+				// testing the multi-block case panduck asked about before answering
+				// them, rather than after.
+				auto para_text = GetElementStringField(child, BlockTypes::CONTENT_IDX);
+				if (current_item.content.empty() && current_item.extra_paragraphs.empty()) {
+					current_item.content = para_text;
+				} else {
+					current_item.extra_paragraphs.push_back(para_text);
 				}
 				j++;
 			} else if (child_level <= list_level) {
@@ -860,6 +870,20 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 			yyjson_mut_obj_add_val(doc, plain_obj, "c", yyjson_mut_arr(doc));
 		}
 		yyjson_mut_arr_add_val(item_blocks, plain_obj);
+
+		// A multi-block item's remaining paragraphs. Pandoc's own reader emits Para
+		// for these, so emit Para rather than Plain to stay closer to the input.
+		for (auto &extra : item.extra_paragraphs) {
+			yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, para_obj, "t", "Para");
+			yyjson_mut_val *pinl = yyjson_mut_arr(doc);
+			yyjson_mut_val *pstr = yyjson_mut_obj(doc);
+			yyjson_mut_obj_add_str(doc, pstr, "t", "Str");
+			yyjson_mut_obj_add_strncpy(doc, pstr, "c", extra.data(), extra.size());
+			yyjson_mut_arr_add_val(pinl, pstr);
+			yyjson_mut_obj_add_val(doc, para_obj, "c", pinl);
+			yyjson_mut_arr_add_val(item_blocks, para_obj);
+		}
 
 		if (item.nested_list_val) {
 			yyjson_mut_arr_add_val(item_blocks, item.nested_list_val);

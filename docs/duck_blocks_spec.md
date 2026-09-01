@@ -78,14 +78,27 @@ with the type names.
 
 ## Block Types (kind='block')
 
+**`level` is the same rule for every type**, and the column below says it per row
+only because the table predates the rule being stated: a TOP-LEVEL element carries
+NULL, and a child carries its parent's effective depth + 1, where NULL reads as
+depth 1. So a top-level container is NULL, its children are 2, its grandchildren 3.
+A container and a leaf sitting side by side at top level both carry NULL — depth is
+not a property of being a container.
+
+Children start at 2 rather than 1 for a concrete reason: NULL and 1 both resolve to
+depth 1, so a child at 1 under a NULL parent is indistinguishable from its parent's
+sibling. Consumers that express containment through `level` close the container
+before the child renders. That is not hypothetical — it is a live defect in the
+portfolio, and `duck_blocks_lint()` now reports it.
+
 | Type | Description | level Usage | encoding Values | Key Attributes |
 |------|-------------|-------------|-----------------|----------------|
 | `heading` | Section heading | NULL | `text` | `heading_level` (1-6) |
 | `paragraph` | Text paragraph | NULL | `text`, `markdown` | |
 | `code` | Code block | NULL | `text` | `language` |
-| `blockquote` | Quoted content | Nesting depth | `text`, `markdown` | |
-| `list` | List container | NULL | `json` (items array) | `ordered`, `list_type` |
-| `list_item` | List item | Nesting depth | `text` | |
+| `blockquote` | Quoted content | NULL at top level | — (container) | |
+| `list` | List container | NULL at top level | — (container) | `list_type`, and for ordered `start`, `number_style`, `number_delim` |
+| `list_item` | List item | parent `list` + 1 | — (container) | |
 | `deflist` | Definition list | NULL | `json` | |
 | `lineblock` | Preserved line breaks | NULL | `text` (lines joined with `\n`) | |
 | `table` | Table | NULL | `json` | |
@@ -94,10 +107,10 @@ with the type names.
 | `metadata` | YAML frontmatter | 0 | `yaml` | |
 | `image` | Block-level image | NULL | `text` | `src`, `alt`, `title` |
 | `raw` | Raw content in a *named* format | NULL | format name | `format` |
-| `div` | Generic container | Nesting depth | `text` | `id`, `class` |
-| `section` | **Semantic** sectioning container | Nesting depth | `text` | `role`, `id`, `class` |
-| `figure` | Figure: content plus a caption | Nesting depth | `text` | `id`, `class` |
-| `caption` | Caption belonging to the container before it | Nesting depth | `text` | `short_caption` |
+| `div` | Generic container | NULL at top level | — (container) | `id`, `class` |
+| `section` | **Semantic** sectioning container | NULL at top level | — (container) | `role`, `id`, `class` |
+| `figure` | Figure: content plus a caption | NULL at top level | — (container) | `id`, `class` |
+| `caption` | Caption belonging to the container before it | parent + 1 | — (container) | `short_caption` |
 | `generic` | Structurally valid, type not in this vocabulary | NULL | `json` | `source_type` |
 
 ### Containers nest by `level`

@@ -1503,3 +1503,40 @@ query I
 SELECT duck_blocks_to_text(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Para","c":[{"t":"Str","c":"My"},{"t":"Space"},{"t":"Strong","c":[{"t":"Str","c":"Doc"}]}]}]}'));
 ----
 My Doc
+
+# ============================================================================
+# A list_item may hold MULTIPLE blocks. <li><p>a</p><p>b</p></li> is ordinary in
+# EPUB and HTML, and the exporter kept only the first paragraph -- silent loss of
+# everything after it. Found by testing the case panduck asked about BEFORE
+# answering them rather than after.
+# ============================================================================
+
+query IIII
+SELECT b.element_type, coalesce(b.level::VARCHAR,'NULL'), coalesce(b.content,'-'), b.kind
+FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"Para","c":[{"t":"Str","c":"b"}]}]]}]}')) AS b);
+----
+list	NULL	(empty)	block
+list_item	2	(empty)	block
+paragraph	3	a	block
+paragraph	3	b	block
+
+# DISCRIMINATING: the defect kept the FIRST paragraph, so asserting that the item
+# survives, or that 'a' survives, would both have passed against it. The property
+# is that the SECOND paragraph reaches the output.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"Para","c":[{"t":"Str","c":"b"}]}]]}]}'))::VARCHAR LIKE '%"c":"b"%';
+----
+true
+
+# Both blocks stay inside the SAME item -- one item holding two paragraphs, not
+# two items. Splitting them would also make 'b' survive while corrupting the list.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"Para","c":[{"t":"Str","c":"b"}]}]]}]}'))::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"a"}]},{"t":"Para","c":[{"t":"Str","c":"b"}]}]]}]';
+----
+true
+
+# A multi-block item is structurally sound, so the containment lint stays quiet.
+query I
+SELECT count(*) FROM (SELECT unnest(duck_blocks_lint(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"Para","c":[{"t":"Str","c":"b"}]}]]}]}'))) AS w);
+----
+0
