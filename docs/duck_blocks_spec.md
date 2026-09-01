@@ -113,7 +113,7 @@ now rejects a NULL level outright.
 | `table` | Table | NULL | `json` | |
 | `hr` | Horizontal rule | NULL | `text` | |
 | `page_break` | **Physical** page boundary — a marker, not a container | NULL | `text` | `page_number` |
-| `metadata` | YAML frontmatter | 0 | `yaml` | |
+| `metadata` | YAML frontmatter | depth (top level 1) | `yaml` | |
 | `image` | Block-level image | depth (top level 1) | `text` | `src`, `alt`, `title` |
 | `raw` | Raw content in a *named* format | NULL | format name | `format` |
 | `div` | Generic container | depth (top level 1) | `text` if it carries content, else — | `id`, `class` |
@@ -789,6 +789,20 @@ Duck_blocks representation is designed to be convertible to/from Pandoc AST:
 
 Extensions that produce duck_blocks:
 - MUST generate valid structures per this spec
+- **MUST NOT DISCARD DOCUMENT METADATA.** If the source format carries a title,
+  author, date or equivalent, emit it as `kind='value'` (see "Value Types" below)
+  rather than dropping it or placing it in the body.
+
+  This is stated because two of the three consuming extensions currently **drop
+  every document's title and author** — webbed never visits `<head>`, and none of
+  panduck's five readers extracts metadata — and this document is a plausible cause:
+  until 2026-09-01 it said producers MUST set `kind` to `'block'` or `'inline'`,
+  which leaves a conforming producer with **nowhere to put a title**. A producer that
+  followed that sentence had two options, both wrong: put it in the body as prose, or
+  drop it.
+
+  A discard is the worse of the two. A leak is visible and correctable; a discarded
+  title is unrecoverable and indistinguishable from a document that never had one.
 - MUST set `kind` to one of `'block'`, `'inline'` or `'value'` — the authoritative
   list is `duck_block_kind_names()`. **This said "either `'block'` or `'inline'`"
   until 2026-09-01**, which is the instruction that produces the metadata leak: a

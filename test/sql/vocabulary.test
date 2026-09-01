@@ -536,3 +536,31 @@ SELECT count(*) FILTER (WHERE b.kind = 'value'),
 FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"body"}]}]}')) AS b);
 ----
 1	true
+
+# ============================================================================
+# THE `metadata` ROW SAID LEVEL 0, WHICH THE VALIDATOR REJECTS.
+#
+# docs/duck_blocks_spec.md's type table gave `metadata` a level of 0 while the
+# conformance macro it publishes two hundred lines away requires `level >= 1`, and
+# duck_blocks_validate() errors with "level 0 is below 1; top level is 1".
+#
+# So the spec instructed a value its own validator rejects, in the row for the one
+# type both webbed and panduck need in order to stop dropping every document's
+# title. A producer doing exactly as told would have been told it was wrong.
+#
+# Third self-contradiction found in this document today, after the container
+# content rule and the two-kind `kind` definition.
+# ============================================================================
+
+query II
+SELECT (SELECT b.level FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaString","c":"T"}},"blocks":[]}')) AS b) WHERE b.kind = 'value'),
+       duck_blocks_validate(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaString","c":"T"}},"blocks":[]}')).valid;
+----
+1	true
+
+# DISCRIMINATING: the level the table USED to document must actually fail, or
+# "the table was fine" would be an equally good reading of the assertion above.
+query I
+SELECT duck_blocks_validate([{'kind':'value','element_type':'metadata','content':'t','level':0,'encoding':'yaml','attributes':MAP{},'element_order':0}::duck_block]).valid;
+----
+false
