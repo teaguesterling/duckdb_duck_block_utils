@@ -259,8 +259,13 @@ def main() -> int:
     # `list_item` (it does, universally) and the vendorable file had no way to say so:
     # validity accepted both shapes, so a producer who cannot load the extension had no
     # instrument expressing the preference at all.
+    # Third element: MUST the rules say something? Without it, `a == b == set()`
+    # passes -- so deleting a rule from BOTH implementations, or breaking the probe so
+    # it stops matching, reads exactly like agreement. Silence is only evidence when the
+    # probe could have produced noise.
     lint_docs = [
         (
+            True,
             "lone plain under a figure",
             "[{'kind':'block','element_type':'figure','content':NULL,'level':1,'encoding':'text',"
             "'attributes':MAP{},'element_order':0}::duck_block,"
@@ -268,6 +273,7 @@ def main() -> int:
             "'attributes':MAP{},'element_order':1}::duck_block]",
         ),
         (
+            False,
             "legitimate plain beside a sibling",
             "[{'kind':'block','element_type':'section','content':NULL,'level':1,'encoding':'text',"
             "'attributes':MAP{},'element_order':0}::duck_block,"
@@ -277,23 +283,43 @@ def main() -> int:
             "'attributes':MAP{'heading_level':'2'},'element_order':2}::duck_block]",
         ),
         (
+            True,
             "pre-native table",
             "[{'kind':'block','element_type':'table','content':'[[\"h\"]]','level':1,'encoding':'json',"
             "'attributes':MAP{},'element_order':0}::duck_block]",
         ),
         (
+            True,
             "deflist",
             "[{'kind':'block','element_type':'deflist','content':'x','level':1,"
             "'encoding':'text','attributes':MAP{},'element_order':0}::duck_block]",
         ),
         (
+            True,
             "undeclared type",
             "[{'kind':'block','element_type':'frontmatter','content':'x','level':1,"
             "'encoding':'yaml','attributes':MAP{},'element_order':0}::duck_block]",
         ),
-        ("clean document", "pandoc_ast_to_blocks('[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"x\"}]}]')"),
+        (False, "clean document", "pandoc_ast_to_blocks('[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"x\"}]}]')"),
+        # Depth 3, because the pre-structural shape is worst at depth and the minimal case
+        # understates it. webbed's reader emitted one top-level `list` PER NESTING LEVEL,
+        # so the deepest text came back three times: ["L1L2L3"], ["L2L3"], ["L3"]. Measured
+        # against the shipped v1.5.5 artifact 2026-09-01 -- the fusion webbed reported and
+        # the duplication duckeye reported are the same defect seen from two depths.
+        # All three elements must be flagged; a rule that fired only on the first would
+        # tell a consumer the document had one bad list instead of three.
+        (
+            True,
+            "pre-structural list, three levels deep",
+            "[{'kind':'block','element_type':'list','content':'[\"L1L2L3\"]','level':1,'encoding':'json',"
+            "'attributes':MAP{'list_type':'bullet'},'element_order':0}::duck_block,"
+            "{'kind':'block','element_type':'list','content':'[\"L2L3\"]','level':1,'encoding':'json',"
+            "'attributes':MAP{'list_type':'bullet'},'element_order':1}::duck_block,"
+            "{'kind':'block','element_type':'list','content':'[\"L3\"]','level':1,'encoding':'json',"
+            "'attributes':MAP{'list_type':'bullet'},'element_order':2}::duck_block]",
+        ),
     ]
-    for name, doc in lint_docs:
+    for must_fire, name, doc in lint_docs:
         ext = subprocess.run(
             [
                 str(duckdb),
@@ -313,6 +339,15 @@ def main() -> int:
         )
         a = {x.strip() for x in ext.stdout.split() if x.strip()}
         b = {x.strip() for x in sql.stdout.split() if x.strip()}
+        if must_fire and not a:
+            print(f"\nFAIL: nothing flagged `{name}`, and both implementations were silent.")
+            print("      Agreement on silence is not agreement -- a rule deleted from both,")
+            print("      or a probe that no longer matches, produces exactly this output.")
+            return 1
+        if not must_fire and a:
+            print(f"\nFAIL: `{name}` is conforming and was flagged anyway at {sorted(a)}.")
+            print("      A rule that fires on correct data gets muted, and then it catches nothing.")
+            return 1
         if a != b:
             print(f"\nFAIL: advisory rules disagree on `{name}`.")
             print(f"      extension flags element_order {sorted(a) or 'none'};" f" SQL flags {sorted(b) or 'none'}")
