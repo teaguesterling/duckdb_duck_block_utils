@@ -78,7 +78,7 @@ static Value CreateChildWithLevelAndOrder(const Value &element, int32_t new_leve
 }
 
 vector<Value> BuilderFunctions::BuildWithContent(const Value &parent_block, const Value &content_input,
-                                                 int32_t base_level, bool is_container) {
+                                                 int32_t base_level) {
 	vector<Value> result;
 
 	// Get parent block children for modification
@@ -94,23 +94,16 @@ vector<Value> BuilderFunctions::BuildWithContent(const Value &parent_block, cons
 	if (content_input.IsNull()) {
 		// NULL content - keep parent content as-is (already NULL from CreateBlockWithNullContent)
 		result.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(parent_children)));
-	} else if (content_input.type().id() == LogicalTypeId::VARCHAR && is_container) {
-		// A container never carries content. Wrap the text in a paragraph child so a
-		// builder-made blockquote or list_item has the SAME shape as a reader-made
-		// one. Before this, duck_block_blockquote('x') produced blockquote(text)
-		// while every reader produced blockquote -> paragraph(text), and a consumer
-		// written against either silently mis-rendered the other.
-		result.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(parent_children)));
-		map<string, string> child_attrs;
-		auto child = CreateBlockWithNullContent(BlockTypes::TYPE_PARAGRAPH, BlockTypes::KIND_BLOCK,
-		                                        Value(base_level + 1), BlockTypes::ENCODING_TEXT, child_attrs);
-		auto child_children = StructValue::GetChildren(child);
-		child_children[BlockTypes::CONTENT_IDX] = content_input;
-		child_children[BlockTypes::LEVEL_IDX] = Value(base_level + 1);
-		child_children[BlockTypes::ELEMENT_ORDER_IDX] = Value(1);
-		result.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_children)));
 	} else if (content_input.type().id() == LogicalTypeId::VARCHAR) {
-		// VARCHAR content - set content field (leaf types: heading, paragraph, code)
+		// A string argument IS a single text child, so it lands in `content` -- spec
+		// v1.0's rule, which covers inline and block containers in one sentence.
+		//
+		// Spec 2.0 briefly replaced this for BLOCK containers with "a container never
+		// carries content", wrapping the text in a paragraph child. That was broader
+		// than the defect required: what needed fixing was `list` storing a JSON items
+		// array, not the content rule. It also left blocks and inlines on two
+		// different rules, since inline containers never stopped following v1.
+		// Restored on Teague's ruling to stay close to v1.
 		parent_children[BlockTypes::CONTENT_IDX] = content_input;
 		result.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(parent_children)));
 	} else if (content_input.type().id() == LogicalTypeId::STRUCT) {
@@ -586,7 +579,7 @@ void BuilderFunctions::DbBlockquoteV2Fun(DataChunk &args, ExpressionState &state
 		                                         BlockTypes::ENCODING_TEXT, {});
 
 		// Use level_val as base_level so blockquote's level reflects quote nesting
-		auto result_list = BuildWithContent(parent, content, level_val, /*is_container=*/true);
+		auto result_list = BuildWithContent(parent, content, level_val);
 		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
 	}
 }
@@ -601,7 +594,7 @@ void BuilderFunctions::DbBlockquoteV2NoLevelFun(DataChunk &args, ExpressionState
 		auto parent = CreateBlockWithNullContent(BlockTypes::TYPE_BLOCKQUOTE, BlockTypes::KIND_BLOCK, Value(1),
 		                                         BlockTypes::ENCODING_TEXT, {});
 
-		auto result_list = BuildWithContent(parent, content, 1, /*is_container=*/true);
+		auto result_list = BuildWithContent(parent, content, 1);
 		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
 	}
 }
@@ -664,20 +657,18 @@ void BuilderFunctions::DbListBlockV2Fun(DataChunk &args, ExpressionState &state,
 		if (!items.IsNull()) {
 			map<string, string> empty_attrs;
 			for (auto &item : ListValue::GetChildren(items)) {
+				// Each item here is a STRING -- a single text child -- so under spec
+				// v1.0's rule its text belongs on the list_item itself, not in a
+				// paragraph child. The Pandoc reader's items hold a Plain BLOCK rather
+				// than a text, so those correctly keep their paragraph. One rule, two
+				// inputs, two representations -- not two shapes for one input.
 				auto item_block = CreateBlockWithNullContent(BlockTypes::TYPE_LIST_ITEM, BlockTypes::KIND_BLOCK,
 				                                             Value(2), BlockTypes::ENCODING_TEXT, empty_attrs);
 				auto item_children = StructValue::GetChildren(item_block);
+				item_children[BlockTypes::CONTENT_IDX] = item.IsNull() ? Value("") : item;
 				item_children[BlockTypes::LEVEL_IDX] = Value(2);
 				item_children[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
 				result_list.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(item_children)));
-
-				auto para = CreateBlockWithNullContent(BlockTypes::TYPE_PARAGRAPH, BlockTypes::KIND_BLOCK, Value(3),
-				                                       BlockTypes::ENCODING_TEXT, empty_attrs);
-				auto para_children = StructValue::GetChildren(para);
-				para_children[BlockTypes::CONTENT_IDX] = item.IsNull() ? Value("") : item;
-				para_children[BlockTypes::LEVEL_IDX] = Value(3);
-				para_children[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
-				result_list.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(para_children)));
 			}
 		}
 		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
@@ -708,20 +699,18 @@ void BuilderFunctions::DbListBlockV2NoOrderFun(DataChunk &args, ExpressionState 
 		if (!items.IsNull()) {
 			map<string, string> empty_attrs;
 			for (auto &item : ListValue::GetChildren(items)) {
+				// Each item here is a STRING -- a single text child -- so under spec
+				// v1.0's rule its text belongs on the list_item itself, not in a
+				// paragraph child. The Pandoc reader's items hold a Plain BLOCK rather
+				// than a text, so those correctly keep their paragraph. One rule, two
+				// inputs, two representations -- not two shapes for one input.
 				auto item_block = CreateBlockWithNullContent(BlockTypes::TYPE_LIST_ITEM, BlockTypes::KIND_BLOCK,
 				                                             Value(2), BlockTypes::ENCODING_TEXT, empty_attrs);
 				auto item_children = StructValue::GetChildren(item_block);
+				item_children[BlockTypes::CONTENT_IDX] = item.IsNull() ? Value("") : item;
 				item_children[BlockTypes::LEVEL_IDX] = Value(2);
 				item_children[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
 				result_list.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(item_children)));
-
-				auto para = CreateBlockWithNullContent(BlockTypes::TYPE_PARAGRAPH, BlockTypes::KIND_BLOCK, Value(3),
-				                                       BlockTypes::ENCODING_TEXT, empty_attrs);
-				auto para_children = StructValue::GetChildren(para);
-				para_children[BlockTypes::CONTENT_IDX] = item.IsNull() ? Value("") : item;
-				para_children[BlockTypes::LEVEL_IDX] = Value(3);
-				para_children[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
-				result_list.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(para_children)));
 			}
 		}
 		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
@@ -743,7 +732,7 @@ void BuilderFunctions::DbListItemV2Fun(DataChunk &args, ExpressionState &state, 
 		auto parent = CreateBlockWithNullContent(BlockTypes::TYPE_LIST_ITEM, BlockTypes::KIND_BLOCK, Value(1),
 		                                         BlockTypes::ENCODING_TEXT, attrs);
 
-		auto result_list = BuildWithContent(parent, content, 1, /*is_container=*/true);
+		auto result_list = BuildWithContent(parent, content, 1);
 		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
 	}
 }
@@ -761,7 +750,7 @@ void BuilderFunctions::DbListItemV2NoOrderFun(DataChunk &args, ExpressionState &
 		auto parent = CreateBlockWithNullContent(BlockTypes::TYPE_LIST_ITEM, BlockTypes::KIND_BLOCK, Value(1),
 		                                         BlockTypes::ENCODING_TEXT, attrs);
 
-		auto result_list = BuildWithContent(parent, content, 1, /*is_container=*/true);
+		auto result_list = BuildWithContent(parent, content, 1);
 		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
 	}
 }

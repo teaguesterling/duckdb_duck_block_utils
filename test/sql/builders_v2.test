@@ -260,14 +260,15 @@ SELECT duck_block_list_block(true, ['First', 'Second'])[1].attributes['ordered']
 ----
 true
 
-# The items are child elements now, not a JSON payload. This shape is what every
-# reader emits, so a consumer needs one decoder rather than one per producer.
+# The items are child elements, not a JSON payload -- that was the real 2.0 win
+# and it stands. Each item is a STRING, so under spec v1.0's rule its text sits on
+# the list_item itself rather than in a paragraph child.
 query III
 SELECT duck_block_list_block(['A', 'B'])[2].element_type,
-       duck_block_list_block(['A', 'B'])[3].element_type,
+       duck_block_list_block(['A', 'B'])[2].content,
        duck_block_list_block(['A', 'B'])[3].content;
 ----
-list_item	paragraph	A
+list_item	A	B
 
 # ============================================================================
 # duck_block_list_block with LIST(LIST(duck_block)) Tests (Issue #3)
@@ -297,14 +298,14 @@ SELECT duck_block_list_block([duck_block_list_item('First')])[1].content IS NULL
 ----
 true
 
-# Test duck_block_list_block with list items - correct list length.
-# 1 list + 3 list_items + a paragraph under each item. A container carries no
-# content of its own (spec), so an item's words are a paragraph child -- the same
-# shape every reader emits.
+# 1 list + 3 list_items. Each item was built from a STRING -- a single text child
+# -- so under spec v1.0's rule its text sits on the list_item and there is no
+# paragraph child. An item built from BLOCKS would nest them at level+1 instead;
+# same rule, different input.
 query I
 SELECT len(duck_block_list_block([duck_block_list_item('A'), duck_block_list_item('B'), duck_block_list_item('C')]));
 ----
-7
+4
 
 # Test duck_block_list_block with list items - children have level 2 (parent is level 1)
 query I
@@ -367,11 +368,11 @@ SELECT duck_block_list_block(false, [duck_block_list_item('A'), duck_block_list_
 ----
 false
 
-# Test duck_block_list_block with single item: list + list_item + its paragraph
+# Test duck_block_list_block with single item: list + list_item
 query I
 SELECT len(duck_block_list_block([duck_block_list_item('Only one')]));
 ----
-3
+2
 
 # Test duck_block_list_block with empty list returns just the parent
 query I
@@ -395,15 +396,24 @@ SELECT duck_block_list_item('Item text')[1].element_type;
 ----
 list_item
 
-# A list_item is a CONTAINER, so it carries no content of its own -- its words
-# are a paragraph child at level+1, the same shape every reader emits. Before
-# spec 2.0 the builder put the text on the item itself, giving list_item two
-# shapes and making a consumer written against either mis-render the other.
+# Spec v1.0's rule: content is populated IFF the container has a single text
+# child. A string argument IS that, so the text sits on the list_item and there
+# is no child. Spec 2.0 briefly made block containers never carry content, which
+# left blocks and inlines on two different rules -- restored to v1's single rule.
 query II
-SELECT duck_block_list_item('Item text')[1].content IS NULL,
-       duck_block_list_item('Item text')[2].content;
+SELECT duck_block_list_item('Item text')[1].content,
+       len(duck_block_list_item('Item text'));
 ----
-true	Item text
+Item text	1
+
+# ...and the other half of the same rule: a list of children leaves content empty
+# and nests them at level+1. One rule, two inputs.
+query III
+SELECT duck_block_list_item([duck_block_paragraph('a'), duck_block_paragraph('b')])[1].content IS NULL,
+       duck_block_list_item([duck_block_paragraph('a'), duck_block_paragraph('b')])[2].content,
+       duck_block_list_item([duck_block_paragraph('a'), duck_block_paragraph('b')])[2].level;
+----
+true	a	2
 
 # Test duck_block_list_item unordered by default
 query I

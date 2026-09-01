@@ -309,11 +309,22 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 					warnings.push_back(Value::STRUCT(std::move(warning_values)));
 				}
 
+				// A container that CARRIES CONTENT legitimately owns no children -- that is
+				// spec v1.0's rule, restored: content is populated iff the container has a
+				// single text child, so `duck_block_list_item('a')` is complete on its own.
+				// Only an EMPTY container followed by a sibling is worth flagging.
+				//
+				// Without the content test this rule fired on every conforming v1-shaped
+				// container, because it was written while 2.0 said containers never carry
+				// content. A lint that encodes a superseded rule reports correct data as
+				// broken -- the same defect as the "level should be NULL on headings"
+				// warning removed in 3.0, and the test suite caught it the same way.
 				const bool is_container =
-				    element_type == BlockTypes::TYPE_DIV || element_type == BlockTypes::TYPE_SECTION ||
-				    element_type == BlockTypes::TYPE_FIGURE || element_type == BlockTypes::TYPE_CAPTION ||
-				    element_type == BlockTypes::TYPE_BLOCKQUOTE || element_type == BlockTypes::TYPE_LIST ||
-				    element_type == BlockTypes::TYPE_LIST_ITEM;
+				    content.empty() &&
+				    (element_type == BlockTypes::TYPE_DIV || element_type == BlockTypes::TYPE_SECTION ||
+				     element_type == BlockTypes::TYPE_FIGURE || element_type == BlockTypes::TYPE_CAPTION ||
+				     element_type == BlockTypes::TYPE_BLOCKQUOTE || element_type == BlockTypes::TYPE_LIST ||
+				     element_type == BlockTypes::TYPE_LIST_ITEM);
 				if (is_container) {
 					open_container_depth = depth;
 					open_container_type = element_type;

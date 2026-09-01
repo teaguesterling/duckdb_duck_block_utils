@@ -444,7 +444,7 @@ Pandoc shape renders as empty bullets, from the same renderer, same document, on
 variable changed. So `encoding='json'` is a statement about lexical form only. It
 is **not** a schema, and it is not sufficient to decode against.
 
-### Spec 2.0: ONE shape per element_type
+### ONE shape per element_type
 
 **Every producer in this repo emits the same shape for a given BLOCK
 `element_type`.** Before 2.0 it emitted three for `list` alone, and a consumer's
@@ -464,9 +464,23 @@ and fall back to `content`. Blocks are settled; inlines are scheduled.
 Relatedly, "no content of its own" is spelled two ways: the block builders write
 NULL, the Pandoc reader writes an empty string. Treat both as absent.
 
-**A container carries no content of its own.** `div`, `section`, `figure`,
-`caption`, `blockquote`, `list` and `list_item` own children at `level + 1`; their
-text, if any, is a `paragraph` child.
+**`content` is populated IF AND ONLY IF the container has a single text child.**
+This is spec v1.0's rule and it covers inline and block containers alike:
+
+```
+duck_block_blockquote('x')          blockquote content='x'      <- single text child
+duck_block_blockquote([p1, p2])     blockquote content=NULL
+                                      paragraph, paragraph      <- children at level+1
+duck_block_bold('y')                bold content='y'
+duck_block_bold([text, italic])     bold content=NULL + children
+```
+
+One rule, two inputs, two representations — not two shapes for one input. Spec 2.0
+briefly replaced this for BLOCK containers with "a container never carries
+content", which was broader than the defect required: what actually needed fixing
+was `list` storing a JSON items array, not the content rule. It also left blocks
+and inlines on two different rules, since inline containers never stopped
+following v1. Restored in 3.0.
 
 **Leaf types are unchanged by 2.0, and keep their either/or.** `paragraph`,
 `heading`, `code` and `raw` carry text in `content` **when that text is a single

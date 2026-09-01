@@ -319,10 +319,11 @@ WHERE w.message LIKE '%no content and no children%';
 ----
 1
 
-# On panduck's real epub rows: two structural warnings and NO infos. The
-# "empty element" info used to fire alongside each of them, describing the same
-# fact twice -- one condition, one line, since duplicate reporting is the noise
-# that camouflages signal just as surely as a rule firing on correct code.
+# On panduck's real epub rows: ONE structural warning and no infos. The empty
+# blockquote is flagged; the content-bearing list_item is NOT, because under
+# spec v1.0's restored rule a container carrying its text owns no children by
+# design and is complete. Duplicate reporting was also removed -- "empty" and
+# "owns no children" were one fact described twice.
 query II
 SELECT count(*) FILTER (WHERE w.severity = 'warning'), count(*) FILTER (WHERE w.severity = 'info')
 FROM (SELECT unnest(duck_blocks_lint([
@@ -330,7 +331,7 @@ FROM (SELECT unnest(duck_blocks_lint([
   {'kind':'block','element_type':'blockquote','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':14}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER),
   {'kind':'block','element_type':'paragraph','content':'A block quote.','level':1,'encoding':'text','attributes':MAP{},'element_order':15}::STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR,VARCHAR), element_order INTEGER)])) AS w);
 ----
-2	0
+1	0
 
 # ============================================================================
 # LEVEL IS VALIDATED. `level` and adjacency together describe the entire document

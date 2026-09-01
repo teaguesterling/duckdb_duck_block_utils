@@ -86,9 +86,28 @@ the cause of that; the `encoding: json` list was.
 whose child is a paragraph correctly has empty content. Both are the same rule, not two
 shapes.
 
-**Recommendation:** this is Teague's call, not mine to revert — it was explicitly approved.
-Flagging it because "stay close to v1" points at it directly, and because the narrower rule
-is the more economical one.
+**RESOLVED — Teague ruled: restore v1's rule.** Landed in the same session. A string
+argument is a single text child and lands in `content`; a list of children leaves content
+empty and nests at level+1. Blocks and inlines now share one rule again. The real 2.0 win —
+`list` being structural rather than a JSON items array — is unaffected and stands.
+
+The containment lint had to move with it: it was flagging every conforming v1-shaped
+container, because it was written while 2.0 said containers never carry content. A lint
+encoding a superseded rule reports correct data as broken, which is the third instance of
+that shape today.
+
+## Why this is the strongest explanation of the whole episode
+
+duckdb_markdown's framing, and it is better than any per-defect account: a single file
+contradicted itself three ways on `level`, and **every implementation that diverged was
+conforming to one of the three**. panduck derived its model from lines 145-148 and read them
+correctly. webbed tracked line 19 and was right for a reason it could not have articulated.
+duck_block_utils normalised to NULL from the block table. Nobody was careless — the spec
+licensed all of it.
+
+That is why the fix is not "be more careful" but "make the checker able to object": the
+validator never inspected `level` at all, so no amount of care would have surfaced the
+disagreement.
 
 ## External release naming
 
