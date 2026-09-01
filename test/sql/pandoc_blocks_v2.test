@@ -2246,3 +2246,43 @@ SELECT pandoc_ast_to_blocks('[{"t":"LineBlock","c":[[{"t":"Str","c":"one"}],[{"t
        len(pandoc_ast_to_blocks('[{"t":"LineBlock","c":[[{"t":"Str","c":"one"}],[{"t":"Str","c":"two"}]]}]'));
 ----
 true	1
+
+# ============================================================================
+# METADATA MUST NOT LEAK INTO THE BODY -- the export direction.
+#
+#   meta title "TITLE" + body paragraph "BODY"  ->  Para["TITLE"]
+#
+# The document's body was replaced by its title. The top-level inline-collection
+# loop broke on kind='block' only, so it walked PAST a kind='value' element and
+# harvested the metadata's inline children as the paragraph's own.
+#
+# WHY NOTHING CAUGHT IT: the defect needs a document with BOTH metadata and blocks,
+# and every fixture had one or the other. `duck_blocks_to_pandoc_ast` round-trips
+# the META perfectly while corrupting the body, so the half anyone checks looked
+# right -- and the value-kind tests all used metadata-only documents.
+#
+# Found while answering panduck's question about what a title looks like as
+# duck_blocks, by building a realistic document rather than describing the shape.
+# They are about to write five readers that emit exactly this combination.
+# ============================================================================
+
+# The minimal case, and the control beside it: the corruption requires MetaInlines
+# (which has inline children); a MetaString title never had them to steal.
+query III
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"TITLE"}]}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"BODY"}]}]}'))::VARCHAR
+     = '[{"t":"Para","c":[{"t":"Str","c":"BODY"}]}]',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaString","c":"TITLE"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"BODY"}]}]}'))::VARCHAR
+     = '[{"t":"Para","c":[{"t":"Str","c":"BODY"}]}]',
+       duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"meta":{},"blocks":[{"t":"Para","c":[{"t":"Str","c":"BODY"}]}]}'))::VARCHAR
+     = '[{"t":"Para","c":[{"t":"Str","c":"BODY"}]}]';
+----
+true	true	true
+
+# DISCRIMINATING: the metadata must ALSO still be there. A fix that dropped the
+# `value` elements entirely would satisfy the assertion above perfectly, and would
+# be the discard failure two other extensions already have.
+query II
+SELECT (SELECT count(*) FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"TITLE"}]}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"BODY"}]}]}')) AS b) WHERE b.kind = 'value'),
+       (SELECT count(*) FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"TITLE"}]}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"BODY"}]}]}')) AS b) WHERE b.kind = 'inline' AND b.content = 'TITLE');
+----
+1	1

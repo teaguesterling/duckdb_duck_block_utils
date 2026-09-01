@@ -1850,13 +1850,27 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			if (child.IsNull()) {
 				continue;
 			}
+			// STOP at anything that is not an inline, not merely at a block. This broke
+			// on KIND_BLOCK only, so it walked straight PAST a kind='value' element and
+			// harvested the metadata's inline children as the paragraph's own:
+			//
+			//   meta title "TITLE" + body paragraph "BODY"  ->  Para["TITLE"]
+			//
+			// The document's body was replaced by its title. That is the metadata leak
+			// in the EXPORT direction, in this converter, and it fires only when a
+			// document has BOTH metadata and blocks -- which is why nothing caught it:
+			// every fixture had one or the other. duck_blocks_to_pandoc_ast round-trips
+			// the meta perfectly while corrupting the body, so the half everyone checks
+			// looked right.
+			//
+			// Written as "not an inline" rather than "block or value" on purpose: a kind
+			// added later must end the run too, and enumerating the kinds we know is the
+			// failure this file has already had three times today.
 			auto child_kind = GetElementStringField(child, BlockTypes::KIND_IDX);
-			if (child_kind == BlockTypes::KIND_BLOCK) {
+			if (child_kind != BlockTypes::KIND_INLINE) {
 				break;
 			}
-			if (child_kind == BlockTypes::KIND_INLINE) {
-				inline_children.push_back(child);
-			}
+			inline_children.push_back(child);
 		}
 
 		if (element_type == BlockTypes::TYPE_HEADING) {
