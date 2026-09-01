@@ -361,3 +361,42 @@ FROM (SELECT duck_blocks_render_ansi([
    'attributes':MAP{},'element_order':2}::duck_block]) AS render_probe);
 ----
 true
+
+# ============================================================================
+# A TRANSPARENT CONTAINER MUST NOT DISCARD ITS OWN CONTENT.
+#
+# `figure` and `caption` pass straight through so their children render
+# themselves -- but spec v1's content rule permits a container to carry its text
+# directly when it has a single text child, and the pass-through dropped it. A
+# figure or caption carrying content rendered as NOTHING, while
+# duck_blocks_to_text kept it, so the two disagreed about whether the document
+# had any text.
+#
+# Found by applying the webbed session's own sweep result to this renderer: they
+# had loose text dropped inside a transparent wrapper. "Transparent pass-through
+# discards what it does not stop to look at" is the shape, not anything
+# HTML-specific.
+# ============================================================================
+
+query III
+SELECT duck_blocks_render_ansi([{'kind':'block','element_type':'figure','content':'CONTENT','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block], 40) LIKE '%CONTENT%',
+       duck_blocks_render_ansi([{'kind':'block','element_type':'caption','content':'CONTENT','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block], 40) LIKE '%CONTENT%',
+       duck_blocks_render_ansi([{'kind':'block','element_type':'list','content':'CONTENT','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block], 40) LIKE '%CONTENT%';
+----
+true	true	true
+
+# DISCRIMINATING: an EMPTY figure/caption must stay transparent. Rendering the
+# container itself would also make the assertions above pass, while emitting a
+# stray blank line for every figure in every document.
+query I
+SELECT replace(regexp_replace(duck_blocks_render_ansi(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Str","c":"body"}]}]]}]}'), 40), '\x1b\[[0-9;]*m', '', 'g'), chr(10), '|');
+----
+body||cap
+
+# The renderer and the text extractor must agree that the document HAS text.
+# They disagreed before: render said nothing, to_text said CONTENT.
+query I
+SELECT (duck_blocks_render_ansi([{'kind':'block','element_type':'figure','content':'CONTENT','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block], 40) LIKE '%CONTENT%')
+     = (duck_blocks_to_text([{'kind':'block','element_type':'figure','content':'CONTENT','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block]) LIKE '%CONTENT%');
+----
+true

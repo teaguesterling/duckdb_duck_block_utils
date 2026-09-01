@@ -1158,14 +1158,27 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 		// `figure` and `caption` are transparent containers -- they carry no content of
 		// their own and their children render themselves. `caption` additionally opens
 		// a dimmed scope over the children that follow it.
+		// TRANSPARENT CONTAINERS -- but only when they are actually empty. Spec v1's
+		// content rule permits a container to carry its text directly when it has a
+		// single text child, so passing straight through DROPPED that text: a figure
+		// or caption carrying content rendered as nothing at all, while
+		// duck_blocks_to_text kept it.
+		//
+		// Found by applying the webbed session's own sweep result to this renderer --
+		// they had loose text dropped inside a transparent wrapper, and "transparent
+		// pass-through discards what it does not stop to look at" is the shape rather
+		// than anything HTML-specific.
 		if (element_type == BlockTypes::TYPE_CAPTION) {
 			caption_level = block_level;
-			bi++;
-			continue;
-		}
-		if (element_type == BlockTypes::TYPE_FIGURE) {
-			bi++;
-			continue;
+			if (content.empty()) {
+				bi++;
+				continue;
+			}
+		} else if (element_type == BlockTypes::TYPE_FIGURE) {
+			if (content.empty()) {
+				bi++;
+				continue;
+			}
 		}
 
 		// A `blockquote` with no content owns block children; one WITH content is the
@@ -1280,6 +1293,11 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 			RenderParagraph(text, width, lines);
 		} else if (element_type == BlockTypes::TYPE_CODE) {
 			RenderCode(content, GetAttribute(block, "language"), theme, lines);
+		} else if (element_type == BlockTypes::TYPE_LIST && !content.empty() &&
+		           JsonParser(content).Parse().type != JVal::Type::ARRAY) {
+			// Content that is not a JSON items array. Rendering nothing loses it
+			// silently; a malformed list is still text somebody wrote.
+			RenderParagraph(content, width, lines);
 		} else if (element_type == BlockTypes::TYPE_LIST) {
 			JsonParser parser(content);
 			auto items = parser.Parse();
