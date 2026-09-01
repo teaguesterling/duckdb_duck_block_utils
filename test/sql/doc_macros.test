@@ -16,6 +16,42 @@ INSTALL json;
 statement ok
 LOAD json;
 
+# ============================================================================
+# The query macros are registered at LOAD, NOT behind a pragma.
+#
+# A macro created by a pragma is doubly unreachable from a sibling extension: it
+# is invisible to the statement that loads this extension, and a macro cannot
+# invoke a pragma. panduck could build on the C++ scalar duck_blocks_toc but not
+# on these, so its doc_section and doc_sections_like could not exist at all.
+#
+# NOTE these run WITHOUT `PRAGMA duck_block_doc_macros` -- that is the assertion.
+# ============================================================================
+
+query I
+SELECT count(*) > 0 FROM duck_blocks_toc_rows(parse_markdown_to_duck_blocks('# A' || chr(10) || chr(10) || '## B'));
+----
+true
+
+query I
+SELECT duck_blocks_get_section(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'body a' || chr(10) || chr(10) || '# B' || chr(10) || chr(10) || 'body b'), 'A')
+  LIKE '%body a%';
+----
+true
+
+query I
+SELECT count(*) > 0 FROM duck_blocks_sections_like(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'findme'), 'findme');
+----
+true
+
+# named parameters survive load-time registration
+query I
+SELECT duck_blocks_get_section(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'body a'), 'A', output_format := 'pandoc') LIKE '%pandoc-api-version%';
+----
+true
+
 statement ok
 PRAGMA duck_block_doc_macros;
 
@@ -185,3 +221,4 @@ SELECT duck_blocks_get_section(parse_markdown_to_duck_blocks(
   '# A' || chr(10) || chr(10) || 'body a'), 'A') LIKE '%body a%';
 ----
 true
+

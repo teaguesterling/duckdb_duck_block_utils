@@ -1,4 +1,6 @@
 #include "doc_macros.hpp"
+#include "duckdb/catalog/default/default_functions.hpp"
+#include "duckdb/catalog/default/default_table_functions.hpp"
 #include "duckdb/function/pragma_function.hpp"
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/main/client_context.hpp"
@@ -41,81 +43,6 @@ CREATE OR REPLACE MACRO duck_block_quote(s) AS ('''' || replace(coalesce(s, ''),
 -- There is no shared render helper: the output CASE below is four direct calls,
 -- and wrapping it in an indirection bought a name without buying anything else.
 
--- Table of contents, splatted into columns. The scalar duck_blocks_toc() returns
--- the same data as a LIST(STRUCT) when a list is what you want.
-CREATE OR REPLACE MACRO duck_blocks_toc_rows(blocks) AS TABLE
-    SELECT (toc).level AS level,
-           (toc).title AS title,
-           (toc).id AS id,
-           (toc).indent AS indent,
-           (toc).element_order AS element_order
-    FROM (SELECT unnest(duck_blocks_toc(blocks)) AS toc);
-
--- Slice a section and its child subsections to the next heading boundary.
---
--- NOT `duck_block_section`: that name is already six C++ overloads of a BUILDER
--- (duck_block_section(title, level, children) makes a heading plus children). Defining
--- a macro with the same name shadowed all six, breaking the builder for anyone
--- who ran the pragma -- two functions, one name, opposite meanings.
--- The `top` CTE selects innermost non-overlapping matches; getting it wrong
--- returns the wrong slice SILENTLY rather than failing, so treat it as fixed.
-CREATE OR REPLACE MACRO duck_blocks_get_section(blocks, section_pattern, output_format := 'text') AS (
-    [
-        (
-            SELECT CASE lower(output_format)
-                       WHEN 'text'   THEN duck_blocks_to_text(sliced)
-                       WHEN 'ansi'   THEN duck_blocks_render_ansi(sliced)
-                       WHEN 'blocks' THEN to_json(sliced)::VARCHAR
-                       WHEN 'pandoc' THEN to_json(duck_blocks_to_pandoc_ast(sliced))::VARCHAR
-                       ELSE error('duck_blocks_get_section: unsupported output_format ' ||
-                                  coalesce(output_format, 'NULL') ||
-                                  '; expected text, ansi, blocks or pandoc')
-                   END
-            FROM (
-                WITH doc AS (SELECT blocks AS b),
-                     h AS (SELECT e.level AS lvl, e.title AS title, e.id AS id, e.element_order AS ord
-                           FROM (SELECT unnest(duck_blocks_headings(b)) AS e FROM doc)),
-                     sec AS (SELECT h1.ord AS s, coalesce(min(h2.ord) - 1, 2147483647) AS e
-                             FROM h h1 LEFT JOIN h h2 ON h2.ord > h1.ord AND h2.lvl <= h1.lvl
-                             WHERE h1.title ILIKE '%' || section_pattern || '%' OR h1.id = section_pattern
-                             GROUP BY h1.ord),
-                     top AS (SELECT s, e FROM sec a
-                             WHERE NOT EXISTS (SELECT 1 FROM sec b2
-                                               WHERE b2.s <= a.s AND b2.e >= a.e AND (b2.s, b2.e) <> (a.s, a.e)))
-                SELECT duck_blocks_reorder(flatten(list(duck_blocks_slice(doc.b, top.s, top.e) ORDER BY top.s))) AS sliced
-                FROM doc, top
-            )
-        )
-    ][1]
-);
-
--- Sections whose text matches a pattern. The preamble span in the UNION ALL makes
--- content before the first heading searchable and is load-bearing.
-CREATE OR REPLACE MACRO duck_blocks_sections_like(blocks, query_term, output_format := 'text') AS TABLE
-    WITH doc AS (SELECT blocks AS b),
-         h AS (SELECT e.element_order AS ord, e.title AS title
-               FROM (SELECT unnest(duck_blocks_headings(b)) AS e FROM doc)),
-         span AS (SELECT ord AS s, coalesce(lead(ord) OVER (ORDER BY ord) - 1, 2147483647) AS e, title FROM h
-                  UNION ALL
-                  SELECT 0 AS s, coalesce((SELECT min(ord) - 1 FROM h), 2147483647)::INT AS e, '(preamble)' AS title
-                  WHERE coalesce((SELECT min(ord) - 1 FROM h), 2147483647)::INT >= 0),
-         hit AS (SELECT span.s, span.e, span.title, duck_blocks_slice(doc.b, span.s, span.e) AS sec
-                 FROM doc, span
-                 WHERE duck_blocks_to_text(duck_blocks_slice(doc.b, span.s, span.e)) ILIKE '%' || query_term || '%')
-    SELECT hit.title AS section,
-           hit.s AS start_order,
-           CASE lower(output_format)
-               WHEN 'text'   THEN duck_blocks_to_text(hit.sec)
-               WHEN 'ansi'   THEN duck_blocks_render_ansi(hit.sec)
-               WHEN 'blocks' THEN to_json(hit.sec)::VARCHAR
-               WHEN 'pandoc' THEN to_json(duck_blocks_to_pandoc_ast(hit.sec))::VARCHAR
-               ELSE error('duck_blocks_sections_like: unsupported output_format ' ||
-                          coalesce(output_format, 'NULL') ||
-                          '; expected text, ansi, blocks or pandoc')
-           END AS content
-    FROM hit
-    ORDER BY hit.s;
-
 -- 7. Tabular Dataset Profiling
 CREATE OR REPLACE MACRO profile_table(target_query) AS TABLE
     SELECT * FROM query('SUMMARIZE ' || target_query);
@@ -127,13 +54,120 @@ CREATE OR REPLACE MACRO profile_file(path) AS TABLE
 	return sql;
 }
 
+// ---------------------------------------------------------------------------
+// The document-query macros are registered at LOAD, not behind a pragma.
+//
+// A macro created by a pragma is doubly unreachable from a sibling extension:
+// it is invisible to the statement that triggered the load, and a macro cannot
+// invoke a pragma to bring it into scope. panduck could build on the C++ scalar
+// duck_blocks_toc but not on these, so its path-taking doc_section and
+// doc_sections_like could not exist at all.
+//
+// It also removes a cost every consumer was paying: "LOAD duck_block_utils AND
+// run a pragma at every call site" is the same shape as the accepted cost we
+// removed from the reader-dispatch plan.
+//
+// The pragma survives for duck_block_aliases -- opt-in short names are exactly
+// what a pragma is for. It is the core query surface that should not need one.
+// ---------------------------------------------------------------------------
+
+static const DefaultMacro DOC_SCALAR_MACROS[] = {
+    {DEFAULT_SCHEMA,
+     "duck_blocks_get_section",
+     {"blocks", "section_pattern", nullptr},
+     {{"output_format", "'text'"}, {nullptr, nullptr}},
+     "(\n"
+     "    [\n"
+     "        (\n"
+     "            SELECT CASE lower(output_format)\n"
+     "                       WHEN 'text'   THEN duck_blocks_to_text(sliced)\n"
+     "                       WHEN 'ansi'   THEN duck_blocks_render_ansi(sliced)\n"
+     "                       WHEN 'blocks' THEN to_json(sliced)::VARCHAR\n"
+     "                       WHEN 'pandoc' THEN to_json(duck_blocks_to_pandoc_ast(sliced))::VARCHAR\n"
+     "                       ELSE error('duck_blocks_get_section: unsupported output_format ' ||\n"
+     "                                  coalesce(output_format, 'NULL') ||\n"
+     "                                  '; expected text, ansi, blocks or pandoc')\n"
+     "                   END\n"
+     "            FROM (\n"
+     "                WITH doc AS (SELECT blocks AS b),\n"
+     "                     h AS (SELECT e.level AS lvl, e.title AS title, e.id AS id, e.element_order AS ord\n"
+     "                           FROM (SELECT unnest(duck_blocks_headings(b)) AS e FROM doc)),\n"
+     "                     sec AS (SELECT h1.ord AS s, coalesce(min(h2.ord) - 1, 2147483647) AS e\n"
+     "                             FROM h h1 LEFT JOIN h h2 ON h2.ord > h1.ord AND h2.lvl <= h1.lvl\n"
+     "                             WHERE h1.title ILIKE '%' || section_pattern || '%' OR h1.id = section_pattern\n"
+     "                             GROUP BY h1.ord),\n"
+     "                     top AS (SELECT s, e FROM sec a\n"
+     "                             WHERE NOT EXISTS (SELECT 1 FROM sec b2\n"
+     "                                               WHERE b2.s <= a.s AND b2.e >= a.e AND (b2.s, b2.e) <> (a.s, "
+     "a.e)))\n"
+     "                SELECT duck_blocks_reorder(flatten(list(duck_blocks_slice(doc.b, top.s, top.e) ORDER BY top.s))) "
+     "AS sliced\n"
+     "                FROM doc, top\n"
+     "            )\n"
+     "        )\n"
+     "    ][1]\n"
+     ")"},
+    {nullptr, nullptr, {nullptr}, {{nullptr, nullptr}}, nullptr}};
+
+static const DefaultTableMacro DOC_TABLE_MACROS[] = {
+    {DEFAULT_SCHEMA,
+     "duck_blocks_toc_rows",
+     {"blocks", nullptr},
+     {{nullptr, nullptr}},
+     "SELECT (toc).level AS level,\n"
+     "           (toc).title AS title,\n"
+     "           (toc).id AS id,\n"
+     "           (toc).indent AS indent,\n"
+     "           (toc).element_order AS element_order\n"
+     "    FROM (SELECT unnest(duck_blocks_toc(blocks)) AS toc)"},
+    {DEFAULT_SCHEMA,
+     "duck_blocks_sections_like",
+     {"blocks", "query_term", nullptr},
+     {{"output_format", "'text'"}, {nullptr, nullptr}},
+     "WITH doc AS (SELECT blocks AS b),\n"
+     "         h AS (SELECT e.element_order AS ord, e.title AS title\n"
+     "               FROM (SELECT unnest(duck_blocks_headings(b)) AS e FROM doc)),\n"
+     "         span AS (SELECT ord AS s, coalesce(lead(ord) OVER (ORDER BY ord) - 1, 2147483647) AS e, title FROM h\n"
+     "                  UNION ALL\n"
+     "                  SELECT 0 AS s, coalesce((SELECT min(ord) - 1 FROM h), 2147483647)::INT AS e, '(preamble)' AS "
+     "title\n"
+     "                  WHERE coalesce((SELECT min(ord) - 1 FROM h), 2147483647)::INT >= 0),\n"
+     "         hit AS (SELECT span.s, span.e, span.title, duck_blocks_slice(doc.b, span.s, span.e) AS sec\n"
+     "                 FROM doc, span\n"
+     "                 WHERE duck_blocks_to_text(duck_blocks_slice(doc.b, span.s, span.e)) ILIKE '%' || query_term || "
+     "'%')\n"
+     "    SELECT hit.title AS section,\n"
+     "           hit.s AS start_order,\n"
+     "           CASE lower(output_format)\n"
+     "               WHEN 'text'   THEN duck_blocks_to_text(hit.sec)\n"
+     "               WHEN 'ansi'   THEN duck_blocks_render_ansi(hit.sec)\n"
+     "               WHEN 'blocks' THEN to_json(hit.sec)::VARCHAR\n"
+     "               WHEN 'pandoc' THEN to_json(duck_blocks_to_pandoc_ast(hit.sec))::VARCHAR\n"
+     "               ELSE error('duck_blocks_sections_like: unsupported output_format ' ||\n"
+     "                          coalesce(output_format, 'NULL') ||\n"
+     "                          '; expected text, ansi, blocks or pandoc')\n"
+     "           END AS content\n"
+     "    FROM hit\n"
+     "    ORDER BY hit.s"},
+    {nullptr, nullptr, {nullptr}, {{nullptr, nullptr}}, nullptr}};
+
 void DocMacros::Register(ExtensionLoader &loader) {
 	// 1. Register C++ scalar function duck_block_ensure_extension
 	auto ensure_ext_func = ScalarFunction("duck_block_ensure_extension", {LogicalType::VARCHAR}, LogicalType::BOOLEAN,
 	                                      DbEnsureExtensionFun);
 	loader.RegisterFunction(ensure_ext_func);
 
-	// 2. Register pragma duck_block_doc_macros
+	// 2. The document-query macros, at LOAD (see above)
+	for (idx_t i = 0; DOC_SCALAR_MACROS[i].name != nullptr; i++) {
+		auto info = DefaultFunctionGenerator::CreateInternalMacroInfo(DOC_SCALAR_MACROS[i]);
+		loader.RegisterFunction(*info);
+	}
+	for (idx_t i = 0; DOC_TABLE_MACROS[i].name != nullptr; i++) {
+		auto info = DefaultTableFunctionGenerator::CreateTableMacroInfo(DOC_TABLE_MACROS[i]);
+		loader.RegisterFunction(*info);
+	}
+
+	// 3. Register pragma duck_block_doc_macros
 	auto pragma = PragmaFunction::PragmaStatement("duck_block_doc_macros", DocMacrosQuery);
 	loader.RegisterFunction(pragma);
 }
