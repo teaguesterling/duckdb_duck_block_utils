@@ -47,13 +47,44 @@ SELECT try_cast(split_part(duck_block_spec_version(), '.', 1) AS INTEGER) IS NOT
 true	true
 
 # every kind a converter emits is in the declared set -- the assertion panduck
-# and webbed can run against this rather than a hardcoded list
+# and webbed can run against this rather than a hardcoded list.
+#
+# NOTE WHICH DIRECTION THIS IS. It tests emitted-is-a-subset-of-declared. The
+# CONVERSE is asserted below and is the half that matters more, because a kind can
+# be declared and produced by nothing -- which is exactly the state webbed and
+# panduck are in for `value`: the vocabulary offers it, their readers emit none,
+# and every document's title is discarded.
+#
+# duckdb_markdown's framing, after finding both shapes in their own repo: "which
+# kinds EXIST" and "what this reader EMITS" are different claims that happen to
+# coincide, and calling the second one "valid" is the invitation to copy it as a
+# conformance rule. That is how this repo's published macro became a validator
+# that rejected the correct fix.
 query I
 SELECT count(*) FROM (
   SELECT unnest(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaBool","c":true}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"x"}]}]}')) AS b
 ) WHERE NOT list_contains(duck_block_kind_names(), b.kind);
 ----
 0
+
+
+# THE CONVERSE: every DECLARED kind must actually be emitted by something.
+#
+# A declared-but-unreachable kind is the `UNREACHABLE` failure one level up -- the
+# vocabulary offers a slot that no producer fills, so consumers never learn it
+# exists and the data that belongs there is silently dropped. That is not
+# hypothetical: two of three consuming extensions currently emit no `value` at all.
+#
+# Driven from duck_block_kind_names(), so a kind added later must be REACHABLE
+# rather than merely declared.
+query I
+WITH emitted AS (
+  SELECT list_distinct(list(b.kind)) AS ks
+  FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a "},{"t":"Strong","c":[{"t":"Str","c":"b"}]}]}]}')) AS b)
+)
+SELECT list_filter(duck_block_kind_names(), k -> NOT list_contains(ks, k)) FROM emitted;
+----
+[]
 
 # ============================================================================
 # Version marker
