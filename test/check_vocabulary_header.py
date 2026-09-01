@@ -36,6 +36,15 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 VOCAB = REPO / "src" / "include" / "duck_block_vocabulary.hpp"
+EXT = REPO / "build" / "release" / "extension" / "duck_block_utils" / "duck_block_utils.duckdb_extension"
+
+
+def repo_duckdb():
+    for candidate in ("build/release/duckdb", "build/debug/duckdb"):
+        path = REPO / candidate
+        if path.exists() and EXT.exists():
+            return path
+    return None
 
 PROBE = """
 #include "duck_block_vocabulary.hpp"
@@ -110,6 +119,52 @@ def main() -> int:
             failed = True
             print("FAIL: the vocabulary header does not compile/link standalone:")
             print("\n".join(proc.stderr.splitlines()[:12]))
+
+    # 3. Every type-ish constant the header DECLARES is enumerated by the build, and
+    #    vice versa. This is the direction that catches adding a type to the header and
+    #    forgetting AllTypeNames() -- which is exactly the change whose author is
+    #    thinking about the new type rather than about the lists that enumerate them.
+    #
+    #    The pattern is ANCHORED at a real declaration and matches whole constant names.
+    #    A loose `TYPE_[A-Z_]+` matched line 64's illustrative COMMENT about a value
+    #    change and the suffix of every LIST_TYPE_* constant, and reported two defects
+    #    that do not exist. A measurement can be wrong the same way a check can.
+    duckdb = repo_duckdb()
+    if duckdb is None:
+        print("  (skipping the build comparison: no duckdb binary)")
+    else:
+        pat = re.compile(r'^\s*static constexpr const char \*((?:TYPE|INLINE|VALUE)_[A-Z_]+)\s*=\s*"([^"]+)"')
+        declared = {m.group(2) for m in (pat.match(l) for l in VOCAB.read_text().splitlines()) if m}
+        proc = subprocess.run(
+            [str(duckdb), "-unsigned", "-noheader", "-list", "-c",
+             f"LOAD '{EXT}'; SELECT unnest(duck_block_type_names());"],
+            capture_output=True, text=True)
+        enumerated = {x.strip() for x in proc.stdout.split() if x.strip()}
+        if proc.returncode != 0 or not enumerated:
+            failed = True
+            print("FAIL: could not read duck_block_type_names() from the build, so this")
+            print("      comparison reported nothing rather than agreement.")
+        else:
+            if declared - enumerated:
+                failed = True
+                print(f"FAIL: declared in the header, never enumerated: {sorted(declared - enumerated)}")
+                print("      A consumer asking the build what types exist will not be told about")
+                print("      them, so nothing downstream can branch on a type the header offers.")
+            if enumerated - declared:
+                failed = True
+                print(f"FAIL: enumerated by the build, not declared in the header: {sorted(enumerated - declared)}")
+                print("      A vendoring consumer has no constant for it and must use a literal.")
+            # MULTIPLICITY, checked before any set comparison that would hide it. Five
+            # names live on two constants each (code, generic, image, list, raw), so the
+            # list enumerating CONSTANTS returned 47 rows for 43 types until c33a8b4.
+            rows = [x.strip() for x in proc.stdout.split() if x.strip()]
+            if len(rows) != len(enumerated):
+                failed = True
+                dupes = sorted({n for n in rows if rows.count(n) > 1})
+                print(f"FAIL: duck_block_type_names() returns duplicates: {dupes}")
+                print("      len() then reads the wrong vocabulary size and any join double-counts.")
+            elif not failed:
+                print(f"  {len(declared)} type names declared and enumerated, no duplicates")
 
     if failed:
         return 1
