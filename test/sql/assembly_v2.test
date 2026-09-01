@@ -313,7 +313,7 @@ SELECT len(duck_blocks_assemble([
     duck_block_list_block(false, ['GitHub', 'Documentation'])
 ]));
 ----
-11
+15
 
 # ============================================================================
 # Backward Compatibility Tests

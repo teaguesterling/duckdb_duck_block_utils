@@ -22,8 +22,13 @@ public:
 	// Handles: VARCHAR -> set content field
 	//          duck_block -> content=NULL, add child at level+1
 	//          LIST(duck_block) -> content=NULL, add children at level+1
-	static vector<Value> BuildWithContent(const Value &parent_block, const Value &content_input,
-	                                      int32_t base_level = 1);
+	// `is_container`: the spec says div/section/figure/caption -- and blockquote and
+	// list_item -- carry NO content of their own; their children follow at level+1.
+	// The builders violated that for VARCHAR input, giving those types a second
+	// shape that disagreed with the one every reader emits. Pass true for a
+	// container and the text becomes a paragraph child instead of parent content.
+	static vector<Value> BuildWithContent(const Value &parent_block, const Value &content_input, int32_t base_level = 1,
+	                                      bool is_container = false);
 
 	// Create a parent block with NULL content (for use with children)
 	static Value CreateBlockWithNullContent(const string &block_type, const string &kind, const Value &level,

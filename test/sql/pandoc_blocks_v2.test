@@ -481,7 +481,9 @@ SELECT elem.element_type, elem.level FROM (
 ----
 list	NULL
 list_item	2
+paragraph	3
 list_item	2
+paragraph	3
 
 # Nested list: outer list items at level 2, inner list at level 2, inner items at level 3
 query II
@@ -494,9 +496,12 @@ SELECT elem.element_type, elem.level FROM (
 ----
 list	NULL
 list_item	2
+paragraph	3
 list	2
 list_item	3
+paragraph	4
 list_item	3
+paragraph	4
 
 # ----------------------------------------------------------------------------
 # Test 4: Nested lists convert to correct Pandoc JSON

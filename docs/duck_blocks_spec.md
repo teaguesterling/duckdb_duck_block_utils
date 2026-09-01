@@ -378,20 +378,40 @@ Pandoc shape renders as empty bullets, from the same renderer, same document, on
 variable changed. So `encoding='json'` is a statement about lexical form only. It
 is **not** a schema, and it is not sufficient to decode against.
 
-**As of spec 1.2, `list` and `blockquote` are STRUCTURAL and carry no JSON.** They
-were the two worst offenders and are now ordinary containers a consumer already
-knows how to walk:
+### Spec 2.0: ONE shape per element_type
+
+**Every producer in this repo emits the same shape for a given `element_type`.**
+Before 2.0 it emitted three for `list` alone, and a consumer's decoder silently
+depended on which producer made the block. That is the defect this rule exists to
+prevent, and it is a promise consumers can rely on rather than a convention.
+
+**A container carries no content of its own.** `div`, `section`, `figure`,
+`caption`, `blockquote`, `list` and `list_item` own children at `level + 1`; their
+text, if any, is a `paragraph` child. Leaf types — `paragraph`, `heading`, `code`,
+`raw` — carry their text in `content`. There is no third case.
 
 ```
 list        attrs list_type, and for ordered: start, number_style, number_delim
-  list_item                          <- level+1
-    paragraph                        <- level+2, the item's own blocks
+  list_item                          <- level+1, no content
+    paragraph  "the item's words"    <- level+2
 blockquote
-  paragraph                          <- level+1
+  paragraph  "the quoted words"      <- level+1
 ```
 
-A `list_item` may carry its words directly (the builder shape) or own a paragraph
-child (the Pandoc shape). Both are legal; read either.
+All of these produce exactly that shape:
+
+```sql
+duck_block_list(['a'])            duck_block_list_block(['a'])
+duck_block_list(false, ['a'])     duck_block_list_block([duck_block_list_item('a')])
+pandoc_ast_to_blocks(...)         duck_block_list_item('a')   -- item + paragraph
+```
+
+**Migrating from 1.x.** `list` no longer carries `encoding='json'` with its items
+packed into `content`; `list_item` and `blockquote` no longer carry their text in
+`content`. A reader that walks children needs no change. A reader that parsed the
+JSON, or read `list_item.content`, must read the child elements instead. Both old
+forms are still ACCEPTED on export, so stored 1.x block lists keep converting —
+but nothing produces them any more.
 
 Only two types still carry `encoding='json'` from the Pandoc reader:
 

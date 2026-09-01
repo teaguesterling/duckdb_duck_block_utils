@@ -80,7 +80,7 @@ static Value CreateChildWithLevelAndOrder(const Value &element, int32_t new_leve
 }
 
 vector<Value> BuilderFunctions::BuildWithContent(const Value &parent_block, const Value &content_input,
-                                                 int32_t base_level) {
+                                                 int32_t base_level, bool is_container) {
 	vector<Value> result;
 
 	// Get parent block children for modification
@@ -94,8 +94,23 @@ vector<Value> BuilderFunctions::BuildWithContent(const Value &parent_block, cons
 	if (content_input.IsNull()) {
 		// NULL content - keep parent content as-is (already NULL from CreateBlockWithNullContent)
 		result.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(parent_children)));
+	} else if (content_input.type().id() == LogicalTypeId::VARCHAR && is_container) {
+		// A container never carries content. Wrap the text in a paragraph child so a
+		// builder-made blockquote or list_item has the SAME shape as a reader-made
+		// one. Before this, duck_block_blockquote('x') produced blockquote(text)
+		// while every reader produced blockquote -> paragraph(text), and a consumer
+		// written against either silently mis-rendered the other.
+		result.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(parent_children)));
+		map<string, string> child_attrs;
+		auto child = CreateBlockWithNullContent(BlockTypes::TYPE_PARAGRAPH, BlockTypes::KIND_BLOCK,
+		                                        Value(base_level + 1), BlockTypes::ENCODING_TEXT, child_attrs);
+		auto child_children = StructValue::GetChildren(child);
+		child_children[BlockTypes::CONTENT_IDX] = content_input;
+		child_children[BlockTypes::LEVEL_IDX] = Value(base_level + 1);
+		child_children[BlockTypes::ELEMENT_ORDER_IDX] = Value(1);
+		result.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_children)));
 	} else if (content_input.type().id() == LogicalTypeId::VARCHAR) {
-		// VARCHAR content - set content field
+		// VARCHAR content - set content field (leaf types: heading, paragraph, code)
 		parent_children[BlockTypes::CONTENT_IDX] = content_input;
 		result.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(parent_children)));
 	} else if (content_input.type().id() == LogicalTypeId::STRUCT) {
@@ -571,7 +586,7 @@ void BuilderFunctions::DbBlockquoteV2Fun(DataChunk &args, ExpressionState &state
 		                                         BlockTypes::ENCODING_TEXT, {});
 
 		// Use level_val as base_level so blockquote's level reflects quote nesting
-		auto result_list = BuildWithContent(parent, content, level_val);
+		auto result_list = BuildWithContent(parent, content, level_val, /*is_container=*/true);
 		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
 	}
 }
@@ -586,7 +601,7 @@ void BuilderFunctions::DbBlockquoteV2NoLevelFun(DataChunk &args, ExpressionState
 		auto parent = CreateBlockWithNullContent(BlockTypes::TYPE_BLOCKQUOTE, BlockTypes::KIND_BLOCK, Value(1),
 		                                         BlockTypes::ENCODING_TEXT, {});
 
-		auto result_list = BuildWithContent(parent, content, 1);
+		auto result_list = BuildWithContent(parent, content, 1, /*is_container=*/true);
 		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
 	}
 }
@@ -629,32 +644,43 @@ void BuilderFunctions::DbListBlockV2Fun(DataChunk &args, ExpressionState &state,
 		auto ordered = ordered_vec.GetValue(i);
 		auto items = items_vec.GetValue(i);
 
-		string json = ItemsToJson(items);
-
 		map<string, string> attrs;
 		const bool is_ordered = !ordered.IsNull() && ordered.GetValue<bool>();
 		attrs["ordered"] = is_ordered ? "true" : "false";
-		// Emit list_type as well. The Pandoc reader writes list_type and these builders
-		// wrote only `ordered`, so a consumer reading one saw nothing from the other --
-		// which is why every Pandoc ordered list rendered as bullets. Writing both means
-		// a consumer reading either name is correct.
+		// Both attribute names. The Pandoc reader writes list_type, these builders wrote
+		// only `ordered`, and a consumer reading one saw nothing from the other.
 		attrs["list_type"] = is_ordered ? "ordered" : "bullet";
 
-		// List blocks store items as JSON in content, so we create the block directly
-		child_list_t<Value> struct_values;
-		struct_values.push_back(make_pair("kind", Value(BlockTypes::KIND_BLOCK)));
-		struct_values.push_back(make_pair("element_type", Value(BlockTypes::TYPE_LIST)));
-		struct_values.push_back(make_pair("content", Value(json)));
-		// NULL, not 1. Every other block builder normalises a top-level block to NULL,
-		// including duck_block_list_block for this same concept, so `list` was the one
-		// element whose depth depended on which builder made it.
-		struct_values.push_back(make_pair("level", Value(LogicalType::INTEGER)));
-		struct_values.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_JSON)));
-		struct_values.push_back(make_pair("attributes", CreateAttributesMap(attrs)));
-		struct_values.push_back(make_pair("element_order", Value(0)));
-
+		// STRUCTURAL, not JSON. This was the third shape duck_block_utils emitted for
+		// element_type='list' -- the others being duck_block_list_block and the Pandoc
+		// reader -- and the one that made a consumer's decoder depend on which builder
+		// produced the block. It also exported as an EMPTY BulletList, the same silent
+		// total loss the Pandoc list had, because the exporter walks children and this
+		// builder emitted none. Spec 2.0: one shape per element_type.
 		vector<Value> result_list;
-		result_list.push_back(Value::STRUCT(std::move(struct_values)));
+		result_list.push_back(CreateBlockWithNullContent(BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK,
+		                                                 Value(LogicalType::INTEGER), BlockTypes::ENCODING_TEXT,
+		                                                 attrs));
+		int32_t child_order = 1;
+		if (!items.IsNull()) {
+			map<string, string> empty_attrs;
+			for (auto &item : ListValue::GetChildren(items)) {
+				auto item_block = CreateBlockWithNullContent(BlockTypes::TYPE_LIST_ITEM, BlockTypes::KIND_BLOCK,
+				                                             Value(2), BlockTypes::ENCODING_TEXT, empty_attrs);
+				auto item_children = StructValue::GetChildren(item_block);
+				item_children[BlockTypes::LEVEL_IDX] = Value(2);
+				item_children[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
+				result_list.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(item_children)));
+
+				auto para = CreateBlockWithNullContent(BlockTypes::TYPE_PARAGRAPH, BlockTypes::KIND_BLOCK, Value(3),
+				                                       BlockTypes::ENCODING_TEXT, empty_attrs);
+				auto para_children = StructValue::GetChildren(para);
+				para_children[BlockTypes::CONTENT_IDX] = item.IsNull() ? Value("") : item;
+				para_children[BlockTypes::LEVEL_IDX] = Value(3);
+				para_children[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
+				result_list.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(para_children)));
+			}
+		}
 		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
 	}
 }
@@ -665,26 +691,41 @@ void BuilderFunctions::DbListBlockV2NoOrderFun(DataChunk &args, ExpressionState 
 
 	for (idx_t i = 0; i < count; i++) {
 		auto items = items_vec.GetValue(i);
-		string json = ItemsToJson(items);
 
 		map<string, string> attrs;
 		attrs["ordered"] = "false";
 		attrs["list_type"] = "bullet";
 
-		child_list_t<Value> struct_values;
-		struct_values.push_back(make_pair("kind", Value(BlockTypes::KIND_BLOCK)));
-		struct_values.push_back(make_pair("element_type", Value(BlockTypes::TYPE_LIST)));
-		struct_values.push_back(make_pair("content", Value(json)));
-		// NULL, not 1. Every other block builder normalises a top-level block to NULL,
-		// including duck_block_list_block for this same concept, so `list` was the one
-		// element whose depth depended on which builder made it.
-		struct_values.push_back(make_pair("level", Value(LogicalType::INTEGER)));
-		struct_values.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_JSON)));
-		struct_values.push_back(make_pair("attributes", CreateAttributesMap(attrs)));
-		struct_values.push_back(make_pair("element_order", Value(0)));
-
+		// STRUCTURAL, not JSON. This was the third shape duck_block_utils emitted for
+		// element_type='list' -- the others being duck_block_list_block and the Pandoc
+		// reader -- and the one that made a consumer's decoder depend on which builder
+		// produced the block. It also exported as an EMPTY BulletList, the same silent
+		// total loss the Pandoc list had, because the exporter walks children and this
+		// builder emitted none. Spec 2.0: one shape per element_type.
 		vector<Value> result_list;
-		result_list.push_back(Value::STRUCT(std::move(struct_values)));
+		result_list.push_back(CreateBlockWithNullContent(BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK,
+		                                                 Value(LogicalType::INTEGER), BlockTypes::ENCODING_TEXT,
+		                                                 attrs));
+		int32_t child_order = 1;
+		if (!items.IsNull()) {
+			map<string, string> empty_attrs;
+			for (auto &item : ListValue::GetChildren(items)) {
+				auto item_block = CreateBlockWithNullContent(BlockTypes::TYPE_LIST_ITEM, BlockTypes::KIND_BLOCK,
+				                                             Value(2), BlockTypes::ENCODING_TEXT, empty_attrs);
+				auto item_children = StructValue::GetChildren(item_block);
+				item_children[BlockTypes::LEVEL_IDX] = Value(2);
+				item_children[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
+				result_list.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(item_children)));
+
+				auto para = CreateBlockWithNullContent(BlockTypes::TYPE_PARAGRAPH, BlockTypes::KIND_BLOCK, Value(3),
+				                                       BlockTypes::ENCODING_TEXT, empty_attrs);
+				auto para_children = StructValue::GetChildren(para);
+				para_children[BlockTypes::CONTENT_IDX] = item.IsNull() ? Value("") : item;
+				para_children[BlockTypes::LEVEL_IDX] = Value(3);
+				para_children[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
+				result_list.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(para_children)));
+			}
+		}
 		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
 	}
 }
@@ -704,7 +745,7 @@ void BuilderFunctions::DbListItemV2Fun(DataChunk &args, ExpressionState &state, 
 		auto parent = CreateBlockWithNullContent(BlockTypes::TYPE_LIST_ITEM, BlockTypes::KIND_BLOCK, Value(1),
 		                                         BlockTypes::ENCODING_TEXT, attrs);
 
-		auto result_list = BuildWithContent(parent, content, 1);
+		auto result_list = BuildWithContent(parent, content, 1, /*is_container=*/true);
 		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
 	}
 }
@@ -722,7 +763,7 @@ void BuilderFunctions::DbListItemV2NoOrderFun(DataChunk &args, ExpressionState &
 		auto parent = CreateBlockWithNullContent(BlockTypes::TYPE_LIST_ITEM, BlockTypes::KIND_BLOCK, Value(1),
 		                                         BlockTypes::ENCODING_TEXT, attrs);
 
-		auto result_list = BuildWithContent(parent, content, 1);
+		auto result_list = BuildWithContent(parent, content, 1, /*is_container=*/true);
 		result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
 	}
 }
