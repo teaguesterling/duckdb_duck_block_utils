@@ -378,17 +378,38 @@ Pandoc shape renders as empty bullets, from the same renderer, same document, on
 variable changed. So `encoding='json'` is a statement about lexical form only. It
 is **not** a schema, and it is not sufficient to decode against.
 
-Types carrying `encoding='json'` from the Pandoc reader, measured on `main`:
+**As of spec 1.2, `list` and `blockquote` are STRUCTURAL and carry no JSON.** They
+were the two worst offenders and are now ordinary containers a consumer already
+knows how to walk:
+
+```
+list        attrs list_type, and for ordered: start, number_style, number_delim
+  list_item                          <- level+1
+    paragraph                        <- level+2, the item's own blocks
+blockquote
+  paragraph                          <- level+1
+```
+
+A `list_item` may carry its words directly (the builder shape) or own a paragraph
+child (the Pandoc shape). Both are legal; read either.
+
+Only two types still carry `encoding='json'` from the Pandoc reader:
 
 | Type | Pandoc content shape |
 |------|----------------------|
-| `list` | `[[Block]]`, and for ordered lists `[[start,style,delim],[[Block]]]` — the start number is inside the JSON, not in an attribute |
 | `table` | the full `Table` tuple: `[Attr, Caption, [ColSpec], TableHead, [TableBody], TableFoot]` — an ARRAY, not an object |
-| `blockquote` | `[Block]`. It has NO child elements; the following block is a SIBLING, so rendering the decoded content does not duplicate anything |
 | `deflist` | `[[[Inline],[[Block]]]]` |
+
+Both round-trip losslessly but are opaque to rendering and to search. Making them
+structural needs vocabulary that does not exist yet (`table_row`/`table_cell`,
+`term`/`definition`), so it is a deliberate open item rather than an oversight.
 
 Everything else is `text`, **including `heading` and `paragraph`** — a consumer
 writing a defensive JSON branch for those is guarding nothing.
+
+Note the separate native table schema `{"headers": [...], "rows": [[...]]}`, which
+the ANSI renderer and `render_macros.cpp` understand. The Pandoc reader does not
+emit it, which is why a Pandoc table renders as nothing today.
 
 The set is release-dependent: `deflist` and `lineblock` produce no blocks at all
 from the shipped v1.6.1 binary, so a consumer cannot determine this set by

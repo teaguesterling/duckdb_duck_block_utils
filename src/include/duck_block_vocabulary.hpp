@@ -144,7 +144,7 @@ struct DuckBlockVocabulary {
 
 	// The duck_block spec version this build implements. Bump when the vocabulary
 	// changes in a way a consumer could observe.
-	static constexpr const char *SPEC_VERSION = "1.1";
+	static constexpr const char *SPEC_VERSION = "1.2";
 
 	// ========================================================================
 	// Block type names
