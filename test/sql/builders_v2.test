@@ -26,11 +26,14 @@ SELECT db_heading(1, 'My Title')[1].content;
 ----
 My Title
 
-# Test db_heading sets heading_level in attributes (not level field)
+# Test db_heading sets heading_level in attributes (not level field).
+# `level` is NULL on a top-level block: it is structural nesting depth, and this
+# heading is not nested. The assertion used to expect 1, contradicting its own
+# comment and the spec, and disagreeing with pandoc_ast_to_blocks().
 query I
-SELECT db_heading(2, 'My Title')[1].level;
+SELECT db_heading(2, 'My Title')[1].level IS NULL;
 ----
-1
+true
 
 # Test db_heading stores heading level in attributes
 query I
@@ -80,9 +83,9 @@ Hello world
 
 # Test db_paragraph level is 1 (top-level)
 query I
-SELECT db_paragraph('Hello world')[1].level;
+SELECT db_paragraph('Hello world')[1].level IS NULL;
 ----
-1
+true
 
 # Test db_paragraph with inline children
 query I
@@ -216,9 +219,9 @@ SELECT db_blockquote(2, 'Quote text')[1].level;
 
 # Test db_blockquote single arg defaults level to 1
 query I
-SELECT db_blockquote('Quote text')[1].level;
+SELECT db_blockquote('Quote text')[1].level IS NULL;
 ----
-1
+true
 
 # Test db_blockquote with children
 query I
@@ -337,9 +340,9 @@ SELECT len(db_list_block(true, [
 
 # Test db_list_block with list items - parent level is 1
 query I
-SELECT db_list_block([db_list_item('Test')])[1].level;
+SELECT db_list_block([db_list_item('Test')])[1].level IS NULL;
 ----
-1
+true
 
 # Test db_list_block with list items - parent kind is block
 query I
@@ -631,9 +634,9 @@ true
 
 # Test db_div parent level is 1
 query I
-SELECT db_div(db_paragraph('test'))[1].level;
+SELECT db_div(db_paragraph('test'))[1].level IS NULL;
 ----
-1
+true
 
 # ============================================================================
 # Integration: Using v2 builders with manipulation functions

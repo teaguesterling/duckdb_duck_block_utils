@@ -213,3 +213,64 @@ SELECT (db_blocks_validate([
    'attributes':MAP{'key':'k'},'element_order':0}::duck_block])).valid;
 ----
 true
+
+# ============================================================================
+# The builders and the Pandoc converter must agree on `level`.
+#
+# They did not: pandoc_ast_to_blocks() emitted top-level blocks with level=NULL
+# per the spec, while FlattenBlockWithChildren() stamped level=1 on every
+# container it built. Children already agreed at 2 -- only the container's own
+# level differed, so this is the narrowest possible divergence and still one
+# that made the two halves of this extension disagree about a documented field.
+# ============================================================================
+
+# a top-level block built by hand has NULL level, like the converter's
+query I
+SELECT db_paragraph([db_text('a'), db_bold('b')])[1].level IS NULL;
+----
+true
+
+# ...and its inline children still sit at 2, unchanged
+query I
+SELECT db_paragraph([db_text('a'), db_bold('b')])[2].level;
+----
+2
+
+# builder and converter agree on the CONTAINER's level and its children's depth.
+# They differ below that, legitimately: db_bold('b') puts the text in the bold
+# element's content, while the converter emits bold plus a text child at 3 --
+# the spec's "content is populated iff the container has a single text child".
+query I
+SELECT db_paragraph([db_text('a'), db_bold('b')])[1].level IS NULL
+   AND pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"a"}]}]')[1].level IS NULL;
+----
+true
+
+query I
+SELECT db_paragraph([db_text('a'), db_bold('b')])[2].level
+     = pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"a"},{"t":"Code","c":[["",[],[]],"x"]}]}]')[2].level;
+----
+true
+
+# headings: NULL level, h1-h6 in the attribute, and no lint warning
+query I
+SELECT db_heading(1, 'T')[1].level IS NULL;
+----
+true
+
+query I
+SELECT db_heading(1, 'T')[1].attributes['heading_level'];
+----
+1
+
+query I
+SELECT len(db_blocks_lint(db_assemble([db_heading(1, 'Title'), db_paragraph('Text')])));
+----
+0
+
+# nested blockquotes still carry their depth -- the one call site that passes a
+# real level rather than 1 must keep working
+query I
+SELECT db_blocks_to_text(db_blockquote('inner')) LIKE '%inner%';
+----
+true

@@ -119,10 +119,15 @@ static string GetElementType(const Value &element) {
 	return children[BlockTypes::ELEMENT_TYPE_IDX].GetValue<string>();
 }
 
-// Helper to create an element with adjusted level
+// Helper to create an element with adjusted level.
+//
+// A top-level element carries a NULL level, not 1: `level` is structural nesting
+// DEPTH, and something that is not nested has no depth to record. This matches
+// pandoc_ast_to_blocks() and the spec. Writing 1 here re-stamped every container
+// the builders had correctly left NULL, so assembly silently undid the fix.
 static Value CreateElementWithLevel(const Value &element, int32_t new_level) {
 	auto children = StructValue::GetChildren(element);
-	children[BlockTypes::LEVEL_IDX] = Value(new_level);
+	children[BlockTypes::LEVEL_IDX] = (new_level <= 1) ? Value() : Value(new_level);
 	return Value::STRUCT(BlockTypes::DuckBlockType(), std::move(children));
 }
 

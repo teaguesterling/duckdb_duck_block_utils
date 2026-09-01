@@ -52,7 +52,18 @@ Value BuilderFunctions::CreateBlockWithNullContent(const string &block_type, con
 	struct_values.push_back(make_pair("kind", Value(kind)));
 	struct_values.push_back(make_pair("element_type", Value(block_type)));
 	struct_values.push_back(make_pair("content", Value(LogicalType::VARCHAR))); // Typed NULL content
-	struct_values.push_back(make_pair("level", level));
+	// A BLOCK at top level carries a NULL level: `level` is structural nesting
+	// DEPTH, and something not nested has no depth. This matches
+	// pandoc_ast_to_blocks() and the spec, and is normalised HERE rather than at
+	// each call site because three separate places were stamping 1 -- the
+	// flattener, assembly, and every v2 builder -- so a fix in one was silently
+	// undone by the next. Inlines are unaffected: they legitimately start at 1.
+	const Value normalised_level = (kind == BlockTypes::KIND_BLOCK && !level.IsNull() && level.GetValue<int32_t>() <= 1)
+	                                   ? Value(LogicalType::INTEGER) // TYPED null: this struct is built without an
+	                                                                 // explicit type, so an untyped Value() makes the
+	                                                                 // level field SQLNULL and crashes the binder
+	                                   : level;
+	struct_values.push_back(make_pair("level", normalised_level));
 	struct_values.push_back(make_pair("encoding", Value(encoding)));
 	struct_values.push_back(make_pair("attributes", CreateAttributesMap(attributes)));
 	struct_values.push_back(make_pair("element_order", Value(0)));
@@ -74,7 +85,10 @@ vector<Value> BuilderFunctions::BuildWithContent(const Value &parent_block, cons
 
 	// Get parent block children for modification
 	auto parent_children = StructValue::GetChildren(parent_block);
-	parent_children[BlockTypes::LEVEL_IDX] = Value(base_level);
+	// Top level means NULL: `level` is structural nesting depth. Children below
+	// still start at base_level + 1, which is computed from base_level rather
+	// than from what is stored here, so they are unaffected.
+	parent_children[BlockTypes::LEVEL_IDX] = (base_level <= 1) ? Value() : Value(base_level);
 	parent_children[BlockTypes::ELEMENT_ORDER_IDX] = Value(0);
 
 	if (content_input.IsNull()) {
@@ -123,9 +137,18 @@ static vector<Value> FlattenBlockWithChildren(const Value &parent_block, const V
                                               int32_t base_level) {
 	vector<Value> result;
 
-	// Add parent block with the specified level
+	// Add parent block with the specified level.
+	//
+	// A TOP-LEVEL container carries a NULL level, matching pandoc_ast_to_blocks()
+	// and the spec: `level` is structural nesting DEPTH, and a block that is not
+	// nested has no depth to record. Stamping 1 here made the builders and the
+	// converter disagree about a documented field -- the same class of divergence
+	// this extension exists to prevent, sitting inside it.
+	//
+	// Children are unaffected: level_offset below is computed from `base_level`,
+	// not from what is stored on the parent, so they still start at base_level + 1.
 	auto parent_children = StructValue::GetChildren(parent_block);
-	parent_children[BlockTypes::LEVEL_IDX] = Value(base_level);
+	parent_children[BlockTypes::LEVEL_IDX] = (base_level <= 1) ? Value() : Value(base_level);
 	parent_children[BlockTypes::ELEMENT_ORDER_IDX] = Value(0);
 	result.push_back(Value::STRUCT(BlockTypes::DuckBlockType(), std::move(parent_children)));
 
@@ -1174,7 +1197,10 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 							    if (!item.IsNull()) {
 								    auto child_fields = StructValue::GetChildren(item);
 								    child_fields[BlockTypes::LEVEL_IDX] =
-								        Value(child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>() + 1);
+								        Value((child_fields[BlockTypes::LEVEL_IDX].IsNull()
+								                   ? 1 // a NULL level means top level, i.e. depth 1
+								                   : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>()) +
+								              1);
 								    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
 								    result_list.push_back(
 								        Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
@@ -1216,7 +1242,10 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 							    if (!item.IsNull()) {
 								    auto child_fields = StructValue::GetChildren(item);
 								    child_fields[BlockTypes::LEVEL_IDX] =
-								        Value(child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>() + 1);
+								        Value((child_fields[BlockTypes::LEVEL_IDX].IsNull()
+								                   ? 1 // a NULL level means top level, i.e. depth 1
+								                   : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>()) +
+								              1);
 								    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
 								    result_list.push_back(
 								        Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
@@ -1260,7 +1289,10 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 							    if (!item.IsNull()) {
 								    auto child_fields = StructValue::GetChildren(item);
 								    child_fields[BlockTypes::LEVEL_IDX] =
-								        Value(child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>() + 1);
+								        Value((child_fields[BlockTypes::LEVEL_IDX].IsNull()
+								                   ? 1 // a NULL level means top level, i.e. depth 1
+								                   : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>()) +
+								              1);
 								    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
 								    result_list.push_back(
 								        Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
@@ -1295,7 +1327,10 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 							    if (!item.IsNull()) {
 								    auto child_fields = StructValue::GetChildren(item);
 								    child_fields[BlockTypes::LEVEL_IDX] =
-								        Value(child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>() + 1);
+								        Value((child_fields[BlockTypes::LEVEL_IDX].IsNull()
+								                   ? 1 // a NULL level means top level, i.e. depth 1
+								                   : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>()) +
+								              1);
 								    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
 								    result_list.push_back(
 								        Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));

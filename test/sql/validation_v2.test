@@ -42,24 +42,18 @@ true
 # db_blocks_lint Tests
 # ============================================================================
 
-# Lint now reports a KNOWN INTERNAL DIVERGENCE, not a document defect.
-#
-# The spec says a heading's `level` is structural nesting depth and should be
-# NULL, with h1-h6 in attributes['heading_level']. pandoc_ast_to_blocks() does
-# that; the builders do not, because FlattenBlockWithChildren() overwrites a
-# container's level with the base level that anchors its children.
-#
-# Reconciling them means changing the flatten contract, so it is deferred
-# rather than smoothed over -- this assertion pins the current state so the
-# divergence stays visible instead of being forgotten.
+# The builders and pandoc_ast_to_blocks() now agree: a top-level block carries a
+# NULL level. This assertion previously pinned the divergence between them as a
+# known defect; the flatten/assemble/build paths were normalised, so it is gone
+# and a builder-made document lints clean.
 query I
 SELECT len(db_blocks_lint(db_assemble([
     db_heading(1, 'Title'),
     db_heading(2, 'Section'),
     db_paragraph('Text')
-]))) > 0;
+])));
 ----
-true
+0
 
 # a spec-conformant heading -- level NULL -- warns about nothing
 query I
