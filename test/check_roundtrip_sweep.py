@@ -377,7 +377,7 @@ def main() -> int:
             f"'encoding':'text','attributes':{attrs},'element_order':0}}::{STRUCT}]"
         )
         if CONTENT_PROBE in run(duckdb, f"SELECT duck_blocks_to_pandoc_blocks({blk})::VARCHAR;"):
-            stale.append(("CONTENT_EXEMPT", ty))
+            stale.append(("CONTENT_EXEMPT", ty, "it PASSES now", reason))
     for ty, reason in sorted(RENDER_EXEMPT.items()):
         attrs = CONTENT_ATTRS.get(ty, "MAP{}")
         blk = (
@@ -389,7 +389,7 @@ def main() -> int:
         )
         text = run_all(duckdb, f"SELECT duck_blocks_to_text({blk});")
         if CONTENT_PROBE in shown and CONTENT_PROBE in text:
-            stale.append(("RENDER_EXEMPT", ty))
+            stale.append(("RENDER_EXEMPT", ty, "it PASSES now", reason))
     for ty, (becomes, reason) in sorted(INHERENT.items()):
         content, enc, attrs, needs_child = PROBES[ty]
         child = ""
@@ -405,14 +405,33 @@ def main() -> int:
             f")::VARCHAR)) AS b) WHERE b.kind='block' LIMIT 1), '<NOTHING>');"
         )
         if run(duckdb, sql) == ty:
-            stale.append(("INHERENT", ty))
+            stale.append(("INHERENT", ty, "it round-trips to itself now", reason))
+    # An entry whose KEY names a type that no longer exists. The probes above cannot
+    # catch this -- a vanished type simply fails its probe and looks like an exemption
+    # still doing its job, so a rename or a removal leaves the entry excusing nothing,
+    # forever. Added after duckdb_markdown caught the same second mode in theirs.
+    known = set(types)
+    for where, registry in (
+        ("INHERENT", INHERENT),
+        ("CONTENT_EXEMPT", CONTENT_EXEMPT),
+        ("RENDER_EXEMPT", RENDER_EXEMPT),
+    ):
+        for ty in sorted(registry):
+            if ty not in known:
+                reason = registry[ty][1] if where == "INHERENT" else registry[ty]
+                stale.append((where, ty, "no such element_type any more", reason))
+
     if stale:
         failed = True
-        for where, ty in stale:
-            print(f"\nFAIL: `{ty}` no longer needs its {where} entry -- it PASSES now.")
+        for where, ty, why, reason in stale:
+            print(f"\nFAIL: `{ty}` no longer needs its {where} entry -- {why}.")
             print("      DELETE the entry rather than rewording it. A stale exclusion goes on")
             print("      excusing a case that no longer needs excusing, and the next real")
             print("      regression in that type hides behind an explanation nobody rechecks.")
+            # The recorded reason, so the deletion is informed rather than obedient --
+            # if it still reads as true, the property it describes moved, and THAT is
+            # worth understanding before the entry goes.
+            print(f"      recorded reason: {reason}")
     else:
         print(f"  all {len(CONTENT_EXEMPT) + len(RENDER_EXEMPT) + len(INHERENT)} exclusions still hold")
 
