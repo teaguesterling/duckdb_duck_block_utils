@@ -49,6 +49,45 @@ produces two different shapes for one logical field, and neither is a bug.
   frontmatter into `meta`. A reader that can see its own raw source (markdown reading
   its frontmatter text, EPUB reading the OPF) may emit both homes for one document.
 
+## Fidelity to pandoc is a MODE, not a law
+
+**Teague's ruling, 2026-09-01:** duck_block readers need not be 1-for-1 with pandoc
+where it is clear we can do better. There should be a **compatibility mode** that
+reproduces pandoc, and there are places we can be more accurate than it.
+
+This narrows a rule these fixtures were written to enforce, so read the table above
+with the narrowing attached. What the multi-value fixtures actually forbid is a reader
+**silently normalising away a distinction pandoc makes** — Org concatenating and LaTeX
+producing a MetaList are two real shapes, and a reader that flattens both to one has
+destroyed information and told nobody. That is still forbidden.
+
+What they do NOT forbid, and were over-read as forbidding: producing a representation
+that is *more* informative than pandoc's, declared as such. panduck already built the
+pattern before the ruling existed — docx/odt metadata carries
+`attributes['source_type']` with the ORIGINAL spelling (`dcterms:created`,
+`meta:generator`), so a consumer can tell not only that a field came from the format
+rather than from pandoc, but which element it came from.
+
+The two conditions that make an enhancement legitimate:
+
+1. **Declared, not silent.** A consumer must be able to tell enhanced output from
+   pandoc-faithful output by looking at the data, not by knowing which reader ran.
+2. **Reversible.** Compatibility mode must still produce what pandoc produces, so a
+   differential against the reference stays possible. A reader with no way back has
+   removed the only instrument that can check it.
+
+**A live consequence for these fixtures.** `multi_author_concat` pins Org's two
+`#+AUTHOR:` lines as one `value`/`inlines` joined by a `softbreak`, because that is
+what pandoc emits. Two `#+AUTHOR:` lines are plainly two authors, so an enhanced reader
+splitting them into a `value`/`list` — matching what LaTeX's `\author{A \and B}`
+already produces — is *more* accurate and is now permitted. The fixture does not become
+wrong; it becomes **the compatibility-mode expectation**.
+
+So the expected files here are compatibility-mode expectations. Enhanced-mode
+expectations get added beside them when a reader actually has an enhanced mode, not
+before — a fixture for a mode nothing implements is the unwatched branch this repo
+spent 2026-09-01 digging out of its own checks.
+
 ## When an empty field is a field, and when it is boilerplate
 
 The two fixtures above say **present-and-empty is not absent**, and that stands for
