@@ -1071,6 +1071,23 @@ static void RenderImage(const Value &block, const string &content, const ThemePa
 }
 
 // Render one document; returns empty string for empty/inline-only input
+// Does the container at `idx` own block children? Distinguishes the structural
+// shape from the builder shape, which carries its text directly.
+static bool HasDeeperBlockChild(const vector<Value> &blocks_list, idx_t idx) {
+	const int own_depth = GetDepth(blocks_list[idx]);
+	for (idx_t j = idx + 1; j < blocks_list.size(); j++) {
+		auto &child = blocks_list[j];
+		if (child.IsNull()) {
+			continue;
+		}
+		if (GetStringField(child, BlockTypes::KIND_IDX) != BlockTypes::KIND_BLOCK) {
+			continue;
+		}
+		return GetDepth(child) > own_depth;
+	}
+	return false;
+}
+
 static string RenderDocument(const Value &blocks_val, size_t width, const ThemePalette &theme) {
 	if (width < MIN_WIDTH) {
 		width = MIN_WIDTH;
@@ -1083,6 +1100,11 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 	// than this belong to the caption and are dimmed so a reader can tell a caption
 	// from the prose around it; without this they render as ordinary body text.
 	int caption_level = -1;
+	// Depth of the structural `blockquote` we are inside, or -1. The reader used to
+	// store a quote as opaque JSON and this renderer printed that JSON verbatim, so
+	// raw Pandoc AST reached the screen. Now the quote is a container and its
+	// children render with the quote rule, like `caption` above.
+	int quote_level = -1;
 	// Open structural lists, innermost last. A `list` with no content is a CONTAINER
 	// whose list_item children carry the words -- the shape the Pandoc reader now
 	// emits. Nesting depth is the stack depth, so nested lists indent correctly.
@@ -1130,6 +1152,9 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 		if (caption_level >= 0 && block_level <= caption_level) {
 			caption_level = -1;
 		}
+		if (quote_level >= 0 && GetDepth(block) <= quote_level) {
+			quote_level = -1;
+		}
 		// `figure` and `caption` are transparent containers -- they carry no content of
 		// their own and their children render themselves. `caption` additionally opens
 		// a dimmed scope over the children that follow it.
@@ -1139,6 +1164,14 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 			continue;
 		}
 		if (element_type == BlockTypes::TYPE_FIGURE) {
+			bi++;
+			continue;
+		}
+
+		// A `blockquote` with no content owns block children; one WITH content is the
+		// builder shape and still renders through RenderBlockquote below.
+		if (element_type == BlockTypes::TYPE_BLOCKQUOTE && content.empty() && HasDeeperBlockChild(blocks_list, bi)) {
+			quote_level = GetDepth(block);
 			bi++;
 			continue;
 		}
@@ -1235,7 +1268,9 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 		string text = content.empty() ? inline_text : content;
 
 		vector<string> lines;
-		if (element_type == BlockTypes::TYPE_HEADING) {
+		if (quote_level >= 0) {
+			RenderBlockquote(text, width, theme, lines);
+		} else if (element_type == BlockTypes::TYPE_HEADING) {
 			RenderHeading(text, GetAttribute(block, "heading_level"), width, theme, lines);
 		} else if (element_type == BlockTypes::TYPE_PARAGRAPH) {
 			RenderParagraph(text, width, lines);

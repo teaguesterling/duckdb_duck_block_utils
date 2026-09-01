@@ -272,9 +272,18 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 			}
 		}
 	} else if (strcmp(pandoc_type, "BlockQuote") == 0) {
+		// STRUCTURAL. Was encoding='json', which put raw Pandoc AST on the screen in
+		// every renderer that showed `content` -- three of them did.
 		block_type = BlockTypes::TYPE_BLOCKQUOTE;
-		encoding = "json";
-		content = ValToJsonString(c_val);
+		result.push_back(CreateDocBlock(block_type, "", attrs, order++, encoding, block_level));
+		if (c_val && yyjson_is_arr(c_val)) {
+			size_t idx, max;
+			yyjson_val *child_block;
+			yyjson_arr_foreach(c_val, idx, max, child_block) {
+				ProcessPandocBlockVal(child_block, order, result, depth + 1, effective_level);
+			}
+		}
+		return;
 	} else if (strcmp(pandoc_type, "BulletList") == 0 || strcmp(pandoc_type, "OrderedList") == 0) {
 		// STRUCTURAL, not opaque JSON. This used to store the whole Pandoc `c` as
 		// encoding='json', which made decoding every consumer's problem and left the
@@ -1058,6 +1067,40 @@ static yyjson_mut_val *ConvertDivToPandocVal(yyjson_mut_doc *doc, const vector<V
 	return div_obj;
 }
 
+// Does the container at `idx` own block children (the structural shape), as opposed
+// to carrying its text directly (the builder shape)? Both are legal, so the exporter
+// has to tell them apart rather than assume one.
+static bool HasBlockChildren(const vector<Value> &blocks_list, idx_t idx) {
+	const int32_t own_level = GetElementLevel(blocks_list[idx]);
+	for (idx_t j = idx + 1; j < blocks_list.size(); j++) {
+		auto &child = blocks_list[j];
+		if (child.IsNull()) {
+			continue;
+		}
+		if (GetElementStringField(child, BlockTypes::KIND_IDX) != BlockTypes::KIND_BLOCK) {
+			continue;
+		}
+		return GetElementLevel(child) > own_level;
+	}
+	return false;
+}
+
+// BlockQuote c = [Block] -- no Attr, so the children array IS `c`. Needed once the
+// reader stopped storing the quote as opaque JSON: without it a structural quote
+// exported as an empty BlockQuote followed by its own children as SIBLINGS, which
+// silently lifts quoted text out of the quote and into the body.
+static yyjson_mut_val *ConvertBlockquoteToPandocVal(yyjson_mut_doc *doc, const vector<Value> &blocks_list,
+                                                    idx_t &start_idx, int32_t quote_level, idx_t depth) {
+	CheckPandocDepth(depth);
+	yyjson_mut_val *bq_obj = yyjson_mut_obj(doc);
+	yyjson_mut_obj_add_str(doc, bq_obj, "t", "BlockQuote");
+	yyjson_mut_val *child_blocks_arr = yyjson_mut_arr(doc);
+	yyjson_mut_obj_add_val(doc, bq_obj, "c", child_blocks_arr);
+	ConvertContainerChildrenToPandocVal(doc, blocks_list, start_idx, quote_level, depth, child_blocks_arr, nullptr,
+	                                    nullptr);
+	return bq_obj;
+}
+
 // Figure c = [Attr, Caption, [Block]] where Caption = [ShortCaption?, [Block]].
 // Children were emitted as content blocks followed by a `caption` container, so one
 // walk with a switch at that container reconstitutes both lists.
@@ -1221,6 +1264,10 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			}
 			yyjson_mut_arr_add_val(blocks_arr, bq_obj);
 			block_idx++;
+		} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE && HasBlockChildren(blocks_list, block_idx)) {
+			int32_t quote_level = GetElementLevel(block);
+			yyjson_mut_arr_add_val(blocks_arr,
+			                       ConvertBlockquoteToPandocVal(doc, blocks_list, block_idx, quote_level, 1));
 		} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE) {
 			yyjson_mut_val *bq_obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, bq_obj, "t", "BlockQuote");
