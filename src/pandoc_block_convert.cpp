@@ -1294,6 +1294,39 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			yyjson_mut_obj_add_val(doc, para_obj, "c", pc_arr);
 			yyjson_mut_arr_add_val(blocks_arr, para_obj);
 			block_idx++;
+		} else if (element_type == BlockTypes::TYPE_GENERIC &&
+		           GetElementStringField(block, BlockTypes::ENCODING_IDX) == BlockTypes::ENCODING_JSON &&
+		           !content.empty()) {
+			// The export half the import side already promised. ProcessPandocBlockVal
+			// stores the WHOLE constructor object -- `t` included -- and says in its
+			// comment that it does so "so export can reconstitute it including `t`".
+			// Nothing did. An unmapped block fell through to the Para fallback below,
+			// which emitted its stored JSON as a Str: a round trip printed a raw AST
+			// blob into the document body as visible text. That is worse than a drop,
+			// because the corruption looks like content.
+			//
+			// Splicing the object back verbatim round-trips the block LOSSLESSLY --
+			// stronger than the inline side manages, where `generic` can only degrade
+			// to a Span carrying source_type as a class, its children having become
+			// separate elements by the time export sees them.
+			yyjson_doc *sub_doc = yyjson_read(content.c_str(), content.size(), 0);
+			if (sub_doc) {
+				yyjson_mut_arr_add_val(blocks_arr, yyjson_val_mut_copy(doc, yyjson_doc_get_root(sub_doc)));
+				yyjson_doc_free(sub_doc);
+			} else {
+				// Unparseable content: falling through would re-print the blob as text,
+				// so emit an empty Div tagged with source_type instead. Lossy in
+				// content, but it does not fabricate prose the document never had.
+				yyjson_mut_val *gen_obj = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, gen_obj, "t", "Div");
+				yyjson_mut_val *gc_arr = yyjson_mut_arr(doc);
+				yyjson_mut_arr_add_val(gc_arr,
+				                       CreatePandocAttrVal(doc, block, GetElementAttribute(block, "source_type")));
+				yyjson_mut_arr_add_val(gc_arr, yyjson_mut_arr(doc));
+				yyjson_mut_obj_add_val(doc, gen_obj, "c", gc_arr);
+				yyjson_mut_arr_add_val(blocks_arr, gen_obj);
+			}
+			block_idx++;
 		} else {
 			yyjson_mut_val *para_obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, para_obj, "t", "Para");

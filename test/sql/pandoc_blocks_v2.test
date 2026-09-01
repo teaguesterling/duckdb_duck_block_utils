@@ -1259,3 +1259,54 @@ query I
 SELECT duck_blocks_to_pandoc_ast(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"T"}]},"draft":{"t":"MetaBool","c":true},"tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"one"}]}]},"author":{"t":"MetaMap","c":{"name":{"t":"MetaInlines","c":[{"t":"Str","c":"Someone"}]}}}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"Body"}]}]}')).meta::VARCHAR LIKE '%MetaBool%';
 ----
 true
+
+# ============================================================================
+# BLOCK `generic` round-trips LOSSLESSLY.
+#
+# The import side stores the whole constructor object -- `t` included -- and its
+# comment says it does so "so export can reconstitute it including `t`". Export
+# never did: an unmapped block fell through to the Para fallback and its stored
+# JSON was emitted as a Str, so a round trip printed a raw AST blob into the
+# document body AS VISIBLE TEXT. Corruption that looks like content.
+#
+# Found by checking the block side after the webbed session reported the mirror
+# image of it in their own renderer -- they fixed a block fallthrough and missed
+# the inline one; this repo fixed the inline one (e44efe6) and missed the block.
+# ============================================================================
+
+# The whole constructor comes back byte-for-byte.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Marquee","c":[["",[],[]],[{"t":"Plain","c":[{"t":"Str","c":"KEPT"}]}]]}]}'))::VARCHAR = '[{"t":"Marquee","c":[["",[],[]],[{"t":"Plain","c":[{"t":"Str","c":"KEPT"}]}]]}]';
+----
+true
+
+# DISCRIMINATING: the old bug produced a Para, and it produced one that still
+# contained the text "KEPT" -- so asserting merely that KEPT survived would have
+# PASSED against the defect. The property is that no Para was fabricated and the
+# constructor name is still `t`, not prose.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Marquee","c":[["",[],[]],[{"t":"Plain","c":[{"t":"Str","c":"KEPT"}]}]]}]}'))::VARCHAR NOT LIKE '%"t":"Para"%';
+----
+true
+
+# The stored JSON must never reappear as a Str payload, which is how the blob
+# became visible text.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Marquee","c":[["",[],[]],[{"t":"Plain","c":[{"t":"Str","c":"KEPT"}]}]]}]}'))::VARCHAR NOT LIKE '%Str","c":"{%';
+----
+true
+
+# Import still records what it stood in for.
+query II
+SELECT b.element_type, b.attributes['source_type']
+FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Marquee","c":[["",[],[]],[{"t":"Plain","c":[{"t":"Str","c":"KEPT"}]}]]}]}')) AS b)
+WHERE b.kind = 'block';
+----
+generic	Marquee
+
+# INLINE `generic` whose `c` is directly an inline array keeps its text and
+# degrades to a Span carrying source_type as a class (e44efe6).
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Para","c":[{"t":"Blink","c":[{"t":"Str","c":"KEPT"}]}]}]}'))::VARCHAR = '[{"t":"Para","c":[{"t":"Span","c":[["",["Blink"],[]],[{"t":"Str","c":"KEPT"}]]}]}]';
+----
+true
