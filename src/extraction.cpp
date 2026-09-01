@@ -366,7 +366,7 @@ void ExtractionFunctions::DbBlocksHeadingsFun(DataChunk &args, ExpressionState &
 			}
 
 			// Get heading_level from attributes, falling back to level field for backward compatibility
-			auto heading_level_str = GetElementAttribute(block, "heading_level");
+			auto heading_level_str = GetElementAttribute(block, BlockTypes::ATTR_HEADING_LEVEL);
 			int32_t level;
 			if (!heading_level_str.empty()) {
 				// Safe parse: malformed/out-of-range values fall back instead of throwing
@@ -513,7 +513,7 @@ void ExtractionFunctions::DbBlocksTocFun(DataChunk &args, ExpressionState &state
 			}
 
 			// Get heading_level from attributes, falling back to level field
-			auto heading_level_str = GetElementAttribute(block, "heading_level");
+			auto heading_level_str = GetElementAttribute(block, BlockTypes::ATTR_HEADING_LEVEL);
 			int32_t level;
 			if (!heading_level_str.empty()) {
 				// Safe parse: malformed/out-of-range values fall back instead of throwing

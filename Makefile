@@ -19,6 +19,7 @@ check:
 	python3 test/check_conformance_macro.py
 	python3 test/check_vendorable.py
 	python3 test/check_docs_cover_functions.py
+	python3 test/check_constants_are_used.py
 
 check-strict:
 	DUCK_BLOCK_CHECKS_STRICT=1 $(MAKE) check

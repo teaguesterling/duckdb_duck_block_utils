@@ -349,7 +349,7 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 
 			// Check for heading level skips
 			if (element_type == BlockTypes::TYPE_HEADING) {
-				auto heading_level_str = GetElementAttribute(block, "heading_level");
+				auto heading_level_str = GetElementAttribute(block, BlockTypes::ATTR_HEADING_LEVEL);
 				int32_t heading_level = 1;
 				if (!heading_level_str.empty()) {
 					heading_level =
@@ -405,7 +405,8 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 			// third-party blocks. But it is the attribute that carries the meaning, so
 			// its absence is worth saying out loud rather than leaving each consumer to
 			// invent a fallback.
-			if (element_type == BlockTypes::TYPE_HEADING && GetElementAttribute(block, "heading_level").empty()) {
+			if (element_type == BlockTypes::TYPE_HEADING &&
+			    GetElementAttribute(block, BlockTypes::ATTR_HEADING_LEVEL).empty()) {
 				child_list_t<Value> warning_values;
 				warning_values.push_back(make_pair("severity", Value("warning")));
 				warning_values.push_back(make_pair(
@@ -418,7 +419,8 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 			// `generic` exists to make an unmapped construct VISIBLE. Without
 			// source_type it records that something was lost but not what, which
 			// defeats the point of the backstop.
-			if (element_type == BlockTypes::TYPE_GENERIC && GetElementAttribute(block, "source_type").empty()) {
+			if (element_type == BlockTypes::TYPE_GENERIC &&
+			    GetElementAttribute(block, BlockTypes::ATTR_SOURCE_TYPE).empty()) {
 				child_list_t<Value> warning_values;
 				warning_values.push_back(make_pair("severity", Value("warning")));
 				warning_values.push_back(
@@ -668,7 +670,7 @@ void ValidationFunctions::DbBlocksStructureFun(DataChunk &args, ExpressionState 
 
 				if (element_type == BlockTypes::TYPE_HEADING) {
 					heading_count++;
-					auto heading_level_str = GetElementAttribute(block, "heading_level");
+					auto heading_level_str = GetElementAttribute(block, BlockTypes::ATTR_HEADING_LEVEL);
 					int32_t heading_level = 1;
 					if (!heading_level_str.empty()) {
 						heading_level =

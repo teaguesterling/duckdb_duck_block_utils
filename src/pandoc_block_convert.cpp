@@ -125,9 +125,9 @@ static void ParsePandocAttrVal(yyjson_val *attr_val, PandocAttr &attr) {
 }
 
 static bool IsReservedAttrKey(const string &key) {
-	return key == "id" || key == "class" || key == "heading_level" || key == "language" || key == "list_type" ||
-	       key == "format" || key == "src" || key == "alt" || key == "title" || key == "href" || key == "quote_type" ||
-	       key == "display";
+	return key == "id" || key == "class" || key == BlockTypes::ATTR_HEADING_LEVEL || key == "language" ||
+	       key == BlockTypes::ATTR_LIST_TYPE || key == "format" || key == "src" || key == "alt" || key == "title" ||
+	       key == "href" || key == "quote_type" || key == "display";
 }
 
 static void StorePandocAttr(const PandocAttr &attr, map<string, string> &attrs) {
@@ -380,7 +380,7 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 			yyjson_val *inlines_val = yyjson_arr_get(c_val, 2);
 
 			int32_t level = yyjson_is_num(level_val) ? yyjson_get_int(level_val) : 1;
-			attrs["heading_level"] = std::to_string(level);
+			attrs[BlockTypes::ATTR_HEADING_LEVEL] = std::to_string(level);
 
 			PandocAttr pattr;
 			ParsePandocAttrVal(attr_val, pattr);
@@ -451,13 +451,13 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 		// shape the builders already produce and the exporter already understands.
 		const bool is_ordered = (strcmp(pandoc_type, "OrderedList") == 0);
 		block_type = BlockTypes::TYPE_LIST;
-		attrs["list_type"] = is_ordered ? "ordered" : "bullet";
+		attrs[BlockTypes::ATTR_LIST_TYPE] = is_ordered ? BlockTypes::LIST_TYPE_ORDERED : BlockTypes::LIST_TYPE_BULLET;
 		// `ordered` is the attribute spec v1.0 documents for this; `list_type` arrived
 		// later with this reader and nothing ever said which was canonical. Emitting
 		// only list_type meant a consumer written against the PUBLISHED v1 spec read
 		// nothing at all from a Pandoc-produced list. Both are emitted; v1's name is
 		// the canonical one.
-		attrs["ordered"] = is_ordered ? "true" : "false";
+		attrs[BlockTypes::LIST_TYPE_ORDERED] = is_ordered ? "true" : "false";
 
 		yyjson_val *items_arr = c_val;
 		if (is_ordered && c_val && yyjson_is_arr(c_val) && yyjson_arr_size(c_val) >= 2) {
@@ -509,7 +509,7 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 		// terms and definitions as list_items distinguished by attributes['role'].
 		//
 		// That is the extensibility `list_type` was made canonical FOR: a boolean
-		// cannot say "definition", which is why `ordered` lost. Zero new types, and
+		// cannot say BlockTypes::LIST_TYPE_DEFINITION, which is why `ordered` lost. Zero new types, and
 		// every consumer that already walks lists gets definition lists free.
 		//
 		// It was opaque JSON before, which meant it RENDERED ITS OWN AST to the screen
@@ -518,8 +518,8 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 		//
 		// DefinitionList c = [([Inline], [[Block]])] -- term/definitions pairs.
 		block_type = BlockTypes::TYPE_LIST;
-		attrs["list_type"] = "definition";
-		attrs["ordered"] = "false";
+		attrs[BlockTypes::ATTR_LIST_TYPE] = BlockTypes::LIST_TYPE_DEFINITION;
+		attrs[BlockTypes::LIST_TYPE_ORDERED] = "false";
 		result.push_back(CreateDocBlock(block_type, "", attrs, order++, encoding, block_level));
 
 		if (c_val && yyjson_is_arr(c_val)) {
@@ -533,7 +533,7 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 				yyjson_val *definitions = yyjson_arr_get(pair, 1);
 
 				map<string, string> term_attrs;
-				term_attrs["role"] = "term";
+				term_attrs[BlockTypes::ATTR_ROLE] = BlockTypes::ROLE_TERM;
 				result.push_back(CreateDocBlock(BlockTypes::TYPE_LIST_ITEM, "", term_attrs, order++, "text",
 				                                Value(effective_level + 1)));
 				// The term is a bare inline run, so its block-level home is `plain`.
@@ -546,7 +546,7 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 					yyjson_val *def_blocks;
 					yyjson_arr_foreach(definitions, didx, dmax, def_blocks) {
 						map<string, string> def_attrs;
-						def_attrs["role"] = "definition";
+						def_attrs[BlockTypes::ATTR_ROLE] = BlockTypes::LIST_TYPE_DEFINITION;
 						result.push_back(CreateDocBlock(BlockTypes::TYPE_LIST_ITEM, "", def_attrs, order++, "text",
 						                                Value(effective_level + 1)));
 						if (def_blocks && yyjson_is_arr(def_blocks)) {
@@ -576,10 +576,10 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 		block_type = BlockTypes::TYPE_TABLE;
 		encoding = "json";
 		content = ProjectTableToNativeJson(c_val);
-		attrs["pandoc_ast"] = ValToJsonString(c_val);
+		attrs[BlockTypes::ATTR_PANDOC_AST] = ValToJsonString(c_val);
 		if (content.empty()) {
 			content = ValToJsonString(c_val);
-			attrs.erase("pandoc_ast");
+			attrs.erase(BlockTypes::ATTR_PANDOC_AST);
 		}
 	} else if (strcmp(pandoc_type, "LineBlock") == 0) {
 		// LineBlock c = [[Inline]] -- an array OF ARRAYS, one per line.
@@ -699,7 +699,7 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 			// reader mapping <article> onto role='article' is reading the spec rather
 			// than guessing from the names lining up.
 			{
-				auto role_it = attrs.find("role");
+				auto role_it = attrs.find(BlockTypes::ATTR_ROLE);
 				string role = role_it != attrs.end() ? role_it->second : string();
 				if (role.empty()) {
 					auto class_it = attrs.find("class");
@@ -711,7 +711,7 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 				                                                  "header",  "footer",  "main"};
 				if (!role.empty() && SECTIONING_ROLES.find(role) != SECTIONING_ROLES.end()) {
 					block_type = BlockTypes::TYPE_SECTION;
-					attrs["role"] = role;
+					attrs[BlockTypes::ATTR_ROLE] = role;
 				} else if (role == "page") {
 					// Same write-only defect as `section`, one type over: a page_break
 					// exports as a Div classed 'page' carrying page_number, and nothing
@@ -740,7 +740,7 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 		// constructor object (not just `c`) so export can reconstitute it including `t`.
 		block_type = BlockTypes::TYPE_GENERIC;
 		encoding = "json";
-		attrs["source_type"] = string(pandoc_type);
+		attrs[BlockTypes::ATTR_SOURCE_TYPE] = string(pandoc_type);
 		content = ValToJsonString(block_val);
 	}
 
@@ -883,7 +883,7 @@ static void ProcessPandocMetaVal(const string &key, yyjson_val *val, int32_t &or
 	} else {
 		// Same no-silent-drops rule as blocks and inlines: an unrecognised MetaValue is
 		// preserved verbatim rather than discarded.
-		attrs["source_type"] = string(mt);
+		attrs[BlockTypes::ATTR_SOURCE_TYPE] = string(mt);
 		result.push_back(CreateDocValue(BlockTypes::TYPE_GENERIC, ValToJsonString(val), attrs, order++, Value(level)));
 	}
 }
@@ -1120,10 +1120,10 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
                                               int32_t list_level, idx_t depth) {
 	CheckPandocDepth(depth);
 	auto &list_block = blocks_list[start_idx];
-	auto list_type = GetElementAttribute(list_block, "list_type");
-	auto ordered_attr = GetElementAttribute(list_block, "ordered");
-	bool is_ordered = (list_type == "ordered") || (ordered_attr == "true");
-	const bool is_definition = (list_type == "definition");
+	auto list_type = GetElementAttribute(list_block, BlockTypes::ATTR_LIST_TYPE);
+	auto ordered_attr = GetElementAttribute(list_block, BlockTypes::LIST_TYPE_ORDERED);
+	bool is_ordered = (list_type == BlockTypes::LIST_TYPE_ORDERED) || (ordered_attr == "true");
+	const bool is_definition = (list_type == BlockTypes::LIST_TYPE_DEFINITION);
 	const char *pandoc_type = is_definition ? "DefinitionList" : (is_ordered ? "OrderedList" : "BulletList");
 
 	struct ListItem {
@@ -1181,7 +1181,7 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 				}
 				current_item = ListItem();
 				current_item.content = GetElementStringField(child, BlockTypes::CONTENT_IDX);
-				current_item.role = GetElementAttribute(child, "role");
+				current_item.role = GetElementAttribute(child, BlockTypes::ATTR_ROLE);
 				in_item = true;
 				j++;
 			} else if (child_type == BlockTypes::TYPE_LIST &&
@@ -1305,7 +1305,7 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 		// that follow it before the next term.
 		yyjson_mut_obj_add_val(doc, root_obj, "c", items_arr);
 		for (idx_t k = 0; k < items.size();) {
-			if (items[k].role != "term") {
+			if (items[k].role != BlockTypes::ROLE_TERM) {
 				k++;
 				continue;
 			}
@@ -1319,7 +1319,7 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 
 			yyjson_mut_val *defs = yyjson_mut_arr(doc);
 			idx_t d = k + 1;
-			for (; d < items.size() && items[d].role == "definition"; d++) {
+			for (; d < items.size() && items[d].role == BlockTypes::LIST_TYPE_DEFINITION; d++) {
 				// A definition is [Block], PLURAL, exactly like a bullet item -- and this
 				// emitted only the FIRST block, so every block after it was silently lost.
 				// `TLS: <para> <code>` came back as `TLS: <para>`.
@@ -1586,7 +1586,7 @@ static void ConvertContainerChildrenToPandocVal(yyjson_mut_doc *doc, const vecto
 				yyjson_mut_arr_add_val(child_blocks_arr, para_obj);
 				j++;
 			} else if (child_type == BlockTypes::TYPE_HEADING) {
-				auto level_str = GetElementAttribute(child, "heading_level");
+				auto level_str = GetElementAttribute(child, BlockTypes::ATTR_HEADING_LEVEL);
 				int level = ParseInt32OrDefault(level_str, 1);
 				yyjson_mut_val *header_obj = yyjson_mut_obj(doc);
 				yyjson_mut_obj_add_str(doc, header_obj, "t", "Header");
@@ -1874,7 +1874,7 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 		}
 
 		if (element_type == BlockTypes::TYPE_HEADING) {
-			auto level_str = GetElementAttribute(block, "heading_level");
+			auto level_str = GetElementAttribute(block, BlockTypes::ATTR_HEADING_LEVEL);
 			int level = ParseInt32OrDefault(level_str, 1);
 			yyjson_mut_val *header_obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, header_obj, "t", "Header");
@@ -2003,8 +2003,9 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			// the same defect the 2.0 migration fixed for the reader, still live for
 			// stored data. Found by auditing rulings against code rather than trusting
 			// what I had written down.
-			bool json_ordered = (GetElementAttribute(block, "list_type") == "ordered") ||
-			                    (GetElementAttribute(block, "ordered") == "true");
+			bool json_ordered =
+			    (GetElementAttribute(block, BlockTypes::ATTR_LIST_TYPE) == BlockTypes::LIST_TYPE_ORDERED) ||
+			    (GetElementAttribute(block, BlockTypes::LIST_TYPE_ORDERED) == "true");
 			yyjson_mut_val *list_obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, list_obj, "t", json_ordered ? "OrderedList" : "BulletList");
 			yyjson_mut_val *items_arr = yyjson_mut_arr(doc);
@@ -2080,7 +2081,7 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			// class carries the role -- pandoc's nearest honest equivalent, and what
 			// its own HTML reader produces for <section>.
 			int32_t sec_level = GetElementLevel(block);
-			auto role = GetElementAttribute(block, "role");
+			auto role = GetElementAttribute(block, BlockTypes::ATTR_ROLE);
 			yyjson_mut_val *sec_obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, sec_obj, "t", "Div");
 			yyjson_mut_val *sec_c = yyjson_mut_arr(doc);
@@ -2100,11 +2101,12 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			}
 			yyjson_mut_val *fig_obj = ConvertFigureToPandocVal(doc, blocks_list, block_idx, fig_level, 1);
 			yyjson_mut_arr_add_val(blocks_arr, fig_obj);
-		} else if (element_type == BlockTypes::TYPE_TABLE && !GetElementAttribute(block, "pandoc_ast").empty()) {
+		} else if (element_type == BlockTypes::TYPE_TABLE &&
+		           !GetElementAttribute(block, BlockTypes::ATTR_PANDOC_AST).empty()) {
 			// Round trip through the PRESERVED tuple, not the lossy projection. This is
 			// the whole reason the tuple is kept: the renderable form lives in content
 			// and the faithful form lives here, so nothing has to choose between them.
-			auto tuple = GetElementAttribute(block, "pandoc_ast");
+			auto tuple = GetElementAttribute(block, BlockTypes::ATTR_PANDOC_AST);
 			yyjson_mut_val *tbl_obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, tbl_obj, "t", "Table");
 			yyjson_doc *sub_doc = yyjson_read(tuple.c_str(), tuple.size(), 0);
@@ -2303,8 +2305,8 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 				yyjson_mut_val *gen_obj = yyjson_mut_obj(doc);
 				yyjson_mut_obj_add_str(doc, gen_obj, "t", "Div");
 				yyjson_mut_val *gc_arr = yyjson_mut_arr(doc);
-				yyjson_mut_arr_add_val(gc_arr,
-				                       CreatePandocAttrVal(doc, block, GetElementAttribute(block, "source_type")));
+				yyjson_mut_arr_add_val(
+				    gc_arr, CreatePandocAttrVal(doc, block, GetElementAttribute(block, BlockTypes::ATTR_SOURCE_TYPE)));
 				yyjson_mut_arr_add_val(gc_arr, yyjson_mut_arr(doc));
 				yyjson_mut_obj_add_val(doc, gen_obj, "c", gc_arr);
 				yyjson_mut_arr_add_val(blocks_arr, gen_obj);
@@ -2786,7 +2788,8 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	// pandoc_ast(blocks, meta := {}, api_version := [1,23,1]) -> TABLE(pandoc-api-version, meta, blocks)
 	// Table function for clean JSON output with COPY FORMAT JSON
 	// meta is MAP(VARCHAR, VARCHAR) - simple key-value pairs converted to Pandoc MetaInlines
-	TableFunction pandoc_ast_table_func("pandoc_ast", {duck_block_list_type}, PandocAstFunction, PandocAstBind);
+	TableFunction pandoc_ast_table_func(BlockTypes::ATTR_PANDOC_AST, {duck_block_list_type}, PandocAstFunction,
+	                                    PandocAstBind);
 	pandoc_ast_table_func.named_parameters["meta"] = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
 	pandoc_ast_table_func.named_parameters["api_version"] = LogicalType::LIST(LogicalType::INTEGER);
 	loader.RegisterFunction(pandoc_ast_table_func);

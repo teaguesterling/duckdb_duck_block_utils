@@ -26,7 +26,7 @@ static Value CreateHeadingBlock(const string &title, int32_t heading_level, int3
 	struct_values.push_back(make_pair("level", Value(1))); // Structural level 1 (top-level)
 	struct_values.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_TEXT)));
 	// Store heading level in attributes
-	vector<Value> keys = {Value("heading_level")};
+	vector<Value> keys = {Value(BlockTypes::ATTR_HEADING_LEVEL)};
 	vector<Value> values = {Value(std::to_string(heading_level))};
 	struct_values.push_back(make_pair("attributes", CreateAttributesMap(keys, values)));
 	struct_values.push_back(make_pair("element_order", Value(element_order)));
@@ -53,7 +53,7 @@ static int32_t GetHeadingLevel(const Value &element) {
 		auto &map_entries = MapValue::GetChildren(attrs);
 		for (auto &entry : map_entries) {
 			auto &kv = StructValue::GetChildren(entry);
-			if (!kv[0].IsNull() && kv[0].GetValue<string>() == "heading_level") {
+			if (!kv[0].IsNull() && kv[0].GetValue<string>() == BlockTypes::ATTR_HEADING_LEVEL) {
 				if (!kv[1].IsNull()) {
 					// Safe parse: malformed values fall back to the level field
 					int32_t fallback = children[BlockTypes::LEVEL_IDX].IsNull()
@@ -89,7 +89,7 @@ static Value CreateElementWithHeadingLevel(const Value &element, int32_t new_hea
 			auto &kv = StructValue::GetChildren(entry);
 			if (!kv[0].IsNull()) {
 				string key = kv[0].GetValue<string>();
-				if (key == "heading_level") {
+				if (key == BlockTypes::ATTR_HEADING_LEVEL) {
 					keys.push_back(Value(key));
 					values.push_back(Value(std::to_string(new_heading_level)));
 					found = true;
@@ -102,7 +102,7 @@ static Value CreateElementWithHeadingLevel(const Value &element, int32_t new_hea
 	}
 
 	if (!found) {
-		keys.push_back(Value("heading_level"));
+		keys.push_back(Value(BlockTypes::ATTR_HEADING_LEVEL));
 		values.push_back(Value(std::to_string(new_heading_level)));
 	}
 
@@ -410,7 +410,7 @@ void AssemblyFunctions::Register(ExtensionLoader &loader) {
 			                   heading_fields.push_back(make_pair("content", Value())); // NULL content
 			                   heading_fields.push_back(make_pair("level", Value(1)));  // structural level
 			                   heading_fields.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_TEXT)));
-			                   vector<Value> keys = {Value("heading_level")};
+			                   vector<Value> keys = {Value(BlockTypes::ATTR_HEADING_LEVEL)};
 			                   vector<Value> values = {Value(std::to_string(level_val))};
 			                   heading_fields.push_back(make_pair("attributes", CreateAttributesMap(keys, values)));
 			                   heading_fields.push_back(make_pair("element_order", Value(0)));

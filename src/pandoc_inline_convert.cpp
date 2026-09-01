@@ -244,7 +244,7 @@ static void FlattenPandocInlinesVal(yyjson_val *inlines_val, int32_t level, int3
 			// Preserve the words: emit a marker recording what this was, then recurse
 			// into the constructor's children rather than replacing them with a
 			// "[Type]" placeholder. Keeps the gap visible AND keeps the text.
-			attrs["source_type"] = string(pandoc_type);
+			attrs[BlockTypes::ATTR_SOURCE_TYPE] = string(pandoc_type);
 			result.push_back(CreateDocInline(BlockTypes::INLINE_GENERIC, "", level, attrs, order++));
 			if (c_val) {
 				FlattenPandocInlinesVal(c_val, level + 1, order, result, depth + 1);
@@ -572,7 +572,7 @@ yyjson_mut_val *PandocInlineConvert::ConvertDbInlinesToPandocVal(yyjson_mut_doc 
 						continue;
 					}
 					auto &kv = StructValue::GetChildren(entry);
-					if (kv.size() >= 2 && !kv[0].IsNull() && kv[0].GetValue<string>() == "source_type") {
+					if (kv.size() >= 2 && !kv[0].IsNull() && kv[0].GetValue<string>() == BlockTypes::ATTR_SOURCE_TYPE) {
 						if (!kv[1].IsNull()) {
 							source_type = kv[1].GetValue<string>();
 						}

@@ -904,7 +904,7 @@ static void RenderListItems(const JVal &items, bool ordered, int depth, size_t w
 		if (item.type == JVal::Type::OBJECT) {
 			auto *sub = item.Find("items");
 			if (sub && sub->type == JVal::Type::ARRAY) {
-				auto *ord = item.Find("ordered");
+				auto *ord = item.Find(BlockTypes::LIST_TYPE_ORDERED);
 				RenderListItems(*sub, ord && ord->str == "true", depth + 1, width, theme, lines);
 			}
 		}
@@ -1202,8 +1202,8 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 		if (element_type == BlockTypes::TYPE_LIST && content.empty()) {
 			ActiveList open_list;
 			open_list.level = GetDepth(block);
-			open_list.ordered =
-			    (GetAttribute(block, "list_type") == "ordered") || (GetAttribute(block, "ordered") == "true");
+			open_list.ordered = (GetAttribute(block, BlockTypes::ATTR_LIST_TYPE) == BlockTypes::LIST_TYPE_ORDERED) ||
+			                    (GetAttribute(block, BlockTypes::LIST_TYPE_ORDERED) == "true");
 			auto start_attr = GetAttribute(block, "start");
 			open_list.number = 1;
 			if (!start_attr.empty()) {
@@ -1285,7 +1285,7 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 		if (quote_level >= 0) {
 			RenderBlockquote(text, width, theme, lines);
 		} else if (element_type == BlockTypes::TYPE_HEADING) {
-			RenderHeading(text, GetAttribute(block, "heading_level"), width, theme, lines);
+			RenderHeading(text, GetAttribute(block, BlockTypes::ATTR_HEADING_LEVEL), width, theme, lines);
 		} else if (element_type == BlockTypes::TYPE_PARAGRAPH || element_type == BlockTypes::TYPE_PLAIN) {
 			// `plain` renders exactly as a paragraph -- it differs in MEANING and in what
 			// it exports to, not in how it looks. Omitting it here silently emptied every
@@ -1311,8 +1311,8 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 				// only list_type with JSON content rendered as bullets otherwise -- the
 				// same one-sided read that made every Pandoc ordered list a bullet list.
 				RenderListItems(items,
-				                (GetAttribute(block, "list_type") == "ordered") ||
-				                    (GetAttribute(block, "ordered") == "true"),
+				                (GetAttribute(block, BlockTypes::ATTR_LIST_TYPE) == BlockTypes::LIST_TYPE_ORDERED) ||
+				                    (GetAttribute(block, BlockTypes::LIST_TYPE_ORDERED) == "true"),
 				                0, width, theme, lines);
 			}
 		} else if (element_type == BlockTypes::TYPE_TABLE) {
