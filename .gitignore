@@ -7,6 +7,8 @@ duckdb_unittest_tempdir/
 .DS_Store
 testext
 test/python/__pycache__/
+__pycache__/
+*.pyc
 .Rhistory
 
 # blq
