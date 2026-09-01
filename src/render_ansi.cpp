@@ -1083,6 +1083,15 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 	// than this belong to the caption and are dimmed so a reader can tell a caption
 	// from the prose around it; without this they render as ordinary body text.
 	int caption_level = -1;
+	// Open structural lists, innermost last. A `list` with no content is a CONTAINER
+	// whose list_item children carry the words -- the shape the Pandoc reader now
+	// emits. Nesting depth is the stack depth, so nested lists indent correctly.
+	struct ActiveList {
+		int level;
+		bool ordered;
+		int number;
+	};
+	vector<ActiveList> list_stack;
 	while (bi < blocks_list.size()) {
 		auto &block = blocks_list[bi];
 		if (block.IsNull()) {
@@ -1131,6 +1140,89 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 		}
 		if (element_type == BlockTypes::TYPE_FIGURE) {
 			bi++;
+			continue;
+		}
+
+		// Close any list whose scope this block has left.
+		while (!list_stack.empty() && GetDepth(block) <= list_stack.back().level &&
+		       element_type != BlockTypes::TYPE_LIST_ITEM) {
+			list_stack.pop_back();
+		}
+
+		// A contentless `list` opens a container scope. A `list` WITH content is the
+		// builders' JSON shape and still goes to RenderListItems further down -- both
+		// are legal, and rendering only one of them is what left Pandoc lists as a
+		// column of empty bullets.
+		if (element_type == BlockTypes::TYPE_LIST && content.empty()) {
+			ActiveList open_list;
+			open_list.level = GetDepth(block);
+			open_list.ordered =
+			    (GetAttribute(block, "list_type") == "ordered") || (GetAttribute(block, "ordered") == "true");
+			auto start_attr = GetAttribute(block, "start");
+			open_list.number = 1;
+			if (!start_attr.empty()) {
+				try {
+					open_list.number = std::stoi(start_attr);
+				} catch (...) {
+					open_list.number = 1;
+				}
+			}
+			list_stack.push_back(open_list);
+			bi++;
+			continue;
+		}
+
+		if (element_type == BlockTypes::TYPE_LIST_ITEM && !list_stack.empty()) {
+			auto &open_list = list_stack.back();
+			const int item_level = GetDepth(block);
+
+			// The words are either on the item itself (builder shape) or in a
+			// paragraph child one level down (Pandoc shape). Consume only that first
+			// paragraph, so a nested list later in the same item still renders.
+			string item_text = content;
+			idx_t consumed = bi + 1;
+			if (item_text.empty() && consumed < blocks_list.size()) {
+				auto &next = blocks_list[consumed];
+				if (!next.IsNull() && GetStringField(next, BlockTypes::KIND_IDX) == BlockTypes::KIND_BLOCK &&
+				    GetStringField(next, BlockTypes::ELEMENT_TYPE_IDX) == BlockTypes::TYPE_PARAGRAPH &&
+				    GetDepth(next) == item_level + 1) {
+					item_text = GetStringField(next, BlockTypes::CONTENT_IDX);
+					idx_t inl = consumed + 1;
+					string styled = RenderInlineRun(blocks_list, inl, theme);
+					if (!styled.empty()) {
+						item_text = styled;
+					}
+					consumed = inl;
+				}
+			} else if (item_text.empty()) {
+				idx_t inl = bi + 1;
+				item_text = RenderInlineRun(blocks_list, inl, theme);
+				consumed = inl;
+			}
+
+			const size_t depth = list_stack.size() - 1;
+			string indent(depth * 2, ' ');
+			string marker;
+			if (open_list.ordered) {
+				string num = std::to_string(open_list.number++);
+				marker = (num.size() < 2 ? string(2 - num.size(), ' ') : "") + num + ". ";
+			} else {
+				marker = "  \u2022 ";
+			}
+			WrapPrefix prefix;
+			prefix.first = indent + Sgr(theme.bullet) + marker + RESET;
+			prefix.first_width = indent.size() + (open_list.ordered ? marker.size() : 4);
+			prefix.cont = indent + string(open_list.ordered ? marker.size() : 4, ' ');
+			prefix.cont_width = prefix.first_width;
+
+			for (auto &line : WrapStyled(item_text, width, prefix)) {
+				if (!first) {
+					out += "\n";
+				}
+				out += line;
+				first = false;
+			}
+			bi = consumed;
 			continue;
 		}
 

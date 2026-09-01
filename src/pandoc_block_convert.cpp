@@ -276,10 +276,64 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 		encoding = "json";
 		content = ValToJsonString(c_val);
 	} else if (strcmp(pandoc_type, "BulletList") == 0 || strcmp(pandoc_type, "OrderedList") == 0) {
+		// STRUCTURAL, not opaque JSON. This used to store the whole Pandoc `c` as
+		// encoding='json', which made decoding every consumer's problem and left the
+		// same four defects in three independent implementations -- and, unnoticed by
+		// any of them, exported back to an EMPTY BulletList, because the exporter
+		// walks children and there were none. See "encoding='json' does not say whose
+		// json" in docs/duck_blocks_spec.md.
+		//
+		// Emits list -> list_item at level+1 -> the item's own blocks at level+2, the
+		// shape the builders already produce and the exporter already understands.
+		const bool is_ordered = (strcmp(pandoc_type, "OrderedList") == 0);
 		block_type = BlockTypes::TYPE_LIST;
-		attrs["list_type"] = (strcmp(pandoc_type, "BulletList") == 0) ? "bullet" : "ordered";
-		encoding = "json";
-		content = ValToJsonString(c_val);
+		attrs["list_type"] = is_ordered ? "ordered" : "bullet";
+
+		yyjson_val *items_arr = c_val;
+		if (is_ordered && c_val && yyjson_is_arr(c_val) && yyjson_arr_size(c_val) >= 2) {
+			// OrderedList c = [ListAttributes, [[Block]]] where
+			// ListAttributes = [start, {t: style}, {t: delim}]. The start number lived
+			// only inside the JSON, so a consumer reading attributes could not find it
+			// and every ordered list restarted at 1.
+			yyjson_val *list_attrs = yyjson_arr_get(c_val, 0);
+			if (list_attrs && yyjson_is_arr(list_attrs) && yyjson_arr_size(list_attrs) >= 3) {
+				yyjson_val *start_val = yyjson_arr_get(list_attrs, 0);
+				if (start_val && yyjson_is_int(start_val)) {
+					attrs["start"] = to_string(yyjson_get_int(start_val));
+				}
+				for (idx_t k = 1; k < 3; k++) {
+					yyjson_val *spec = yyjson_arr_get(list_attrs, k);
+					if (!spec || !yyjson_is_obj(spec)) {
+						continue;
+					}
+					yyjson_val *tag = yyjson_obj_get(spec, "t");
+					if (tag && yyjson_is_str(tag)) {
+						attrs[k == 1 ? "number_style" : "number_delim"] = yyjson_get_str(tag);
+					}
+				}
+			}
+			items_arr = yyjson_arr_get(c_val, 1);
+		}
+
+		result.push_back(CreateDocBlock(block_type, "", attrs, order++, encoding, block_level));
+
+		if (items_arr && yyjson_is_arr(items_arr)) {
+			size_t idx, max;
+			yyjson_val *item_val;
+			yyjson_arr_foreach(items_arr, idx, max, item_val) {
+				map<string, string> item_attrs;
+				result.push_back(CreateDocBlock(BlockTypes::TYPE_LIST_ITEM, "", item_attrs, order++, "text",
+				                                Value(effective_level + 1)));
+				if (item_val && yyjson_is_arr(item_val)) {
+					size_t bidx, bmax;
+					yyjson_val *item_block;
+					yyjson_arr_foreach(item_val, bidx, bmax, item_block) {
+						ProcessPandocBlockVal(item_block, order, result, depth + 1, effective_level + 1);
+					}
+				}
+			}
+		}
+		return;
 	} else if (strcmp(pandoc_type, "DefinitionList") == 0) {
 		// DefinitionList c = [([Inline], [[Block]])] -- term/definitions pairs. Kept as
 		// JSON like BulletList and OrderedList: the shape has no flat text rendering.
@@ -715,13 +769,24 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 				} else {
 					j++;
 				}
+			} else if (child_type == BlockTypes::TYPE_PARAGRAPH && child_level == list_level + 2 && in_item) {
+				// Two legal item shapes, so accept both. The builders hang the words on
+				// list_item itself; the Pandoc reader emits list_item -> paragraph ->
+				// inlines, because a Pandoc list item holds BLOCKS. Reading only the
+				// builder shape is what made a Pandoc list export as an empty
+				// BulletList -- right number of items, every one of them blank.
+				if (current_item.content.empty()) {
+					current_item.content = GetElementStringField(child, BlockTypes::CONTENT_IDX);
+				}
+				j++;
 			} else if (child_level <= list_level) {
 				break;
 			} else {
 				j++;
 			}
 		} else if (child_kind == BlockTypes::KIND_INLINE && in_item) {
-			if (child_level == list_level + 2) {
+			// level+2 is the builder shape, level+3 the Pandoc one (under a paragraph).
+			if (child_level == list_level + 2 || child_level == list_level + 3) {
 				current_item.inlines.push_back(child);
 			}
 			j++;
@@ -743,14 +808,20 @@ static yyjson_mut_val *ConvertListToPandocVal(yyjson_mut_doc *doc, const vector<
 	yyjson_mut_val *items_arr = yyjson_mut_arr(doc);
 
 	if (is_ordered) {
+		// Honour the ListAttributes the reader preserved rather than hardcoding
+		// [1, Decimal, Period]. A list starting at 3, or using roman numerals or
+		// parens, used to silently come back as "1." -- the numbers lived only
+		// inside the opaque JSON, so nothing downstream could see them.
 		c_outer = yyjson_mut_arr(doc);
 		yyjson_mut_val *order_spec = yyjson_mut_arr(doc);
-		yyjson_mut_arr_add_int(doc, order_spec, 1);
+		yyjson_mut_arr_add_int(doc, order_spec, ParseInt32OrDefault(GetElementAttribute(list_block, "start"), 1));
+		auto number_style = GetElementAttribute(list_block, "number_style");
+		auto number_delim = GetElementAttribute(list_block, "number_delim");
 		yyjson_mut_val *style_obj = yyjson_mut_obj(doc);
-		yyjson_mut_obj_add_str(doc, style_obj, "t", "Decimal");
+		yyjson_mut_obj_add_strcpy(doc, style_obj, "t", number_style.empty() ? "Decimal" : number_style.c_str());
 		yyjson_mut_arr_add_val(order_spec, style_obj);
 		yyjson_mut_val *delim_obj = yyjson_mut_obj(doc);
-		yyjson_mut_obj_add_str(doc, delim_obj, "t", "Period");
+		yyjson_mut_obj_add_strcpy(doc, delim_obj, "t", number_delim.empty() ? "Period" : number_delim.c_str());
 		yyjson_mut_arr_add_val(order_spec, delim_obj);
 		yyjson_mut_arr_add_val(c_outer, order_spec);
 		yyjson_mut_arr_add_val(c_outer, items_arr);

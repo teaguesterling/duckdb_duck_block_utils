@@ -1310,3 +1310,70 @@ query I
 SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Para","c":[{"t":"Blink","c":[{"t":"Str","c":"KEPT"}]}]}]}'))::VARCHAR = '[{"t":"Para","c":[{"t":"Span","c":[["",["Blink"],[]],[{"t":"Str","c":"KEPT"}]]}]}]';
 ----
 true
+
+# ============================================================================
+# STRUCTURAL LISTS. The Pandoc reader used to store a list's whole `c` as
+# encoding='json', which made decoding every consumer's problem and produced the
+# same defects in three independent implementations -- and, unnoticed by any of
+# them, exported back to an EMPTY BulletList.
+#
+# Reported by the duckeye and duckdb_markdown sessions; the empty-export was
+# found here while verifying their report.
+# ============================================================================
+
+# list -> list_item -> the item's own blocks. No JSON, no opaque content.
+query IIII
+SELECT b.element_type, b.kind, coalesce(b.level::VARCHAR,'NULL'), b.encoding
+FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"alpha"}]}]]}]}')) AS b);
+----
+list	block	NULL	text
+list_item	block	2	text
+paragraph	block	3	text
+
+# DISCRIMINATING: item COUNT was already right while every item was blank, so
+# counting items would have passed against the defect. The property is that a
+# round trip returns the words.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"alpha"}]}],[{"t":"Plain","c":[{"t":"Str","c":"beta"}]}]]}]}'))::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"alpha"}]}],[{"t":"Plain","c":[{"t":"Str","c":"beta"}]}]]}]';
+----
+true
+
+# An ordered list's start/style/delim lived ONLY inside the opaque JSON, so every
+# ordered list silently came back as "1." in Decimal/Period.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"OrderedList","c":[[3,{"t":"LowerRoman"},{"t":"OneParen"}],[[{"t":"Plain","c":[{"t":"Str","c":"three"}]}]]]}]}'))::VARCHAR = '[{"t":"OrderedList","c":[[3,{"t":"LowerRoman"},{"t":"OneParen"}],[[{"t":"Plain","c":[{"t":"Str","c":"three"}]}]]]}]';
+----
+true
+
+# ...and they are reachable as attributes, which is what a consumer reads.
+query III
+SELECT b.attributes['start'], b.attributes['number_style'], b.attributes['number_delim']
+FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"OrderedList","c":[[3,{"t":"LowerRoman"},{"t":"OneParen"}],[[{"t":"Plain","c":[{"t":"Str","c":"x"}]}]]]}]}')) AS b)
+WHERE b.element_type = 'list';
+----
+3	LowerRoman	OneParen
+
+# TEXT/SEARCH: content words were only reachable inside a JSON blob, so a phrase
+# spanning a Space did not match and AST machinery matched as a false positive.
+query II
+SELECT duck_blocks_to_text(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"alpha"},{"t":"Space"},{"t":"Str","c":"bullet"}]}]]}]}')) LIKE '%alpha bullet%',
+       duck_blocks_to_text(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"OrderedList","c":[[1,{"t":"Decimal"},{"t":"Period"}],[[{"t":"Plain","c":[{"t":"Str","c":"x"}]}]]]}]}')) LIKE '%Decimal%';
+----
+true	false
+
+# RENDER: bullets carry their text, ordered lists number, nesting indents.
+query I
+SELECT duck_blocks_render_ansi(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"outer"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"inner"}]}]]}]]}]}'), 40) LIKE '%outer%inner%';
+----
+true
+
+query I
+SELECT regexp_replace(duck_blocks_render_ansi(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"OrderedList","c":[[1,{"t":"Decimal"},{"t":"Period"}],[[{"t":"Plain","c":[{"t":"Str","c":"first"}]}]]]}]}'), 40), '\x1b\[[0-9;]*m', '', 'g') LIKE '% 1. first%';
+----
+true
+
+# The builders' JSON list shape must keep working -- both are legal.
+query I
+SELECT regexp_replace(duck_blocks_render_ansi(duck_block_list(['alpha','beta']), 40), '\x1b\[[0-9;]*m', '', 'g') LIKE '%• alpha%• beta%';
+----
+true
