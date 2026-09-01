@@ -190,6 +190,43 @@ def main() -> int:
         for name in stale:
             print(f"        {name}")
 
+    # CONSTRUCTOR COVERAGE IS NOT ATTRIBUTE COVERAGE. A fixture containing an
+    # ordered list satisfies the ledger above while every list in it starts at 1
+    # in Decimal/Period -- so a reader that ignored start/number_style/
+    # number_delim and hardcoded the defaults would pass. panduck found the same
+    # hole from the other end: three EPUB fixtures contained <ol> and not one
+    # reached the reader, because every <ol> a real writer emits lands in
+    # navigation. Containing a construct is not exercising it, and exercising it
+    # at its defaults does not discriminate.
+    attr_sql = (
+        "SELECT DISTINCT coalesce(b.attributes['start'],'-') || '/' || "
+        "coalesce(b.attributes['number_style'],'-') || '/' || coalesce(b.attributes['number_delim'],'-') "
+        "FROM (SELECT unnest(pandoc_ast_to_blocks(?)) AS b) "
+        "WHERE b.element_type = 'list' AND b.attributes['ordered'] = 'true';"
+    )
+    proc = subprocess.run(
+        [
+            str(duckdb),
+            "-noheader",
+            "-list",
+            "-c",
+            attr_sql.replace("?", "(SELECT content FROM read_text('/dev/stdin'))"),
+        ],
+        input=ast_json,
+        capture_output=True,
+        text=True,
+    )
+    combos = {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+    non_default = {c for c in combos if c not in ("-/-/-", "1/Decimal/Period")}
+    if not non_default:
+        failed = True
+        print("\nFAIL: no ordered list in the fixture uses a NON-DEFAULT start, style or")
+        print("      delimiter, so a reader hardcoding 1/Decimal/Period would pass this")
+        print("      check. Add one (e.g. a list starting at 3, or lower-roman).")
+        print(f"      seen: {sorted(combos)}")
+    else:
+        print(f"  ordered-list attributes exercised beyond defaults: {sorted(non_default)}")
+
     if failed:
         return 1
     print(f"OK: all {len(emitted)} emitted constructors are mapped; " f"ledger is empty and accurate.")

@@ -21,6 +21,12 @@ an ![inline image](img.png), H~2~O, x^2^, [underlined]{.underline},
 1. ordered one
 2. ordered two
 
+3. starts at three
+4. and four
+
+iii) lower roman with a paren
+iv) and four
+
 Term one
 :   Definition of term one.
 
