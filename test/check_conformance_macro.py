@@ -145,6 +145,30 @@ def main() -> int:
         print("      Regenerate the list from duck_block_type_names().")
         return 1
     print(f"  the file's embedded type list matches the build ({len(in_build)} names)")
+
+    # The KIND list, same discipline, different axis. This was a literal in the macro
+    # until 2026-09-01 -- and a literal enumerating two kinds is precisely the defect
+    # the spec published: it leaves a conforming producer with nowhere to put a title.
+    k_file = subprocess.run(
+        [str(duckdb), "-noheader", "-list"],
+        input=MACROS.read_text() + "\nSELECT unnest(duck_block_declared_kinds());",
+        capture_output=True,
+        text=True,
+    )
+    k_build = subprocess.run(
+        [str(duckdb), "-noheader", "-list", "-c", "SELECT unnest(duck_block_kind_names());"],
+        capture_output=True,
+        text=True,
+    )
+    kf = {x.strip() for x in k_file.stdout.split() if x.strip()}
+    kb = {x.strip() for x in k_build.stdout.split() if x.strip()}
+    if kf != kb:
+        print("\nFAIL: the KIND list embedded in the conformance file has drifted from the build.")
+        print(f"      file: {sorted(kf)}\n      build: {sorted(kb)}")
+        print("      A kind missing here makes the macro reject conforming data outright --")
+        print("      which is what the two-kind version did to every metadata element.")
+        return 1
+    print(f"  the file's embedded kind list matches the build ({len(kb)}: {', '.join(sorted(kb))})")
     failed = False
     for row in rows:
         name, ext, mac = (p.strip() for p in row.split("|"))
