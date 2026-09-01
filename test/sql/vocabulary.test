@@ -20,10 +20,31 @@ SELECT list_contains(duck_block_type_names(), 'figure') AND list_contains(duck_b
 ----
 true
 
+# The spec version, PINNED. This asserted `length(...) > 0` until 2026-08-31,
+# which passes for '2.0', for '1.1', and for 'banana' -- the exact adjacent-
+# assertion shape this repo spent a week finding in other people's code, sitting
+# in the test suite of the repo that OWNS the spec. Four extensions vendor this
+# value and assert against it; nothing here checked what it was.
+#
+# Pinning the literal is deliberate: a bump must edit this line, which makes it
+# reviewable, the same ratchet the pandoc and spec ledgers use.
+#
+# (Prompted by webbed reporting the same gap in their own conformance test --
+# "no wrong assertion to correct, just an absent one, which is worse in the
+# quiet way.")
 query I
-SELECT length(duck_block_spec_version()) > 0;
+SELECT duck_block_spec_version();
 ----
-true
+2.0
+
+# ...and it must be well-formed MAJOR.MINOR, since the contract in the header
+# says consumers assert major equality plus a minor floor. A version that does
+# not split into two integers makes that assertion unwritable.
+query II
+SELECT try_cast(split_part(duck_block_spec_version(), '.', 1) AS INTEGER) IS NOT NULL,
+       try_cast(split_part(duck_block_spec_version(), '.', 2) AS INTEGER) IS NOT NULL;
+----
+true	true
 
 # every kind a converter emits is in the declared set -- the assertion panduck
 # and webbed can run against this rather than a hardcoded list
