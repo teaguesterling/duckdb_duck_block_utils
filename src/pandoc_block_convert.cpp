@@ -260,6 +260,17 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 		// how tight-vs-loose list items were lost. Plain is a block-level text run
 		// with no paragraph semantics; Para is a paragraph.
 		block_type = (strcmp(pandoc_type, "Plain") == 0) ? BlockTypes::TYPE_PLAIN : BlockTypes::TYPE_PARAGRAPH;
+
+		// NOT promoted to a block `image` when the only child is an Image, though the
+		// write-only sweep flagged it. Unlike `section` and `page_break`, the exporter
+		// writes NO recoverable marker here because Pandoc has none to write: Para[Image]
+		// is the only encoding it has, and a block image and a paragraph containing one
+		// image are genuinely the same document to it. Promoting would invent a
+		// distinction the source cannot carry, and it broke the existing behaviour that
+		// a Para[Image] yields an INLINE image with its alt text and src.
+		//
+		// So this asymmetry is inherent rather than a defect -- worth recording, since
+		// the sweep will flag it again and the next person needs to know it was checked.
 		if (c_val) {
 			content = ExtractInlinesTextVal(c_val);
 			inlines_val_p = c_val;
@@ -491,6 +502,14 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 				if (!role.empty() && SECTIONING_ROLES.find(role) != SECTIONING_ROLES.end()) {
 					block_type = BlockTypes::TYPE_SECTION;
 					attrs["role"] = role;
+				} else if (role == "page") {
+					// Same write-only defect as `section`, one type over: a page_break
+					// exports as a Div classed 'page' carrying page_number, and nothing
+					// read it back -- so every round trip turned a pagination marker into
+					// an anonymous div. Found by sweeping EVERY block type through
+					// export-then-read rather than by looking at page_break.
+					block_type = BlockTypes::TYPE_PAGE;
+					attrs.erase("class");
 				}
 			}
 

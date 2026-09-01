@@ -1853,3 +1853,43 @@ SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":
        duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"outer"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"inner"}]}]]}]]}]}'))::VARCHAR = '[{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"outer"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"inner"}]}]]}]]}]';
 ----
 true	true
+
+# ============================================================================
+# WRITE-ONLY TYPE SWEEP. `section` was exported as a Div classed with its role and
+# never read back, so a round trip silently downgraded it to `div`. Sweeping EVERY
+# block type through export-then-read found `page_break` doing the same thing:
+# exported as a Div classed 'page' carrying page_number, read back as an anonymous
+# div, so every round trip destroyed a pagination marker.
+#
+# The sweep also flagged `image`, and that one is NOT a defect -- recorded below,
+# because a sweep that flags an inherent asymmetry needs the answer written down
+# or the next person re-investigates it.
+# ============================================================================
+
+# page_break survives a round trip with its number.
+query II
+SELECT (SELECT b.element_type FROM (SELECT unnest(pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'page_break','content':'','level':1,'encoding':'text','attributes':MAP{'page_number':'3'},'element_order':0}::duck_block])::VARCHAR)) AS b) WHERE b.kind='block' LIMIT 1),
+       (SELECT b.attributes['page_number'] FROM (SELECT unnest(pandoc_ast_to_blocks(duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'page_break','content':'','level':1,'encoding':'text','attributes':MAP{'page_number':'3'},'element_order':0}::duck_block])::VARCHAR)) AS b) WHERE b.kind='block' LIMIT 1);
+----
+page_break	3
+
+# DISCRIMINATING: a Div classed 'page' is how page_break is SPELLED, so reading
+# every Div back as a page_break would also make the above pass while destroying
+# ordinary divs. A div with any other class must stay a div.
+query II
+SELECT (SELECT b.element_type FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Div","c":[["",["sidebar"],[]],[{"t":"Para","c":[{"t":"Str","c":"x"}]}]]}]}')) AS b) WHERE b.kind='block' LIMIT 1),
+       (SELECT b.element_type FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Div","c":[["",[],[]],[{"t":"Para","c":[{"t":"Str","c":"x"}]}]]}]}')) AS b) WHERE b.kind='block' LIMIT 1);
+----
+div	div
+
+# NOT A DEFECT, pinned so it is not "fixed" later: a Para whose only child is an
+# Image stays a paragraph with an INLINE image. Pandoc has no block Image
+# constructor, so Para[Image] is the only encoding it has and a block image is
+# indistinguishable from a paragraph containing one. Promoting it would invent a
+# distinction the source cannot carry -- unlike section and page_break, where the
+# exporter writes a recoverable marker.
+query II
+SELECT (SELECT b.kind || ' ' || b.element_type FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Para","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"alt"}],["i.png",""]]}]}]}')) AS b) LIMIT 1),
+       (SELECT b.attributes['src'] FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Para","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"alt"}],["i.png",""]]}]}]}')) AS b) WHERE b.kind='inline');
+----
+block paragraph	i.png
