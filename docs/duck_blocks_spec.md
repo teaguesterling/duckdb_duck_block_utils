@@ -1231,30 +1231,41 @@ contiguous: this reader allocates a number for the `plain` wrapper it collapses 
 byte-exact -- but 12,059 of 14,969 values differ from their row index, and a consumer
 assuming otherwise would silently renumber the document.
 
-**Against pandoc the answer depends entirely on the container, and stating only one
-number misleads.** Same document, same settings, both representations:
+**Against pandoc, compare the forms each is actually delivered in:** pandoc as flat
+JSON, duck_blocks as parquet. Nobody ships a pandoc AST inside parquet -- it is one
+deeply nested column that does not columnarise, and its uncompressed parquet is larger
+than its own JSON.
 
 ```
-PARQUET v2        pandoc    duck_blocks
-uncompressed     375,880        145,271     duck_blocks 2.6x SMALLER
-zstd default      55,861         47,029     duck_blocks 16% smaller
-zstd level 22     41,157         42,797     pandoc 4% smaller
-brotli            39,835         39,555     level
+                         pandoc JSON   duck_blocks parquet v2
+duck_blocks_spec.md (14,969 elements)
+  uncompressed              368,592          145,271     duck_blocks 2.54x SMALLER
+  zstd (default)             27,883           47,029     pandoc 1.69x smaller
+  best (xz / brotli)         27,196           39,555     pandoc 1.45x smaller
 
-TEXT              pandoc    duck_blocks
-raw JSON         368,592      1,132,283
-+ xz -9e          27,196         61,992     pandoc 2.3x smaller
+README.md (1,957 elements)
+  uncompressed              105,710           81,982     duck_blocks 1.29x SMALLER
+  zstd (default)              9,932           18,965     pandoc 1.91x smaller
+  best (xz / brotli)          9,860           15,332     pandoc 1.55x smaller
 ```
 
-**Inside parquet they are equivalent, and duck_blocks wins at every level except
-zstd-22.** pandoc's advantage is real but lives entirely in the compressed-text form --
-and pandoc-in-parquet does not columnarise at all, since it is one deeply nested column
-whose uncompressed size (375,880) exceeds its own JSON.
+**The sign flips on compression, and both directions are real.** Uncompressed,
+duck_blocks parquet is the smaller file -- v2's dictionary and delta encodings do the
+work a general compressor would otherwise have to. Compressed, pandoc wins by 1.5-1.9x,
+because its nesting never spends bytes on structure that a compressor then has to
+squeeze back out.
 
-So: pandoc's smallest form is 27,196 bytes of opaque blob that must be fully parsed
-before anything can be asked of it. duck_blocks' smallest form is 39,555 bytes you can
-filter, join and slice in place. That 1.45x is the whole price, and only against a
-representation that cannot answer a query at all.
+**The two documents disagree on magnitude, and that is worth more than either number.**
+The uncompressed advantage is 2.54x on the long document and 1.29x on the short one:
+parquet's per-column dictionaries amortise over rows, so the longer and more repetitive
+the document, the better duck_blocks does. A single measurement here would have
+generalised badly in whichever direction it happened to fall.
+
+**What each buys.** pandoc's compressed JSON is an opaque blob: to ask anything of it
+you decompress and parse all of it. duck_blocks parquet answers a predicate over one
+column without touching the rest, and is smaller on disk before compression. The
+1.5x is what querying in place costs when you also compress -- and nothing at all when
+you do not.
 
 ## Two extensions must not register the same function name
 
