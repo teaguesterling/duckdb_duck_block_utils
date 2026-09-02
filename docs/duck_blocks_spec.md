@@ -1295,6 +1295,47 @@ raw size (145,271) is the smallest of the uncompressed forms while its compresse
 is not the smallest -- the encodings that win before compression are not the ones that
 win after.
 
+**Row group size matters in one direction only.** Parquet compresses each column chunk
+independently WITHIN a row group, so more groups means more independent streams and
+worse ratios. Measured on the spec document, v2 + brotli:
+
+```
+ROW_GROUP_SIZE     file      groups   data only
+         1,024   56,502           8      48,294     +43%
+         4,096   48,515           4      44,279     +23%
+        15,000   39,555           1      34,087     baseline
+     1,000,000   39,555           1      34,087     no change
+```
+
+Once the table fits in ONE row group there is nothing left to tune -- DuckDB's default
+of 122,880 rows already covers a 15,000-element document, so the file was a single row
+group before any of this. Shrinking it is the only lever, and it only costs.
+
+**Where parquet's remaining gap actually lives, measured rather than assumed.** Summing
+the column chunks of the spec document gives 34,087 bytes against a 39,555-byte file --
+so **5,468 bytes, 14%, is footer and page metadata**, and parquet's compressed DATA is
+slightly smaller than column-major xz's 34,600. On one mid-sized document the whole
+deficit is overhead.
+
+That stops being true at corpus scale, and the reason is worth knowing. 20 distinct
+documents, 33,716 elements, one row group:
+
+```
+pandoc JSON concatenated + xz      86,808
+duck_blocks column-major + xz     105,280
+duck_blocks parquet v2 brotli     133,031    (data 121,799 + overhead 11,232)
+```
+
+Overhead has fallen to 8%, but parquet's DATA is now larger than column-major xz --
+121,799 against 105,280. Cross-document redundancy is real, and a single xz stream over
+concatenated columns finds it where per-column-chunk brotli does not. So parquet's
+disadvantage shifts from metadata to compression window as the corpus grows.
+
+**A caution about how not to measure this.** Ten copies of the same two documents made
+column-major look 2.8x better than parquet -- an artifact of long-range matching over
+identical text, not a property of either format. Duplicating a document is not a corpus.
+The numbers above are 20 genuinely different files.
+
 **What each buys.** pandoc's compressed JSON is an opaque blob: to ask anything of it
 you decompress and parse all of it. duck_blocks parquet answers a predicate over one
 column without touching the rest, and is smaller on disk before compression. The
