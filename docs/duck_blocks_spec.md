@@ -1261,6 +1261,40 @@ parquet's per-column dictionaries amortise over rows, so the longer and more rep
 the document, the better duck_blocks does. A single measurement here would have
 generalised badly in whichever direction it happened to fall.
 
+**Orientation matters more than the container, and column-major JSON beats parquet.**
+The same rows, reshaped three ways:
+
+```
+duck_blocks_spec.md            raw     +zstd19        +xz
+  row objects (JSONL)      1,910,669     76,802     63,200
+  header + rows (arrays)     713,824     68,451     60,064
+  column-major               683,879     38,471     34,600   <- best duck_blocks form
+  parquet v2 (brotli)        145,271          -     39,555
+  pandoc JSON                368,592          -     27,196
+
+README.md
+  row objects (JSONL)        318,095     18,801     16,872
+  header + rows (arrays)     161,795     17,592     16,304
+  column-major               157,874     14,039     12,988   <- best duck_blocks form
+  parquet v2 (brotli)         81,982          -     15,332
+  pandoc JSON                105,710          -      9,860
+```
+
+Column-major -- one array per field, `{"kind":[...],"element_type":[...],...}` --
+is **13-16% smaller than parquet** and closes the gap with pandoc from 1.45x to 1.27x.
+It groups like values the way parquet does, and then lets a single xz stream find
+long-range redundancy ACROSS columns that parquet cannot, because parquet compresses
+each column chunk independently and adds page and footer overhead. Verified lossless:
+reshaping back reproduces the rows exactly and the same exported AST.
+
+**Two things not to conclude from the raw column.** Header-plus-arrays cuts the raw
+size 2.7x by removing repeated field names and saves only 5% after compression --
+repeated keys are exactly what a compressor eliminates for free. Optimising the raw
+size of a payload you are going to compress is close to wasted effort. And parquet's
+raw size (145,271) is the smallest of the uncompressed forms while its compressed size
+is not the smallest -- the encodings that win before compression are not the ones that
+win after.
+
 **What each buys.** pandoc's compressed JSON is an opaque blob: to ask anything of it
 you decompress and parse all of it. duck_blocks parquet answers a predicate over one
 column without touching the rest, and is smaller on disk before compression. The
