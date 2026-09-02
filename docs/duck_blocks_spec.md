@@ -1178,6 +1178,51 @@ formatting, which is the benign failure. A consumer that reads only children get
 formatting. Neither gets a wrong answer, which is the property that makes the
 duplication tolerable here and not in general.
 
+## Persisting duck_blocks: delta-encode `element_order`
+
+Measured 2026-09-01 on this spec document (14,969 elements) against the same document
+as a pandoc AST. duck_blocks is a QUERY representation, not a wire format, and it is
+larger than pandoc's AST for a structural reason: **98% of its rows are inline**, and
+each pays explicitly for structure that pandoc's nesting gets for free.
+
+Where the bytes actually go, per column, zstd-22 parquet:
+
+```
+content        32,718     the text -- irreducible
+element_order  15,512     a near-monotonic counter, 27% of the file
+attributes      6,054
+element_type    1,900
+level           1,229
+kind              780
+encoding          386
+```
+
+**`element_order` is the one worth acting on.** 14,935 of its 14,968 deltas are exactly
+1, and parquet stores it as raw INT32. Storing the DELTA instead costs **397 bytes
+rather than 15,512** — a 39x reduction on that column, and the whole document goes from
+82,562 to 39,653 bytes with brotli. Recover it with a running sum; verified to produce a
+byte-identical exported AST.
+
+```sql
+-- write
+coalesce(element_order - lag(element_order) OVER (ORDER BY element_order),
+         element_order)::INT AS order_delta
+-- read
+sum(order_delta) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)::INT
+```
+
+**Do NOT simply drop it and use the row number.** `element_order` is monotonic but not
+contiguous: this reader allocates a number for the `plain` wrapper it then collapses
+into a `list_item`, so a document with lists has gaps. Nothing is lost -- the round trip
+is byte-identical -- but the values are not the row index, and 12,059 of 14,969 differ
+from it.
+
+For reference, and stated so nobody optimises past the point of usefulness: pandoc's
+AST compresses to 27,196 bytes with xz against duck_blocks' 39,653. duck_blocks is
+~1.5x larger AFTER this and ~3x before it. That is the price of a representation you
+can filter, join and slice without parsing, and it is a different job from a wire
+format.
+
 ## Two extensions must not register the same function name
 
 Measured by panduck 2026-09-01, before writing any converter code, because the
