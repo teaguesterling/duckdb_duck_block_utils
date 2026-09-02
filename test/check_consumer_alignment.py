@@ -27,7 +27,9 @@ skip says SKIP, never OK -- the absence of a repo is not evidence of alignment.
 """
 
 import os
+import pathlib
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -71,6 +73,47 @@ def find(name, rel):
     return None
 
 
+def repo_ref(repo_root):
+    """branch@sha of a consumer checkout, or None.
+
+    THE SUBJECT OF THIS CHECK IS A WORKING TREE, not a project. webbed reported as
+    out of alignment on 2026-09-01 because their checkout was sitting on a docs
+    branch where the vendored header does not exist -- the vendoring lives on
+    `duck_block_bump`. The measurement was correct about the directory and wrong
+    about the thing anyone cared about, and a red that names no ref cannot be told
+    apart from a real disagreement.
+    """
+    try:
+        br = subprocess.run(["git", "-C", str(repo_root), "branch", "--show-current"],
+                            capture_output=True, text=True)
+        sha = subprocess.run(["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
+                             capture_output=True, text=True)
+        if br.returncode or sha.returncode:
+            return None
+        return f"{br.stdout.strip() or 'DETACHED'}@{sha.stdout.strip()}"
+    except OSError:
+        return None
+
+
+def branches_with(repo_root, rel):
+    """Local branches whose tree contains `rel`, so an absence can name where it lives."""
+    try:
+        out = subprocess.run(["git", "-C", str(repo_root), "for-each-ref",
+                              "--format=%(refname:short)", "refs/heads"],
+                             capture_output=True, text=True)
+        if out.returncode:
+            return []
+        found = []
+        for br in out.stdout.split():
+            ls = subprocess.run(["git", "-C", str(repo_root), "ls-tree", "-r", "--name-only", br],
+                                capture_output=True, text=True)
+            if ls.returncode == 0 and any(line.endswith(rel) for line in ls.stdout.splitlines()):
+                found.append(br)
+        return found
+    except OSError:
+        return []
+
+
 def main() -> int:
     if not CANON.exists():
         print("FAIL: canonical vocabulary header missing.")
@@ -84,8 +127,16 @@ def main() -> int:
     checked = 0
     for name, rel in sorted(CONSUMERS.items()):
         path = find(name, rel)
+        root = REPO.parent / name
+        ref = repo_ref(root) if root.exists() else None
         if path is None:
-            print(f"  SKIP {name} -- no checkout here (absence is not alignment)")
+            where = branches_with(root, pathlib.Path(rel).name) if root.exists() else []
+            if where:
+                print(f"  SKIP {name} [{ref}] -- vendored header not on this branch;"
+                      f" it is on {', '.join(where)}")
+                print("       Checked out elsewhere is not drift. Re-run with that branch checked out.")
+            else:
+                print(f"  SKIP {name} -- no checkout here (absence is not alignment)")
             continue
         checked += 1
         text = path.read_text()
@@ -97,7 +148,7 @@ def main() -> int:
         changed = sorted(k for k in set(canon) & set(got) if canon[k] != got[k])
 
         if not (missing or extra or changed) and v == canon_v:
-            print(f"  OK   {name} -- {len(got)} constants, SPEC_VERSION {v}")
+            print(f"  OK   {name} [{ref}] -- {len(got)} constants, SPEC_VERSION {v}")
             continue
 
         drifted.append(name)
@@ -142,6 +193,17 @@ def main() -> int:
         if root is None:
             continue
         vendored = (root / rel).resolve()
+        # A SHADOW IS ONLY A SHADOW IF THE VENDORED HEADER IS THERE TO BE SHADOWED.
+        # With it absent, every constant in the consumer's own headers looks like a
+        # redeclaration of it -- which is how webbed's PRE-vendoring duck_block_types.hpp
+        # reported 34 shadows while sitting on a docs branch. Unmeasured, not clean, and
+        # not a failure: reported so the difference is visible.
+        if not vendored.exists():
+            ref = repo_ref(root)
+            print(f"\n  UNMEASURED {name} [{ref}] -- shadow scan needs the vendored header,")
+            print("        and this branch does not have it. A consumer's own headers are not")
+            print("        shadows of something that is not there.")
+            continue
         shadows = []
         for hdr in sorted(root.rglob("*.hpp")):
             if hdr.resolve() == vendored or "/duckdb/" in str(hdr):

@@ -2337,3 +2337,47 @@ FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"Table","c":[["",[],[]],[null,[]
 ----
 {"headers":["H"],"rows":[["alt text"]]}	false
 
+
+# ============================================================================
+# INLINE IMAGE ALT, and the LINK/IMAGE TITLE.
+#
+# The inline Image export wrote an EMPTY alt array unconditionally, so every
+# image inside a paragraph lost its alt text -- while the BLOCK image arm read
+# it correctly. That asymmetry is why the roundtrip sweep passed: it probes
+# `image` in block position, and a real document has images inside paragraphs.
+#
+# Pandoc's target is [url, TITLE]. The title was read by nobody and written by
+# nobody, so `<a title>` and `<img title>` survived neither direction -- an
+# absence indistinguishable from a document that never had one.
+#
+# Found by measuring an HTML round trip end to end, which is the only shape that
+# exercises inline position, both directions, and the attributes together.
+# ============================================================================
+
+# All three producer shapes: children, content only, attribute only.
+query I
+SELECT duck_blocks_to_pandoc_blocks([
+  {'kind':'block','element_type':'paragraph','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'inline','element_type':'image','content':'ALT','level':2,'encoding':'text','attributes':MAP{'src':'p.png'},'element_order':1}::duck_block])::VARCHAR;
+----
+[{"t":"Para","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"ALT"}],["p.png",""]]}]}]
+
+query I
+SELECT duck_blocks_to_pandoc_blocks([
+  {'kind':'block','element_type':'paragraph','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'inline','element_type':'image','content':NULL,'level':2,'encoding':'text','attributes':MAP{'src':'p.png','alt':'ALT'},'element_order':1}::duck_block])::VARCHAR;
+----
+[{"t":"Para","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"ALT"}],["p.png",""]]}]}]
+
+# The title survives a full round trip, both on Link and on Image.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"L"}],["u","T"]]},{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"A"}],["s.png","IT"]]}]}]'))::VARCHAR;
+----
+[{"t":"Para","c":[{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"L"}],["u","T"]]},{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"A"}],["s.png","IT"]]}]}]
+
+# DISCRIMINATING: a document with NO title must not gain one. An assertion that
+# only checks a title survives passes for an exporter that emits a constant.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"L"}],["u",""]]}]}]'))::VARCHAR;
+----
+[{"t":"Para","c":[{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"L"}],["u",""]]}]}]
