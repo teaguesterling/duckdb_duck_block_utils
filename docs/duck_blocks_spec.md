@@ -1231,10 +1231,30 @@ contiguous: this reader allocates a number for the `plain` wrapper it collapses 
 byte-exact -- but 12,059 of 14,969 values differ from their row index, and a consumer
 assuming otherwise would silently renumber the document.
 
-For reference, so nobody optimises past the point of usefulness: pandoc's AST is 27,196
-bytes with xz against duck_blocks' 39,555. Roughly 1.45x, down from 3x before v2. That
-is the price of a representation you can filter, join and slice without parsing, which
-is a different job from a wire format.
+**Against pandoc the answer depends entirely on the container, and stating only one
+number misleads.** Same document, same settings, both representations:
+
+```
+PARQUET v2        pandoc    duck_blocks
+uncompressed     375,880        145,271     duck_blocks 2.6x SMALLER
+zstd default      55,861         47,029     duck_blocks 16% smaller
+zstd level 22     41,157         42,797     pandoc 4% smaller
+brotli            39,835         39,555     level
+
+TEXT              pandoc    duck_blocks
+raw JSON         368,592      1,132,283
++ xz -9e          27,196         61,992     pandoc 2.3x smaller
+```
+
+**Inside parquet they are equivalent, and duck_blocks wins at every level except
+zstd-22.** pandoc's advantage is real but lives entirely in the compressed-text form --
+and pandoc-in-parquet does not columnarise at all, since it is one deeply nested column
+whose uncompressed size (375,880) exceeds its own JSON.
+
+So: pandoc's smallest form is 27,196 bytes of opaque blob that must be fully parsed
+before anything can be asked of it. duck_blocks' smallest form is 39,555 bytes you can
+filter, join and slice in place. That 1.45x is the whole price, and only against a
+representation that cannot answer a query at all.
 
 ## Two extensions must not register the same function name
 
