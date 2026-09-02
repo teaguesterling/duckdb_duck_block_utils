@@ -1178,14 +1178,14 @@ formatting, which is the benign failure. A consumer that reads only children get
 formatting. Neither gets a wrong answer, which is the property that makes the
 duplication tolerable here and not in general.
 
-## Persisting duck_blocks: delta-encode `element_order`
+## Persisting duck_blocks: use PARQUET_VERSION v2
 
-Measured 2026-09-01 on this spec document (14,969 elements) against the same document
-as a pandoc AST. duck_blocks is a QUERY representation, not a wire format, and it is
-larger than pandoc's AST for a structural reason: **98% of its rows are inline**, and
-each pays explicitly for structure that pandoc's nesting gets for free.
+Measured 2026-09-01/02 on this spec document (14,969 elements) against the same
+document as a pandoc AST. duck_blocks is a QUERY representation, not a wire format,
+and it is larger than pandoc's AST for a structural reason: **98% of its rows are
+inline**, and each pays explicitly for structure that pandoc's nesting gets for free.
 
-Where the bytes actually go, per column, zstd-22 parquet:
+Where the bytes go, per column, parquet v1 + zstd-22:
 
 ```
 content        32,718     the text -- irreducible
@@ -1197,31 +1197,44 @@ kind              780
 encoding          386
 ```
 
-**`element_order` is the one worth acting on.** 14,935 of its 14,968 deltas are exactly
-1, and parquet stores it as raw INT32. Storing the DELTA instead costs **397 bytes
-rather than 15,512** — a 39x reduction on that column, and the whole document goes from
-82,562 to 39,653 bytes with brotli. Recover it with a running sum; verified to produce a
-byte-identical exported AST.
+**`element_order` was the whole problem, and PARQUET_VERSION v2 solves it.** 14,935 of
+its 14,968 deltas are exactly 1; v1 stores it as raw INT32 while v2 reaches for
+DELTA_BINARY_PACKED. The same column:
 
-```sql
--- write
-coalesce(element_order - lag(element_order) OVER (ORDER BY element_order),
-         element_order)::INT AS order_delta
--- read
-sum(order_delta) OVER (ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)::INT
+```
+element_order alone      v1  15,512      v2  320       48x
 ```
 
-**Do NOT simply drop it and use the row number.** `element_order` is monotonic but not
-contiguous: this reader allocates a number for the `plain` wrapper it then collapses
-into a `list_item`, so a document with lists has gaps. Nothing is lost -- the round trip
-is byte-identical -- but the values are not the row index, and 12,059 of 14,969 differ
-from it.
+Whole document:
 
-For reference, and stated so nobody optimises past the point of usefulness: pandoc's
-AST compresses to 27,196 bytes with xz against duck_blocks' 39,653. duck_blocks is
-~1.5x larger AFTER this and ~3x before it. That is the price of a representation you
-can filter, join and slice without parsing, and it is a different job from a wire
-format.
+```
+                        v1        v2
+uncompressed        204,817   145,271
+zstd (default)       82,490    47,029     <- v2 default beats v1 at level 22
+zstd level 22        57,987    42,797
+brotli                    -    39,555     <- best measured
+```
+
+**Set `PARQUET_VERSION v2` and stop there.** v2 at DEFAULT zstd is smaller than v1 at
+level 22, for a fraction of the CPU. Level 22 buys another 9%; brotli another 8% beyond
+that. Verified to reproduce a byte-identical exported AST.
+
+**Do NOT hand-roll a delta column.** It was the right fix under v1 -- 397 bytes against
+15,512 -- and under v2 it is actively counterproductive: 42,897 against 42,797, because
+a manually differenced column is less compressible than the original once the format
+delta-encodes it itself. Recorded rather than deleted because the reasoning was sound
+and its premise expired.
+
+**And do NOT drop `element_order` for the row number.** It is monotonic but NOT
+contiguous: this reader allocates a number for the `plain` wrapper it collapses into a
+`list_item`, so any document with lists has gaps. Nothing is lost -- the round trip is
+byte-exact -- but 12,059 of 14,969 values differ from their row index, and a consumer
+assuming otherwise would silently renumber the document.
+
+For reference, so nobody optimises past the point of usefulness: pandoc's AST is 27,196
+bytes with xz against duck_blocks' 39,555. Roughly 1.45x, down from 3x before v2. That
+is the price of a representation you can filter, join and slice without parsing, which
+is a different job from a wire format.
 
 ## Two extensions must not register the same function name
 
