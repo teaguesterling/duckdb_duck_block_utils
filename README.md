@@ -19,6 +19,15 @@ This extension complements format-specific document extensions (markdown, HTML, 
 - **ANSI terminal rendering**: `PRAGMA duck_block_render` — render documents and query results as styled terminal output, glow-style ([docs](docs/rendering.md))
 - **Page composition & query tables**: `duck_blocks_page`, `duck_blocks_query_table`, `duck_blocks_table` — assemble dashboards that embed live query results as rendered tables
 - **Vocabulary introspection**: `duck_block_kind_names`, `duck_block_type_names`, `duck_block_encoding_names`, `duck_block_spec_version` — so sibling extensions can *assert* they agree with the vocabulary rather than mirroring a header
+> **DEPRECATED — the Pandoc converter moves to [panduck](https://github.com/teaguesterling/duckdb_panduck).**
+> `pandoc_ast_to_blocks`, `duck_blocks_to_pandoc_blocks`, `duck_blocks_to_pandoc_ast`,
+> `read_pandoc_ast`, `write_pandoc_ast`, `pandoc_inlines_to_db_inlines`,
+> `duck_blocks_inlines_to_pandoc` and `pandoc_inlines_to_text` all still work and now
+> print a one-time notice to stderr. panduck owns format knowledge; this library is
+> utilities over the `duck_block` vocabulary and the spec it validates. They will be
+> removed in a later release, once panduck's converter is installable — not before,
+> because deleting them first would leave a window with the converter in neither.
+
 - **Document queries over blocks**: `duck_blocks_toc_rows`, `duck_blocks_get_section`, `duck_blocks_sections_like`, and on the separate page axis `duck_blocks_page_rows`, `duck_blocks_get_pages` — these take `LIST(duck_block)`, not file paths
 - **Comparing and reviewing documents**: `duck_blocks_diff` (what changed between two versions, as ADDED/REMOVED/MOVED) and `duck_blocks_quality` (document-quality rules that are NOT spec conformance — empty sections, duplicate headings, links with no text)
 

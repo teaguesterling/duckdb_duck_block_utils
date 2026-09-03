@@ -305,6 +305,7 @@ void PandocInlineConvert::ConvertPandocInlinesToDbInlines(const string &json, in
 }
 
 void PandocInlineConvert::PandocInlinesToDbInlinesFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	WarnPandocDeprecated("pandoc_inlines_to_db_inlines");
 	auto &json_vec = args.data[0];
 	auto count = args.size();
 
@@ -772,6 +773,7 @@ static string RenderInlinesToText(const string &json, const string &mode, idx_t 
 }
 
 void PandocInlineConvert::DbInlinesToPandocFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	WarnPandocDeprecated("duck_blocks_inlines_to_pandoc");
 	auto &list_vec = args.data[0];
 	auto count = args.size();
 
@@ -790,6 +792,7 @@ void PandocInlineConvert::DbInlinesToPandocFun(DataChunk &args, ExpressionState 
 }
 
 void PandocInlineConvert::PandocInlinesToTextFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	WarnPandocDeprecated("pandoc_inlines_to_text");
 	auto &json_vec = args.data[0];
 	auto count = args.size();
 

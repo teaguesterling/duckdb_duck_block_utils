@@ -1181,6 +1181,7 @@ void PandocBlockConvert::ConvertPandocAstToBlocks(const string &json, vector<Val
 }
 
 void PandocBlockConvert::PandocAstToBlocksFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	WarnPandocDeprecated("pandoc_ast_to_blocks");
 	auto &json_vec = args.data[0];
 	auto count = args.size();
 
@@ -2748,6 +2749,7 @@ static void DuckBlocksToPandocAstFun(DataChunk &args, ExpressionState &state, Ve
 }
 
 void PandocBlockConvert::DuckBlocksToPandocBlocksFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	WarnPandocDeprecated("duck_blocks_to_pandoc_blocks / duck_blocks_to_pandoc_ast");
 	auto &blocks_vec = args.data[0];
 	auto count = args.size();
 
@@ -2799,6 +2801,7 @@ static yyjson_mut_val *MapToMetaObj(yyjson_mut_doc *doc, const Value &meta_map) 
 }
 
 void PandocBlockConvert::ReadPandocAstFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	WarnPandocDeprecated("read_pandoc_ast / write_pandoc_ast");
 	auto &path_vec = args.data[0];
 	auto count = args.size();
 
