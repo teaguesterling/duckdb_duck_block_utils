@@ -1295,6 +1295,43 @@ raw size (145,271) is the smallest of the uncompressed forms while its compresse
 is not the smallest -- the encodings that win before compression are not the ones that
 win after.
 
+**The single largest parquet knob is `WRITE_BLOOM_FILTER false`.** Bloom filters
+default to ON and are pure lookup index -- 4,535 bytes on the spec document, 11.5% of
+the file, buying nothing for storage. Everything else together is worth less:
+
+```
+                                             file    data only
+v2 + brotli (baseline)                     39,555       34,087
+  + WRITE_BLOOM_FILTER false               35,020       34,087    -11.5%
+  + attributes as a JSON string column     34,274       33,472
+  + kind folded into element_type          33,685       32,883    <- smallest measured
+```
+
+From 82,562 at v1/zstd-default to **33,685**, a 2.45x reduction, and now 2.6% smaller
+than column-major JSON + xz. Both variants verified to reproduce a byte-identical
+exported AST.
+
+The last two are schema reshapings rather than knobs and they cost queryability -- a
+predicate on `kind` needs a split, and one on an attribute needs a JSON extract. **The
+knobs-only answer, schema untouched, is 35,020**: `PARQUET_VERSION v2`,
+`COMPRESSION brotli`, `WRITE_BLOOM_FILTER false`.
+
+**A trap worth measuring before you trust it: setting `DICTIONARY_SIZE_LIMIT` to its
+own documented default makes the file 95% BIGGER.**
+
+```
+DICTIONARY_SIZE_LIMIT unset            35,020
+                      0                41,866
+                      2048             39,865
+                      24576            68,281   <- the documented default is
+                      100000           68,281      ROW_GROUP_SIZE / 5 = 24,576
+```
+
+Leaving it unset is not the same as setting it to the value the docs give as its
+default, and every explicit value measured is worse. A large limit dictionary-encodes
+`content`, whose values are mostly unique, so the dictionary stores every string AND an
+index into it.
+
 **Row group size matters in one direction only.** Parquet compresses each column chunk
 independently WITHIN a row group, so more groups means more independent streams and
 worse ratios. Measured on the spec document, v2 + brotli:
