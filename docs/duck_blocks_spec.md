@@ -453,6 +453,33 @@ duckdb_markdown   read the literal `---` block at the top   -> emits it first
 duck_block_utils  receives pandoc's meta, which has no position -> appends it
 ```
 
+**ONLY THE VERBATIM BLOB CAN CARRY A POSITION. The `kind='value'` tree is ALWAYS
+appended.** Asked by the panduck session about Org, where `#+title:` is literally line 1
+of the source and panduck emits the value row at the tail — which looks like the
+"positioned at the top" case and is not.
+
+The two homes differ in kind, and that settles it without a per-format judgement:
+
+- **The blob is verbatim source text.** It occupies a place in the document's own
+  stream, so it HAS a position, and a reader that lifts it out must record where it was.
+- **The value tree is parsed structure.** It is a projection BY CONSTRUCTION — an
+  interpretation of the source rather than a piece of it — so there is no position to
+  preserve, wherever the text it was derived from happened to sit.
+
+So `role='frontmatter'` and `role='tailmatter'` are claims a **blob** makes. A value
+tree carries a key and no role, and is appended, always.
+
+A reader wanting full fidelity for a positioned declaration may emit BOTH homes: the
+blob verbatim where it appeared, and the value tree appended. That is the shape that
+loses nothing, and it is why the two homes are not alternatives.
+
+**The intuition this replaces was almost right and testable, which is why it is worth
+recording.** panduck argued that an org keyword "was never in the flow to begin with",
+unlike a YAML fence that a reader lifts OUT. Measured: an UNRECOGNISED org keyword comes
+back as a `RawBlock`, so org keywords do occupy block positions and the distinction does
+not hold as stated. The conclusion was right anyway — for the reason above, which turns
+on the HOME rather than on the format.
+
 **METADATA NEED NOT BE CONTIGUOUS, and a document with both kinds will not be.**
 Asked by the webbed session: an HTML file with top-positioned frontmatter AND `<head>`
 metadata puts the frontmatter first, the head metadata last, and the body between them.
