@@ -847,6 +847,25 @@ static void ProcessPandocBlockVal(yyjson_val *block_val, int32_t &order, vector<
 		if (InlinesAreTextOnly(inline_children)) {
 			inline_children.clear();
 			order = order_before_children;
+		} else if (block_type == BlockTypes::TYPE_HEADING) {
+			// A HEADING KEEPS BOTH, alone among element types. `content` holds the
+			// flattened title because that is what a title is FOR -- slugs, outlines,
+			// section lookup and duck_blocks_diff all read that one field -- and the
+			// children carry the formatting beside it.
+			//
+			// The structure marks itself, so no attribute is needed to say the content
+			// is derived: a single text child lives in `content` and produces NO
+			// children, so children ALONGSIDE non-empty content can only mean a
+			// flattening. Children are authoritative; this repo's exporter already
+			// reads them and ignores the content, which is why the round trip is
+			// unaffected.
+			//
+			// duckdb_markdown shipped this shape first, after finding their reader
+			// normalised `# **Bold** title` and `# Bold title` to byte-identical
+			// output. Ruled conformant for headings ONLY: two copies of one fact is
+			// what hid the image-alt loss here for months, and it is tolerable here
+			// only because neither reader gets a WRONG answer -- content-only loses
+			// the formatting, children-only loses nothing.
 		} else {
 			content.clear();
 		}

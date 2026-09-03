@@ -2381,3 +2381,45 @@ query I
 SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"L"}],["u",""]]}]}]'))::VARCHAR;
 ----
 [{"t":"Para","c":[{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"L"}],["u",""]]}]}]
+
+# ============================================================================
+# A HEADING KEEPS BOTH the flattened title and its rich children -- alone among
+# element types. `content` holds the title because that is what a title is FOR:
+# slugs, outlines, section lookup and duck_blocks_diff all read that one field.
+#
+# The structure marks itself, so nothing has to declare the content derived: a
+# single text child lives in `content` and produces NO children, so children
+# ALONGSIDE non-empty content can only mean a flattening.
+#
+# Restricted to heading. Two copies of one fact is what hid the image-alt loss
+# here for months; it is tolerable here only because neither reader gets a WRONG
+# answer -- content-only loses the formatting, children-only loses nothing.
+# ============================================================================
+
+query III
+SELECT b.element_type, b.level, b.content
+FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"Header","c":[1,["",[],[]],[{"t":"Strong","c":[{"t":"Str","c":"Bold"}]},{"t":"Space"},{"t":"Str","c":"title"}]]}]')) AS b);
+----
+heading	1	Bold title
+bold	2	(empty)
+text	3	Bold
+space	2	 
+text	2	title
+
+# DISCRIMINATING: a PARAGRAPH with rich inlines must still have empty content.
+# Without this, "headings keep both" is satisfied by dropping the content rule
+# for every element, which is the change that would make every container carry a
+# duplicate of its own text.
+query II
+SELECT b.element_type, b.content
+FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"a"},{"t":"Space"},{"t":"Emph","c":[{"t":"Str","c":"b"}]}]}]')) AS b)
+WHERE b.element_type = 'paragraph';
+----
+paragraph	(empty)
+
+# The children stay authoritative: the exporter reads them and ignores the
+# derived content, so the round trip is unaffected by carrying both.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Header","c":[2,["",[],[]],[{"t":"Strong","c":[{"t":"Str","c":"Bold"}]},{"t":"Space"},{"t":"Str","c":"title"}]]}]'))::VARCHAR;
+----
+[{"t":"Header","c":[2,["",[],[]],[{"t":"Strong","c":[{"t":"Str","c":"Bold"}]},{"t":"Space"},{"t":"Str","c":"title"}]]}]
