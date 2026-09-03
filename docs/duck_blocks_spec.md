@@ -518,9 +518,14 @@ SELECT duck_block_spec_version();   -- what this build implements
 ```
 
 It deliberately carries **no** `attributes['key']`, which is what keeps it out of a
-document's own metadata on export. Use it when blocks are written to storage or
-crossing an extension boundary; a runtime check against `duck_block_spec_version()` is
-enough within a single session.
+document's own metadata on export. Use it when blocks cross an extension boundary as a
+bare `LIST(duck_block)`; a runtime check against `duck_block_spec_version()` is enough
+within a single session.
+
+**For a persisted FILE, prefer the container's own header** -- parquet's `KV_METADATA`,
+232 bytes, readable without reading the rows. See "Persisting duck_blocks". The in-band
+marker is for when there is no header to use, and it is appended rather than prepended
+because prepending would shift every `element_order` in the document.
 
 ## Content Rules for Container Types
 
@@ -1317,11 +1322,31 @@ COPY (SELECT kind, element_type, content, level, encoding,
              to_json(attributes)::VARCHAR AS attributes, element_order
       FROM blocks)
 TO 'doc.parquet' (FORMAT parquet, PARQUET_VERSION v2,
-                  COMPRESSION brotli, WRITE_BLOOM_FILTER false);
+                  COMPRESSION brotli, WRITE_BLOOM_FILTER false,
+                  KV_METADATA {duck_block_spec_version: '6.2'});
 ```
 
 Verified to reproduce a byte-identical exported AST. `attributes` comes back with
 `attributes::JSON::MAP(VARCHAR, VARCHAR)`.
+
+**STAMP THE FILE, not the rows, when the container has somewhere to put it.**
+`KV_METADATA` costs **232 bytes** on this document and is readable without touching
+the data:
+
+```sql
+SELECT key, value FROM parquet_kv_metadata('doc.parquet');
+--  duck_block_spec_version | 6.2
+```
+
+`duck_blocks_stamp` exists for the case where there is no container to carry it -- a
+`LIST(duck_block)` crossing an extension boundary, where the only place to put a
+version is in the list itself. It appends a `value`/`version` element at the END
+deliberately: prepending would shift every `element_order` in the document, which is
+the cost that made the marker optional in the first place. A file format that has a
+header slot should use the header slot.
+
+Neither is emitted automatically. A reader that stamped every document would put a
+version marker in memory a million times to protect a boundary most lists never cross.
 
 **A trap worth measuring before you trust it: setting `DICTIONARY_SIZE_LIMIT` to its
 own documented default makes the file 95% BIGGER.**
