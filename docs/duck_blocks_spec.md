@@ -1239,14 +1239,14 @@ than its own JSON.
 ```
                          pandoc JSON   duck_blocks parquet v2
 duck_blocks_spec.md (14,969 elements)
-  uncompressed              368,592          145,271     duck_blocks 2.54x SMALLER
-  zstd (default)             27,883           47,029     pandoc 1.69x smaller
-  best (xz / brotli)         27,196           39,555     pandoc 1.45x smaller
+  uncompressed              368,592          155,118     duck_blocks 2.38x SMALLER
+  zstd                       27,883           41,921     pandoc 1.50x smaller
+  best (xz / brotli)         27,196           34,284     pandoc 1.26x smaller
 
 README.md (1,957 elements)
-  uncompressed              105,710           81,982     duck_blocks 1.29x SMALLER
-  zstd (default)              9,932           18,965     pandoc 1.91x smaller
-  best (xz / brotli)          9,860           15,332     pandoc 1.55x smaller
+  uncompressed              105,710           94,264     duck_blocks 1.12x SMALLER
+  zstd                        9,932           18,306     pandoc 1.84x smaller
+  best (xz / brotli)          9,860           14,507     pandoc 1.47x smaller
 ```
 
 **The sign flips on compression, and both directions are real.** Uncompressed,
@@ -1297,24 +1297,31 @@ win after.
 
 **The single largest parquet knob is `WRITE_BLOOM_FILTER false`.** Bloom filters
 default to ON and are pure lookup index -- 4,535 bytes on the spec document, 11.5% of
-the file, buying nothing for storage. Everything else together is worth less:
+the file, buying nothing for storage.
 
 ```
                                              file    data only
 v2 + brotli (baseline)                     39,555       34,087
   + WRITE_BLOOM_FILTER false               35,020       34,087    -11.5%
   + attributes as a JSON string column     34,274       33,472
-  + kind folded into element_type          33,685       32,883    <- smallest measured
+  + kind folded into element_type          33,685       32,883    measured, NOT adopted
 ```
 
-From 82,562 at v1/zstd-default to **33,685**, a 2.45x reduction, and now 2.6% smaller
-than column-major JSON + xz. Both variants verified to reproduce a byte-identical
-exported AST.
+**The adopted settings are the first three.** Folding `kind` into `element_type` was
+measured and rejected by Teague: it saves 1.7% and costs a split on every predicate
+over `kind`, which is the wrong trade for a format whose point is querying in place.
+Recorded rather than deleted so nobody re-derives it and assumes it was overlooked.
 
-The last two are schema reshapings rather than knobs and they cost queryability -- a
-predicate on `kind` needs a split, and one on an attribute needs a JSON extract. **The
-knobs-only answer, schema untouched, is 35,020**: `PARQUET_VERSION v2`,
-`COMPRESSION brotli`, `WRITE_BLOOM_FILTER false`.
+```sql
+COPY (SELECT kind, element_type, content, level, encoding,
+             to_json(attributes)::VARCHAR AS attributes, element_order
+      FROM blocks)
+TO 'doc.parquet' (FORMAT parquet, PARQUET_VERSION v2,
+                  COMPRESSION brotli, WRITE_BLOOM_FILTER false);
+```
+
+Verified to reproduce a byte-identical exported AST. `attributes` comes back with
+`attributes::JSON::MAP(VARCHAR, VARCHAR)`.
 
 **A trap worth measuring before you trust it: setting `DICTIONARY_SIZE_LIMIT` to its
 own documented default makes the file 95% BIGGER.**
