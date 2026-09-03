@@ -453,6 +453,18 @@ duckdb_markdown   read the literal `---` block at the top   -> emits it first
 duck_block_utils  receives pandoc's meta, which has no position -> appends it
 ```
 
+**Both positions are CHECKED, in both implementations.** `duck_blocks_lint` and
+`vendor/duck_block_conformance.sql` each carry two advisory rules, and
+`test/check_conformance_macro.py` fails if they disagree:
+
+```
+frontmatter_not_first   metadata with role='frontmatter' has body blocks before it
+body_after_metadata     a top-level block follows kind='value' metadata
+```
+
+Advisory rather than an error: the data is still readable and the role stays
+authoritative, so positional drift belongs in the same class as `list_not_structural`.
+
 **The role is authoritative, the position is corroborating.** `role='frontmatter'`
 means it was at the front; a consumer that needs to know reads the role. A consumer
 that reads `blocks[0]` expecting metadata still breaks on every document without any,
