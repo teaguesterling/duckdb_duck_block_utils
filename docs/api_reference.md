@@ -216,7 +216,7 @@ Creates a raw HTML/XML block.
 
 ```sql
 duck_block_raw(content VARCHAR) → duck_block
-duck_block_raw(content VARCHAR, format VARCHAR) → duck_block
+duck_block_raw(format VARCHAR, content VARCHAR) → duck_block
 ```
 
 **Parameters:**
@@ -225,7 +225,9 @@ duck_block_raw(content VARCHAR, format VARCHAR) → duck_block
 
 **Example:**
 ```sql
-SELECT duck_block_raw('<div class="custom">Content</div>', 'html');
+-- FORMAT FIRST. The reverse order silently transposes the two: the format
+-- lands in `content` and the content in attributes['format'], with no error.
+SELECT duck_block_raw('html', '<div class="custom">Content</div>');
 ```
 
 ---

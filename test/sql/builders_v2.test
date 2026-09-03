@@ -519,11 +519,25 @@ SELECT duck_block_raw('html', '<div>HTML</div>')[1].content;
 query I
 SELECT duck_block_raw('html', '<div>HTML</div>')[1].encoding;
 ----
-html
+text
+
+# DISCRIMINATING: the format must NOT leak into `encoding`, and an UNDECLARED format
+# must not be silently reported as a declared one. This derived encoding from format
+# and defaulted to html, so an org raw block claimed encoding='html'.
+query II
+SELECT duck_block_raw('org', '#+X: y')[1].encoding, duck_block_raw('org', '#+X: y')[1].attributes['format'];
+----
+text	org
 
 # Test duck_block_raw single arg defaults to html
 query I
 SELECT duck_block_raw('<br>')[1].encoding;
+----
+text
+
+# The single-arg form still DEFAULTS the format to html -- only the encoding moved.
+query I
+SELECT duck_block_raw('<br>')[1].attributes['format'];
 ----
 html
 

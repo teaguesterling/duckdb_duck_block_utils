@@ -307,7 +307,7 @@ These overloads accept a list of children and return a flattened list with paren
 | `duck_block_cite(key, prefix, suffix)` | Create citation |
 | `duck_block_note(content)` | Create footnote |
 | `duck_block_span(content, id, classes)` | Create span |
-| `duck_block_raw_inline(content, format)` | Create raw inline |
+| `duck_block_raw_inline(format, content)` | Create raw inline |
 
 ### Pandoc AST Conversion
 

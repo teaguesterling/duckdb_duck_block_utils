@@ -389,11 +389,17 @@ void BuilderFunctions::DbRawFun(DataChunk &args, ExpressionState &state, Vector 
 		map<string, string> attrs;
 		attrs["format"] = format_str;
 
-		const char *encoding = BlockTypes::ENCODING_HTML;
-		if (format_str == "xml")
-			encoding = BlockTypes::ENCODING_XML;
-		else if (format_str == "latex")
-			encoding = BlockTypes::ENCODING_LATEX;
+		// ENCODING IS ALWAYS `text` FOR raw. The format lives in attributes['format'],
+		// never in `encoding` -- see the spec. This derived it from the format with a
+		// three-way chain defaulting to html, so `duck_block_raw('org', ...)` produced
+		// encoding='html': a DECLARED encoding, plausible on inspection, and wrong.
+		//
+		// The encoding set is closed and a raw block's format is not, so any derivation
+		// either invents a value or misreports one. panduck found the same defect in
+		// three of their readers -- an ipynb markdown cell carrying encoding='markdown'
+		// with no format attribute at all, so the field a consumer should read was empty
+		// while the field it must not read said something confident and wrong.
+		const char *encoding = BlockTypes::ENCODING_TEXT;
 
 		SetBlockFields(entries, i, BlockTypes::TYPE_RAW, content_vec.GetValue(i), Value(), encoding,
 		               CreateAttributesMap(attrs));
@@ -881,11 +887,10 @@ void BuilderFunctions::DbRawV2Fun(DataChunk &args, ExpressionState &state, Vecto
 		map<string, string> attrs;
 		attrs["format"] = format_str;
 
-		const char *encoding = BlockTypes::ENCODING_HTML;
-		if (format_str == "xml")
-			encoding = BlockTypes::ENCODING_XML;
-		else if (format_str == "latex")
-			encoding = BlockTypes::ENCODING_LATEX;
+		// ALWAYS `text` -- see DbRawFun above for why. Two builders carried the same
+		// derivation and I patched only the first, which the test caught: a fix applied
+		// to one of two identical sites is the shape a shared helper exists to prevent.
+		const char *encoding = BlockTypes::ENCODING_TEXT;
 
 		child_list_t<Value> struct_values;
 		struct_values.push_back(make_pair("kind", Value(BlockTypes::KIND_BLOCK)));
@@ -917,7 +922,9 @@ void BuilderFunctions::DbRawV2NoFormatFun(DataChunk &args, ExpressionState &stat
 		struct_values.push_back(make_pair("element_type", Value(BlockTypes::TYPE_RAW)));
 		struct_values.push_back(make_pair("content", content));
 		struct_values.push_back(make_pair("level", Value(1)));
-		struct_values.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_HTML)));
+		// THIRD site of the same rule. `text`, not the default format -- the format is
+		// already in attributes['format'] and `encoding` must not restate it.
+		struct_values.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_TEXT)));
 		struct_values.push_back(make_pair("attributes", CreateAttributesMap(attrs)));
 		struct_values.push_back(make_pair("element_order", Value(0)));
 
