@@ -159,6 +159,91 @@ static const DefaultTableMacro DOC_TABLE_MACROS[] = {
      "           (toc).element_order AS element_order\n"
      "    FROM (SELECT unnest(duck_blocks_toc(blocks)) AS toc)"},
     {DEFAULT_SCHEMA,
+     "duck_blocks_diff",
+     {"before", "after", nullptr},
+     {{nullptr, nullptr}},
+     // IDENTITY IS (element_type, content). Not content alone -- a heading and a
+     // paragraph reading the same words are different elements, and matching on text
+     // would report a promotion as no change. Not (type, content, level) either: a
+     // section indented under a new parent would then be a DELETE plus an INSERT,
+     // which is the answer least useful to someone asking what changed. Level
+     // differences are reported as MOVED instead, so a restructure reads as a
+     // restructure.
+     //
+     // MULTIPLICITY IS COUNTED, so a paragraph appearing twice before and once after
+     // is one REMOVED rather than nothing. Comparing sets would hide it -- the same
+     // mistake as comparing advisory findings with SELECT DISTINCT.
+     //
+     // Containers carry no content, so many share the key ('div',''). They aggregate
+     // into one row with a count, which is honest: this function cannot tell two
+     // empty divs apart, and neither can the vocabulary.
+     "WITH a AS (SELECT (u).element_type AS et, coalesce((u).\"content\",'') AS c,\n"
+     "                  min((u).\"level\") AS lvl, count(*) AS n\n"
+     "           FROM (SELECT unnest(before) AS u) GROUP BY 1,2),\n"
+     "     b AS (SELECT (u).element_type AS et, coalesce((u).\"content\",'') AS c,\n"
+     "                  min((u).\"level\") AS lvl, count(*) AS n\n"
+     "           FROM (SELECT unnest(after) AS u) GROUP BY 1,2),\n"
+     "     j AS (SELECT coalesce(a.et,b.et) AS et, coalesce(a.c,b.c) AS c,\n"
+     "                  coalesce(a.n,0) AS an, coalesce(b.n,0) AS bn, a.lvl AS al, b.lvl AS bl\n"
+     "           FROM a FULL OUTER JOIN b ON a.et=b.et AND a.c=b.c)\n"
+     "    SELECT 'ADDED' AS change, et AS element_type, c AS \"content\", bn-an AS n,\n"
+     "           al AS before_level, bl AS after_level FROM j WHERE bn > an\n"
+     "    UNION ALL\n"
+     "    SELECT 'REMOVED', et, c, an-bn, al, bl FROM j WHERE an > bn\n"
+     "    UNION ALL\n"
+     "    SELECT 'MOVED', et, c, an, al, bl FROM j WHERE an = bn AND an > 0 AND al IS DISTINCT FROM bl\n"
+     "    ORDER BY 1, 4 DESC, 2, 3"},
+    {DEFAULT_SCHEMA,
+     "duck_blocks_quality",
+     {"blocks", nullptr},
+     {{nullptr, nullptr}},
+     // DOCUMENT QUALITY, WHICH IS NOT CONFORMANCE, and the separation is the point.
+     // duck_blocks_lint and duck_blocks_validate answer "does this obey the spec".
+     // Everything here is about a document that is perfectly conformant and still
+     // wrong for a reader: an outline that lies about its hierarchy, a heading with
+     // nothing under it, two headings a fragment link cannot tell apart.
+     //
+     // Kept as a SEPARATE function rather than new lint rules, because a conforming
+     // document must be able to run the conformance check and get silence. Folding
+     // these in would make every real document warn, and a warning everyone ignores
+     // guards nothing.
+     "WITH e AS (SELECT (u).element_type AS et, coalesce((u).\"content\",'') AS c,\n"
+     "                  (u).\"level\" AS lvl, (u).kind AS k, (u).attributes AS atts,\n"
+     "                  (u).element_order AS ord\n"
+     "           FROM (SELECT unnest(blocks) AS u)),\n"
+     "     h AS (SELECT ord, c, try_cast(atts['heading_level'] AS INTEGER) AS hl,\n"
+     "                  lag(try_cast(atts['heading_level'] AS INTEGER)) OVER (ORDER BY ord) AS prev_hl,\n"
+     // A heading followed by a DEEPER heading is ordinary structure -- a title above its
+     // first subsection -- not an empty section. The first version of this rule fired on
+     // that pattern and reported 84 findings across the repo's own 20 documents, nearly
+     // all of them correct documents. A rule that fires on the normal case is noise, and
+     // noise is how a linter stops being read.
+     "                  (SELECT x.et FROM e x WHERE x.ord > e.ord ORDER BY x.ord LIMIT 1) AS next_et,\n"
+     "                  (SELECT try_cast(x.atts['heading_level'] AS INTEGER) FROM e x\n"
+     "                   WHERE x.ord > e.ord ORDER BY x.ord LIMIT 1) AS next_hl\n"
+     "           FROM e WHERE et = 'heading')\n"
+     // NO heading_level_skip RULE HERE. duck_blocks_lint has carried one since before
+     // this function existed -- "Heading level skipped from hN to hM", validation.cpp
+     // line 365 -- and I wrote a second one before checking. A duplicated rule is worse
+     // than a missing one: two findings for one defect, and a fix in one place that
+     // looks like it did not work.
+     "    SELECT ord AS element_order, 'empty_section' AS rule,\n"
+     "           'section has no body and no subsections: the next heading is h' || next_hl ||\n"
+     "           ', at or above this one' AS message\n"
+     "    FROM h WHERE next_et = 'heading' AND next_hl <= hl\n"
+     "    UNION ALL\n"
+     "    SELECT min(ord), 'duplicate_heading',\n"
+     "           'heading text appears ' || count(*) || ' times, so a fragment link cannot address one'\n"
+     "    FROM h WHERE c <> '' GROUP BY c, hl HAVING count(*) > 1\n"
+     "    UNION ALL\n"
+     "    SELECT ord, 'link_without_text',\n"
+     "           'link carries no text of its own, so it reads as its URL or as nothing'\n"
+     "    FROM e WHERE et = 'link' AND c = ''\n"
+     "      AND NOT EXISTS (SELECT 1 FROM e c2 WHERE c2.ord > e.ord AND c2.lvl > e.lvl\n"
+     "                      AND c2.ord < coalesce((SELECT min(x.ord) FROM e x\n"
+     "                                             WHERE x.ord > e.ord AND x.lvl <= e.lvl), 2147483647))\n"
+     "    ORDER BY 1"},
+    {DEFAULT_SCHEMA,
      "duck_blocks_page_rows",
      {"blocks", nullptr},
      {{nullptr, nullptr}},

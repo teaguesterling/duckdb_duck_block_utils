@@ -343,3 +343,106 @@ SELECT count(*) FROM duck_blocks_page_rows([
   {'kind':'block','element_type':'paragraph','content':'only','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block]);
 ----
 0
+
+# ============================================================================
+# duck_blocks_diff -- what changed between two versions, as a set operation.
+#
+# IDENTITY IS (element_type, content). Not content alone: a heading and a
+# paragraph reading the same words are different elements. Not (type, content,
+# level) either -- a section indented under a new parent would then read as a
+# DELETE plus an INSERT, which is the least useful answer to "what changed".
+# Level differences are reported as MOVED so a restructure reads as one.
+# ============================================================================
+
+statement ok
+PRAGMA duck_block_doc_macros;
+
+# Added, removed and unchanged in one pair.
+query IIII
+SELECT change, element_type, "content", n FROM duck_blocks_diff(
+  [{'kind':'block','element_type':'paragraph','content':'gone','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+   {'kind':'block','element_type':'paragraph','content':'kept','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block],
+  [{'kind':'block','element_type':'paragraph','content':'fresh','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+   {'kind':'block','element_type':'paragraph','content':'kept','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block]);
+----
+ADDED	paragraph	fresh	1
+REMOVED	paragraph	gone	1
+
+# Same content at a new depth is MOVED, not a delete plus an insert.
+query III
+SELECT change, before_level, after_level FROM duck_blocks_diff(
+  [{'kind':'block','element_type':'paragraph','content':'same','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block],
+  [{'kind':'block','element_type':'paragraph','content':'same','level':3,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block]);
+----
+MOVED	1	3
+
+# DISCRIMINATING: identical documents report NOTHING. Without this, a diff that
+# returned every row would satisfy the assertions above.
+query I
+SELECT count(*) FROM duck_blocks_diff(
+  [{'kind':'block','element_type':'paragraph','content':'x','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block],
+  [{'kind':'block','element_type':'paragraph','content':'x','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block]);
+----
+0
+
+# Multiplicity is counted, not set-compared: twice before and once after is one
+# REMOVED. Comparing sets would report nothing at all.
+query II
+SELECT change, n FROM duck_blocks_diff(
+  [{'kind':'block','element_type':'paragraph','content':'d','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+   {'kind':'block','element_type':'paragraph','content':'d','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block],
+  [{'kind':'block','element_type':'paragraph','content':'d','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block]);
+----
+REMOVED	1
+
+# ============================================================================
+# duck_blocks_quality -- document quality, which is NOT conformance.
+#
+# validate and lint answer "does this obey the spec". These rules are about a
+# perfectly conformant document that is still wrong for a reader. Kept separate
+# so a conforming document can run the conformance check and get silence.
+#
+# NO heading_level_skip rule here: duck_blocks_lint has carried one since before
+# this existed. A duplicated rule gives two findings for one defect.
+# ============================================================================
+
+# A section with no body AND no subsections.
+query II
+SELECT rule, element_order FROM duck_blocks_quality([
+  {'kind':'block','element_type':'heading','content':'A','level':1,'encoding':'text','attributes':MAP{'heading_level':'2'},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'heading','content':'B','level':1,'encoding':'text','attributes':MAP{'heading_level':'2'},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'x','level':1,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block]);
+----
+empty_section	0
+
+# DISCRIMINATING: a title above its first subsection is ORDINARY STRUCTURE and
+# must not fire. The first version of this rule did, and reported 84 findings
+# across this repo's own 20 documents, nearly all of them correct documents.
+query I
+SELECT count(*) FROM duck_blocks_quality([
+  {'kind':'block','element_type':'heading','content':'Title','level':1,'encoding':'text','attributes':MAP{'heading_level':'1'},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'heading','content':'Sub','level':1,'encoding':'text','attributes':MAP{'heading_level':'2'},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'x','level':1,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block]);
+----
+0
+
+# Two headings a fragment link cannot tell apart.
+query I
+SELECT rule FROM duck_blocks_quality([
+  {'kind':'block','element_type':'heading','content':'Returns','level':1,'encoding':'text','attributes':MAP{'heading_level':'3'},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'a','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'heading','content':'Returns','level':1,'encoding':'text','attributes':MAP{'heading_level':'3'},'element_order':2}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'b','level':1,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block]);
+----
+duplicate_heading
+
+# A well-formed document is SILENT. Without this the rules above are satisfied
+# by a function that flags everything.
+query I
+SELECT count(*) FROM duck_blocks_quality([
+  {'kind':'block','element_type':'heading','content':'A','level':1,'encoding':'text','attributes':MAP{'heading_level':'1'},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'x','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'heading','content':'B','level':1,'encoding':'text','attributes':MAP{'heading_level':'2'},'element_order':2}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'y','level':1,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block]);
+----
+0
