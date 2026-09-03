@@ -1431,7 +1431,7 @@ COPY (SELECT kind, element_type, content, level, encoding,
       FROM blocks)
 TO 'doc.parquet' (FORMAT parquet, PARQUET_VERSION v2,
                   COMPRESSION brotli, WRITE_BLOOM_FILTER false,
-                  KV_METADATA {duck_block_spec_version: '6.2'});
+                  KV_METADATA {duck_block_spec_version: '6.3'});
 ```
 
 Verified to reproduce a byte-identical exported AST. `attributes` comes back with
@@ -1443,7 +1443,7 @@ the data:
 
 ```sql
 SELECT key, value FROM parquet_kv_metadata('doc.parquet');
---  duck_block_spec_version | 6.2
+--  duck_block_spec_version | 6.3
 ```
 
 `duck_blocks_stamp` exists for the case where there is no container to carry it -- a

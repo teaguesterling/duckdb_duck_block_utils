@@ -35,7 +35,7 @@ true
 query I
 SELECT duck_block_spec_version();
 ----
-6.2
+6.3
 
 # ...and it must be well-formed MAJOR.MINOR, since the contract in the header
 # says consumers assert major equality plus a minor floor. A version that does
