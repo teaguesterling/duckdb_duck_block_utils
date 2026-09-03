@@ -56,7 +56,7 @@ Functions that create `duck_block` structs with `kind='block'`.
 Creates a heading block.
 
 ```sql
-duck_block_heading(content VARCHAR, level INTEGER) → duck_block
+duck_block_heading(level INTEGER, content VARCHAR) → duck_block
 ```
 
 **Parameters:**
@@ -65,7 +65,7 @@ duck_block_heading(content VARCHAR, level INTEGER) → duck_block
 
 **Example:**
 ```sql
-SELECT duck_block_heading('Introduction', 1);
+SELECT duck_block_heading(1, 'Introduction');
 -- Returns: {kind: 'block', element_type: 'heading', content: 'Introduction', level: 1, ...}
 ```
 
@@ -95,7 +95,7 @@ Creates a code block.
 
 ```sql
 duck_block_code(content VARCHAR) → duck_block
-duck_block_code(content VARCHAR, language VARCHAR) → duck_block
+duck_block_code(language VARCHAR, content VARCHAR) → duck_block
 ```
 
 **Parameters:**
@@ -104,7 +104,7 @@ duck_block_code(content VARCHAR, language VARCHAR) → duck_block
 
 **Example:**
 ```sql
-SELECT duck_block_code('print("Hello")', 'python');
+SELECT duck_block_code('python', 'print("Hello")');
 -- Returns block with attributes: {language: 'python'}
 ```
 
@@ -342,7 +342,7 @@ duck_blocks_assemble(blocks LIST(duck_block)) → LIST(duck_block)
 **Example:**
 ```sql
 SELECT duck_blocks_assemble([
-    duck_block_heading('Title', 1),
+    duck_block_heading(1, 'Title'),
     duck_block_paragraph('Content')
 ]);
 -- First block has element_order=0, second has element_order=1
@@ -378,7 +378,7 @@ duck_block_section(title VARCHAR, level INTEGER, children LIST(duck_block)) → 
 ```sql
 SELECT duck_block_section('Getting Started', 2, [
     duck_block_paragraph('First, install the extension.'),
-    duck_block_code('LOAD duck_block_utils;', 'sql')
+    duck_block_code('sql', 'LOAD duck_block_utils;')
 ]);
 -- Returns: [heading, paragraph, code] with sequential element_order
 ```
@@ -405,7 +405,7 @@ duck_blocks_rebase_levels(blocks LIST(duck_block), offset INTEGER) → LIST(duck
 **Example:**
 ```sql
 -- Demote all headings by 1 level (h1→h2, h2→h3, etc.)
-SELECT duck_blocks_rebase_levels([duck_block_heading('Title', 1)], 1);
+SELECT duck_blocks_rebase_levels([duck_block_heading(1, 'Title')], 1);
 -- Returns heading with level=2
 ```
 
@@ -500,8 +500,8 @@ duck_blocks_merge(blocks1 LIST(duck_block), blocks2 LIST(duck_block)) → LIST(d
 **Example:**
 ```sql
 SELECT duck_blocks_merge(
-    [duck_block_heading('Doc 1', 1)],
-    [duck_block_heading('Doc 2', 1)]
+    [duck_block_heading(1, 'Doc 1')],
+    [duck_block_heading(1, 'Doc 2')]
 );
 -- First heading has element_order=0, second has element_order=1
 ```
@@ -600,7 +600,7 @@ duck_blocks_to_text(blocks LIST(duck_block), separator VARCHAR) → VARCHAR
 **Example:**
 ```sql
 SELECT duck_blocks_to_text([
-    duck_block_heading('Title', 1),
+    duck_block_heading(1, 'Title'),
     duck_block_paragraph('Content')
 ], '\n');
 -- Returns: "Title\nContent"
