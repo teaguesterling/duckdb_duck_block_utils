@@ -41,12 +41,12 @@ produces two different shapes for one logical field, and neither is a bug.
   their children 3. Never NULL, never 0.
 - **The key lives in `attributes['key']`**, on the value node. A list's ITEMS are
   positional and carry no key — `multi_author_list` pins that.
-- **Ordering: body blocks, then ALL metadata, both homes.** Metadata is TAILMATTER in
-  duck_blocks whatever it was in the source; a frontmatter blob is emitted after the
-  body with `attributes['role']='frontmatter'` recording what it was. So `element_order`
-  0 is the first body block whether or not a document has metadata, and adding metadata
-  shifts no body index. A writer reconstructs frontmatter from the ROLE, not the
-  position.
+- **Metadata keeps its SOURCE position.** Front matter stays at the front
+  (`role='frontmatter'`); metadata the source did not position — pandoc's `meta`, an
+  EPUB's OPF, a docx `core.xml` — is appended (`role='document'`), because a reader that
+  received a projection cannot honestly claim a position. These fixtures all come
+  through pandoc's `meta`, so they are all appended; a markdown reader that reads the
+  literal `---` block emits it first, and both are correct under one rule.
 - **`kind='value'`** with `element_type` in {string, bool, list, map, inlines, blocks}.
   The other metadata home — `kind='block'`, `element_type='metadata'`, `encoding='yaml'`
   or `'toml'`, `attributes['role']` of `frontmatter` or `document` — is a VERBATIM blob

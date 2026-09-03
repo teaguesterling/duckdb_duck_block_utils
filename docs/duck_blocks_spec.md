@@ -427,45 +427,43 @@ values, so nothing will object if you do.
 | discrete FIELDS — title, author, date | `kind='value'`, this section | docx `core.xml`, EPUB Dublin Core, odt `meta.xml`, RTF `\info`, LaTeX `\title`, HTML `<head>`, Pandoc `Meta` |
 | a verbatim BLOB you must not reinterpret | `kind='block'`, `element_type='metadata'`, `encoding='yaml'` | a markdown file's YAML frontmatter, kept as written |
 
-**BOTH HOMES GO AT THE END OF THE LIST. There is no frontmatter position in
-duck_blocks.** Teague's ruling, 2026-09-02, superseding a ruling I made earlier the
-same day that let the two homes sit in different places because each position had a
-defensible reason. Two defensible answers to one question is the thing this vocabulary
-exists to prevent, and it had already produced a live divergence:
+**METADATA KEEPS ITS SOURCE POSITION. Front matter stays at the front.** Teague's
+ruling, 2026-09-02, and it replaces two earlier ones of mine the same day -- first that
+each home could sit wherever its kind implied, then that everything should be appended.
+
+One rule, with a determinate answer for every document:
 
 ```
-BEFORE     duckdb_markdown   metadata blob  @1, ahead of the body   (frontmatter first)
-           duck_block_utils  value tree     after every body block  (metadata last)
-
-NOW        both homes        AFTER every body block
+was the metadata POSITIONED in the source?
+  yes, at the top     -> emit it FIRST      role='frontmatter'
+  yes, at the bottom  -> emit it LAST       role='tailmatter'
+  no position at all  -> emit it LAST       role='document'
 ```
 
-**Metadata is TAILMATTER in duck_blocks, whatever it was in the source.** A `metadata`
-blob that was YAML frontmatter at the top of a `.md` file is emitted after the body,
-with `attributes['role'] = 'frontmatter'` recording what it WAS. The role carries the
-provenance so the position does not have to.
+**Tailmatter is the fallback, not the convention.** It is where metadata goes when the
+source had no position for it -- pandoc's `meta`, an EPUB's OPF, a docx `core.xml`.
+Those are properties OF the file rather than blocks IN it, and a reader that received
+them through such a projection cannot honestly claim a position, so it appends. A
+reader that literally read `---` at byte 0 knows exactly where it was and says so.
 
-Why the end rather than the beginning, since either would have normalised:
+That is why the two shipped implementations were BOTH right and are both unchanged:
 
-- **`element_order` 0 is the first body block, always**, whether or not the document
-  has metadata. A consumer indexing the body needs no special case.
-- **Adding metadata shifts no body index.** Prepending renumbers the entire document to
-  record something most documents do not have -- the same cost that makes
-  `duck_blocks_stamp` append.
-- **Optionality is free.** "This document has no metadata" and "this document has
-  metadata" produce identical body sequences, so a diff between them reports metadata
-  and nothing else.
+```
+duckdb_markdown   read the literal `---` block at the top   -> emits it first
+duck_block_utils  receives pandoc's meta, which has no position -> appends it
+```
 
-**A writer reconstructs frontmatter from the ROLE, not from the position.** A markdown
-writer emitting `---\ntitle: T\n---` at the top of its output finds that block by
-`element_type='metadata'` and `attributes['role']='frontmatter'`, wherever it sits in
-the list. That is the same rule as everywhere else here: never infer meaning from
-position.
+**The role is authoritative, the position is corroborating.** `role='frontmatter'`
+means it was at the front; a consumer that needs to know reads the role. A consumer
+that reads `blocks[0]` expecting metadata still breaks on every document without any,
+so **never infer metadata from position** -- filter on `kind='value'`, or
+`element_type='metadata'` for the blob.
 
-**Consumers must not infer metadata from position either.** Filter on `kind='value'`,
-or `element_type='metadata'` for the blob. A consumer reading `blocks[0]` expecting
-frontmatter breaks on every document that has none -- which, under this rule, is every
-document.
+**What this costs, stated because the alternative was chosen for these reasons and
+rejected:** a document that gains frontmatter shifts every body `element_order` by one,
+so `duck_blocks_diff` reports the body as MOVED. Appending everything would have avoided
+that. It was not worth discarding the source's own structure to make a diff tidier --
+front matter is called front matter because of where it is.
 
 They are not interchangeable and neither is a fallback for the other. The first is
 structured and queryable; the second is a preserved artifact whose internal syntax
