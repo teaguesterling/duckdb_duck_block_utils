@@ -41,7 +41,11 @@ produces two different shapes for one logical field, and neither is a bug.
   their children 3. Never NULL, never 0.
 - **The key lives in `attributes['key']`**, on the value node. A list's ITEMS are
   positional and carry no key — `multi_author_list` pins that.
-- **Ordering: body blocks, then metadata.** A contract, not an accident.
+- **Ordering: body blocks, then the `kind='value'` metadata tree.** A contract, not an
+  accident — a value is not body content, so it has no place in document order, and
+  appending keeps `element_order` 0 as the first body block whether or not a document
+  has metadata. The OTHER home is the opposite: a `metadata` BLOB is a block and sits
+  where it appeared in the source, which for frontmatter is first. See the spec.
 - **`kind='value'`** with `element_type` in {string, bool, list, map, inlines, blocks}.
   The other metadata home — `kind='block'`, `element_type='metadata'`, `encoding='yaml'`
   or `'toml'`, `attributes['role']` of `frontmatter` or `document` — is a VERBATIM blob

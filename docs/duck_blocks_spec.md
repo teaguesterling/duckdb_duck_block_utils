@@ -427,6 +427,34 @@ values, so nothing will object if you do.
 | discrete FIELDS — title, author, date | `kind='value'`, this section | docx `core.xml`, EPUB Dublin Core, odt `meta.xml`, RTF `\info`, LaTeX `\title`, HTML `<head>`, Pandoc `Meta` |
 | a verbatim BLOB you must not reinterpret | `kind='block'`, `element_type='metadata'`, `encoding='yaml'` | a markdown file's YAML frontmatter, kept as written |
 
+**THE TWO HOMES SIT IN DIFFERENT PLACES, and the rule follows from what they are.**
+Measured 2026-09-02, two shipped implementations already disagreeing because this was
+never written down:
+
+```
+duckdb_markdown   metadata blob  @1, BEFORE the body paragraph @2   (frontmatter first)
+duck_block_utils  value tree     AFTER every body block             (metadata last)
+```
+
+Both are right, and the split is not arbitrary:
+
+- **The blob is a `kind='block'`.** It is part of the document's body sequence and sits
+  **where it appeared in the source** -- first, for frontmatter, because that is what
+  "front matter" means. A block's position is its position.
+- **The value tree is `kind='value'`.** It is not body content and has no place in the
+  document's order at all, so it is **appended after the blocks**. Two consequences
+  worth having: `element_order` 0 is the first body block whether or not the document
+  has metadata, and adding metadata shifts no body index -- the same reason
+  `duck_blocks_stamp` appends rather than prepends.
+
+So a document carrying BOTH homes has its frontmatter blob at the top and its
+structured fields at the bottom, and that is correct rather than a contradiction: one
+is a block the author wrote, the other is a projection of it.
+
+**Consumers must not infer metadata from position.** Filter on `kind='value'`, or on
+`element_type='metadata'` for the blob. A consumer that reads `blocks[0]` expecting
+frontmatter breaks on every document that has none.
+
 They are not interchangeable and neither is a fallback for the other. The first is
 structured and queryable; the second is a preserved artifact whose internal syntax
 this vocabulary does not model.
