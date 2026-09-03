@@ -1519,6 +1519,30 @@ column without touching the rest, and is smaller on disk before compression. The
 1.5x is what querying in place costs when you also compress -- and nothing at all when
 you do not.
 
+## `raw`: the format lives in `attributes['format']`, never in `encoding`
+
+Measured across four formats, reading pandoc's `RawBlock`:
+
+```
+RawBlock ["html", ...]        -> encoding='text', attributes['format']='html'
+RawBlock ["latex", ...]       -> encoding='text', attributes['format']='latex'
+RawBlock ["org", ...]         -> encoding='text', attributes['format']='org'
+RawBlock ["mediawiki", ...]   -> encoding='text', attributes['format']='mediawiki'
+```
+
+**`encoding` is a CLOSED set and a raw block's format is not.** `org` and `mediawiki`
+are formats pandoc names and this vocabulary does not declare, so a producer that put
+the format in `encoding` would either emit an undeclared value or lose it. The attribute
+is open; the encoding set is not, and that is the whole reason for the split.
+
+**A consumer must read `attributes['format']`.** Reading `encoding` gets `text` for every
+raw block regardless of what the markup is.
+
+Recorded after the panduck session reached for `encoding='org'` while fixing an
+unrelated defect, and had it caught by `check-conformance` rather than by memory --
+their own words: "EXACTLY the mediawiki trap, made a second time, three weeks of lessons
+later". The closed set is doing its job precisely when it refuses a plausible value.
+
 ## Two extensions must not register the same function name
 
 Measured by panduck 2026-09-01, before writing any converter code, because the
