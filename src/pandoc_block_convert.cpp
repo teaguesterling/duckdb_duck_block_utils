@@ -152,6 +152,183 @@ static void StorePandocAttr(const PandocAttr &attr, map<string, string> &attrs) 
 	}
 }
 
+// Build a REAL Pandoc Table from the native {headers, rows} projection.
+//
+// The native arm used to copy the projection straight into `c`, so a table from any
+// reader that does NOT preserve a pandoc_ast tuple -- markdown, webbed, anything
+// non-pandoc -- exported as {"t":"Table","c":{"headers":[...],"rows":[...]}}. Pandoc's
+// `c` is a LIST, so it rejected the WHOLE DOCUMENT: "expected Array but got Object".
+// Not the table degrading, the export failing outright.
+//
+// Found by the duckeye session, whose `-o md` and `-o pandoc` both route through here
+// and both failed on any document containing a table. A document without one exported
+// fine, which is why it survived: every fixture in this repo reads its tables from
+// pandoc and therefore carries the preserved tuple that takes the arm above.
+//
+// Shape, from pandoc 3.1.3 output rather than from the documentation:
+//   [ attr, caption, colspecs, thead, tbodies, tfoot ]
+//   attr    ["", [], []]              caption  [null, []]
+//   colspec [AlignDefault, ColWidthDefault]      one per column
+//   thead   [attr, [row]]             row      [attr, [cell]]
+//   cell    [attr, AlignDefault, 1, 1, [Plain[Str]]]
+//   tbody   [attr, 0, [], [row]]      tfoot    [attr, []]
+static yyjson_mut_val *EmptyPandocAttr(yyjson_mut_doc *doc) {
+	yyjson_mut_val *a = yyjson_mut_arr(doc);
+	yyjson_mut_arr_add_str(doc, a, "");
+	yyjson_mut_arr_add_val(a, yyjson_mut_arr(doc));
+	yyjson_mut_arr_add_val(a, yyjson_mut_arr(doc));
+	return a;
+}
+
+static yyjson_mut_val *PandocTagObj(yyjson_mut_doc *doc, const char *tag) {
+	yyjson_mut_val *o = yyjson_mut_obj(doc);
+	yyjson_mut_obj_add_str(doc, o, "t", tag);
+	return o;
+}
+
+static yyjson_mut_val *PandocTableCell(yyjson_mut_doc *doc, const string &text) {
+	yyjson_mut_val *cell = yyjson_mut_arr(doc);
+	yyjson_mut_arr_add_val(cell, EmptyPandocAttr(doc));
+	yyjson_mut_arr_add_val(cell, PandocTagObj(doc, "AlignDefault"));
+	yyjson_mut_arr_add_int(doc, cell, 1);
+	yyjson_mut_arr_add_int(doc, cell, 1);
+	yyjson_mut_val *blocks = yyjson_mut_arr(doc);
+	if (!text.empty()) {
+		yyjson_mut_val *plain = yyjson_mut_obj(doc);
+		yyjson_mut_obj_add_str(doc, plain, "t", "Plain");
+		yyjson_mut_val *inlines = yyjson_mut_arr(doc);
+		yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+		yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+		yyjson_mut_obj_add_strncpy(doc, str_obj, "c", text.data(), text.size());
+		yyjson_mut_arr_add_val(inlines, str_obj);
+		yyjson_mut_obj_add_val(doc, plain, "c", inlines);
+		yyjson_mut_arr_add_val(blocks, plain);
+	}
+	yyjson_mut_arr_add_val(cell, blocks);
+	return cell;
+}
+
+static yyjson_mut_val *PandocTableRow(yyjson_mut_doc *doc, yyjson_val *cells_arr, size_t ncols) {
+	yyjson_mut_val *row = yyjson_mut_arr(doc);
+	yyjson_mut_arr_add_val(row, EmptyPandocAttr(doc));
+	yyjson_mut_val *cells = yyjson_mut_arr(doc);
+	size_t written = 0;
+	if (cells_arr && yyjson_is_arr(cells_arr)) {
+		size_t ci, cmax;
+		yyjson_val *cv;
+		yyjson_arr_foreach(cells_arr, ci, cmax, cv) {
+			string text = yyjson_is_str(cv) ? string(yyjson_get_str(cv), yyjson_get_len(cv)) : "";
+			yyjson_mut_arr_add_val(cells, PandocTableCell(doc, text));
+			written++;
+		}
+	}
+	// Pandoc requires every row to have the column count the colspecs declare; a short
+	// row is a document it will not read at all rather than one it renders ragged.
+	while (written < ncols) {
+		yyjson_mut_arr_add_val(cells, PandocTableCell(doc, ""));
+		written++;
+	}
+	yyjson_mut_arr_add_val(row, cells);
+	return row;
+}
+
+static yyjson_mut_val *NativeTableToPandocVal(yyjson_mut_doc *doc, const string &content) {
+	yyjson_doc *src = yyjson_read(content.c_str(), content.size(), 0);
+	if (!src) {
+		return nullptr;
+	}
+	yyjson_val *root = yyjson_doc_get_root(src);
+	yyjson_val *headers = root ? yyjson_obj_get(root, "headers") : nullptr;
+	yyjson_val *rows = root ? yyjson_obj_get(root, "rows") : nullptr;
+
+	size_t ncols = headers && yyjson_is_arr(headers) ? yyjson_arr_size(headers) : 0;
+	if (ncols == 0 && rows && yyjson_is_arr(rows) && yyjson_arr_size(rows) > 0) {
+		yyjson_val *first = yyjson_arr_get(rows, 0);
+		if (first && yyjson_is_arr(first)) {
+			ncols = yyjson_arr_size(first);
+		}
+	}
+
+	yyjson_mut_val *c = yyjson_mut_arr(doc);
+	yyjson_mut_arr_add_val(c, EmptyPandocAttr(doc));
+
+	yyjson_mut_val *caption = yyjson_mut_arr(doc);
+	yyjson_mut_arr_add_val(caption, yyjson_mut_null(doc));
+	yyjson_mut_arr_add_val(caption, yyjson_mut_arr(doc));
+	yyjson_mut_arr_add_val(c, caption);
+
+	yyjson_mut_val *colspecs = yyjson_mut_arr(doc);
+	for (size_t i = 0; i < ncols; i++) {
+		yyjson_mut_val *spec = yyjson_mut_arr(doc);
+		yyjson_mut_arr_add_val(spec, PandocTagObj(doc, "AlignDefault"));
+		yyjson_mut_arr_add_val(spec, PandocTagObj(doc, "ColWidthDefault"));
+		yyjson_mut_arr_add_val(colspecs, spec);
+	}
+	yyjson_mut_arr_add_val(c, colspecs);
+
+	yyjson_mut_val *thead = yyjson_mut_arr(doc);
+	yyjson_mut_arr_add_val(thead, EmptyPandocAttr(doc));
+	yyjson_mut_val *head_rows = yyjson_mut_arr(doc);
+	if (headers && yyjson_is_arr(headers) && yyjson_arr_size(headers) > 0) {
+		yyjson_mut_arr_add_val(head_rows, PandocTableRow(doc, headers, ncols));
+	}
+	yyjson_mut_arr_add_val(thead, head_rows);
+	yyjson_mut_arr_add_val(c, thead);
+
+	yyjson_mut_val *tbodies = yyjson_mut_arr(doc);
+	yyjson_mut_val *tbody = yyjson_mut_arr(doc);
+	yyjson_mut_arr_add_val(tbody, EmptyPandocAttr(doc));
+	yyjson_mut_arr_add_int(doc, tbody, 0);
+	yyjson_mut_arr_add_val(tbody, yyjson_mut_arr(doc));
+	yyjson_mut_val *body_rows = yyjson_mut_arr(doc);
+	if (rows && yyjson_is_arr(rows)) {
+		size_t ri, rmax;
+		yyjson_val *rv;
+		yyjson_arr_foreach(rows, ri, rmax, rv) {
+			yyjson_mut_arr_add_val(body_rows, PandocTableRow(doc, rv, ncols));
+		}
+	}
+	yyjson_mut_arr_add_val(tbody, body_rows);
+	yyjson_mut_arr_add_val(tbodies, tbody);
+	yyjson_mut_arr_add_val(c, tbodies);
+
+	yyjson_mut_val *tfoot = yyjson_mut_arr(doc);
+	yyjson_mut_arr_add_val(tfoot, EmptyPandocAttr(doc));
+	yyjson_mut_arr_add_val(tfoot, yyjson_mut_arr(doc));
+	yyjson_mut_arr_add_val(c, tfoot);
+
+	yyjson_doc_free(src);
+	return c;
+}
+
+// KEYED ON SHAPE, not on provenance. A preserved Pandoc tuple is an ARRAY; the native
+// {headers, rows} projection is an OBJECT. Deciding by shape means a table converts
+// correctly wherever it came from, and it cannot be defeated by an attribute being
+// absent, present-but-empty, or present on a block whose content is the other form.
+//
+// panduck reached the same fix independently (0ef3ed2) and keyed it the same way after
+// finding TWO drifted copies of the arm in their file. This repo had the same pair --
+// top-level, and nested-in-a-container -- with the nested one carrying a comment
+// claiming "these store their whole Pandoc tuple as JSON", true only of pandoc-sourced
+// blocks. One function now serves both.
+static yyjson_mut_val *TableContentToPandocVal(yyjson_mut_doc *doc, const string &content) {
+	if (content.empty()) {
+		return NativeTableToPandocVal(doc, "{}");
+	}
+	yyjson_doc *sub = yyjson_read(content.c_str(), content.size(), 0);
+	if (!sub) {
+		return yyjson_mut_arr(doc);
+	}
+	yyjson_val *root = yyjson_doc_get_root(sub);
+	if (root && yyjson_is_arr(root)) {
+		yyjson_mut_val *copied = yyjson_val_mut_copy(doc, root);
+		yyjson_doc_free(sub);
+		return copied;
+	}
+	yyjson_doc_free(sub);
+	return NativeTableToPandocVal(doc, content);
+}
+
 // RECURSES. It did not until 2026-09-01, and the visible symptom was the less serious
 // one: a heading's flattened title lost its formatting. The same helper projects TABLE
 // CELLS into the native {headers, rows} schema, so a cell whose only content was
@@ -1737,18 +1914,29 @@ static void ConvertContainerChildrenToPandocVal(yyjson_mut_doc *doc, const vecto
 			} else if ((child_type == BlockTypes::TYPE_TABLE || child_type == BlockTypes::TYPE_DEFLIST) &&
 			           GetElementStringField(child, BlockTypes::ENCODING_IDX) == BlockTypes::ENCODING_JSON &&
 			           !content.empty()) {
-				// These store their whole Pandoc tuple as JSON, so splice it back exactly
-				// as the top-level branches do. Without this a table or definition list
-				// inside a div, blockquote or figure vanished.
+				// THE SECOND COPY OF THE TABLE ARM, and it had drifted. The comment here
+				// used to read "these store their whole Pandoc tuple as JSON", which is
+				// true only of PANDOC-SOURCED blocks: a table from any native reader
+				// carries the {headers, rows} projection instead, and splicing an object
+				// into Pandoc's `c` produces a document real pandoc REFUSES outright.
+				//
+				// Both copies now go through TableContentToPandocVal, which decides by
+				// SHAPE. duckeye found the top-level one and told me to look for a pair,
+				// having been told by panduck that their file had exactly that -- two
+				// copies, already disagreeing.
 				yyjson_mut_val *obj = yyjson_mut_obj(doc);
 				yyjson_mut_obj_add_str(doc, obj, "t",
 				                       child_type == BlockTypes::TYPE_TABLE ? "Table" : "DefinitionList");
-				yyjson_doc *sub_doc = yyjson_read(content.c_str(), content.size(), 0);
-				if (sub_doc) {
-					yyjson_mut_obj_add_val(doc, obj, "c", yyjson_val_mut_copy(doc, yyjson_doc_get_root(sub_doc)));
-					yyjson_doc_free(sub_doc);
+				if (child_type == BlockTypes::TYPE_TABLE) {
+					yyjson_mut_obj_add_val(doc, obj, "c", TableContentToPandocVal(doc, content));
 				} else {
-					yyjson_mut_obj_add_val(doc, obj, "c", yyjson_mut_arr(doc));
+					yyjson_doc *sub_doc = yyjson_read(content.c_str(), content.size(), 0);
+					if (sub_doc) {
+						yyjson_mut_obj_add_val(doc, obj, "c", yyjson_val_mut_copy(doc, yyjson_doc_get_root(sub_doc)));
+						yyjson_doc_free(sub_doc);
+					} else {
+						yyjson_mut_obj_add_val(doc, obj, "c", yyjson_mut_arr(doc));
+					}
 				}
 				yyjson_mut_arr_add_val(child_blocks_arr, obj);
 				j++;
@@ -2168,30 +2356,13 @@ static string BuildBlocksJson(const vector<Value> &blocks_list) {
 			auto tuple = GetElementAttribute(block, BlockTypes::ATTR_PANDOC_AST);
 			yyjson_mut_val *tbl_obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, tbl_obj, "t", "Table");
-			yyjson_doc *sub_doc = yyjson_read(tuple.c_str(), tuple.size(), 0);
-			if (sub_doc) {
-				yyjson_mut_obj_add_val(doc, tbl_obj, "c", yyjson_val_mut_copy(doc, yyjson_doc_get_root(sub_doc)));
-				yyjson_doc_free(sub_doc);
-			} else {
-				yyjson_mut_obj_add_val(doc, tbl_obj, "c", yyjson_mut_arr(doc));
-			}
+			yyjson_mut_obj_add_val(doc, tbl_obj, "c", TableContentToPandocVal(doc, tuple));
 			yyjson_mut_arr_add_val(blocks_arr, tbl_obj);
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_TABLE) {
 			yyjson_mut_val *tbl_obj = yyjson_mut_obj(doc);
 			yyjson_mut_obj_add_str(doc, tbl_obj, "t", "Table");
-			if (!content.empty()) {
-				yyjson_doc *sub_doc = yyjson_read(content.c_str(), content.size(), 0);
-				if (sub_doc) {
-					yyjson_mut_val *imported = yyjson_val_mut_copy(doc, yyjson_doc_get_root(sub_doc));
-					yyjson_mut_obj_add_val(doc, tbl_obj, "c", imported);
-					yyjson_doc_free(sub_doc);
-				} else {
-					yyjson_mut_obj_add_val(doc, tbl_obj, "c", yyjson_mut_arr(doc));
-				}
-			} else {
-				yyjson_mut_obj_add_val(doc, tbl_obj, "c", yyjson_mut_arr(doc));
-			}
+			yyjson_mut_obj_add_val(doc, tbl_obj, "c", TableContentToPandocVal(doc, content));
 			yyjson_mut_arr_add_val(blocks_arr, tbl_obj);
 			block_idx++;
 		} else if (element_type == BlockTypes::TYPE_IMAGE) {

@@ -2423,3 +2423,55 @@ query I
 SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Header","c":[2,["",[],[]],[{"t":"Strong","c":[{"t":"Str","c":"Bold"}]},{"t":"Space"},{"t":"Str","c":"title"}]]}]'))::VARCHAR;
 ----
 [{"t":"Header","c":[2,["",[],[]],[{"t":"Strong","c":[{"t":"Str","c":"Bold"}]},{"t":"Space"},{"t":"Str","c":"title"}]]}]
+
+# ============================================================================
+# A NATIVE TABLE MUST EXPORT AS A REAL PANDOC TABLE.
+#
+# `content` for a table from any non-pandoc reader is the {headers, rows}
+# projection -- an OBJECT. Pandoc's Table constructor takes a LIST, so splicing
+# the projection into `c` produced a document real pandoc REFUSES:
+#
+#   JSON parse error: When parsing the constructor Table ... expected Array
+#   but got Object
+#
+# Not the table degrading -- the whole export failing. duckeye's `-o md` and
+# `-o pandoc` failed on ANY document containing a table, from any reader except
+# a pandoc-sourced one.
+#
+# It survived every fixture here because a pandoc-sourced table carries the
+# preserved pandoc_ast tuple and takes the other arm. The discrimination the
+# native arm was missing is now keyed on SHAPE -- a tuple is an array, the
+# projection is an object -- so both arms and both COPIES of the arm agree.
+# ============================================================================
+
+query I
+SELECT json_type(json_extract(duck_blocks_to_pandoc_blocks([
+  {'kind':'block','element_type':'table','content':'{"headers":["a","b"],"rows":[["1","2"]]}','level':1,'encoding':'json','attributes':MAP{},'element_order':0}::duck_block])::JSON, '$[0].c'));
+----
+ARRAY
+
+# The cells survive, not just the shape.
+query I
+SELECT duck_blocks_to_pandoc_blocks([
+  {'kind':'block','element_type':'table','content':'{"headers":["a"],"rows":[["1"]]}','level':1,'encoding':'json','attributes':MAP{},'element_order':0}::duck_block])::VARCHAR LIKE '%"Str","c":"a"%'
+   AND duck_blocks_to_pandoc_blocks([
+  {'kind':'block','element_type':'table','content':'{"headers":["a"],"rows":[["1"]]}','level':1,'encoding':'json','attributes':MAP{},'element_order':0}::duck_block])::VARCHAR LIKE '%"Str","c":"1"%';
+----
+true
+
+# THE SECOND COPY: a table nested in a container went through its own arm, whose
+# comment claimed every table stores a Pandoc tuple. Native tables do not.
+query I
+SELECT json_type(json_extract(duck_blocks_to_pandoc_blocks([
+  {'kind':'block','element_type':'div','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'table','content':'{"headers":["a"],"rows":[["1"]]}','level':2,'encoding':'json','attributes':MAP{},'element_order':1}::duck_block])::JSON, '$[0].c[1][0].c'));
+----
+ARRAY
+
+# DISCRIMINATING: a PANDOC-SOURCED table still round-trips through its preserved
+# tuple byte-for-byte. Rebuilding both from the projection would satisfy the
+# assertions above while silently discarding alignment, widths and cell blocks.
+query I
+SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Table","c":[["",[],[]],[null,[]],[[{"t":"AlignRight"},{"t":"ColWidthDefault"}]],[["",[],[]],[[["",[],[]],[[["",[],[]],{"t":"AlignDefault"},1,1,[{"t":"Plain","c":[{"t":"Str","c":"h"}]}]]]]]],[[["",[],[]],0,[],[]]],[["",[],[]],[]]]}]'))::VARCHAR LIKE '%AlignRight%';
+----
+true
