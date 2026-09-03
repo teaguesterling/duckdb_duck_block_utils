@@ -648,6 +648,81 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 			warnings.push_back(Value::STRUCT(std::move(warning_values)));
 		}
 
+		// POSITION, which no per-element check can see. Metadata keeps its SOURCE
+		// position: front matter at the front, anything the source did not position at
+		// the end. The ROLE is authoritative and the position corroborates it, so a role
+		// that contradicts the position means one of the two is lying and a consumer
+		// cannot tell which.
+		//
+		// Mirrored in vendor/duck_block_conformance.sql; test/check_conformance_macro.py
+		// fails if the two disagree.
+		{
+			int32_t first_body_order = 2147483647;
+			int32_t first_value_order = 2147483647;
+			bool has_body = false, has_value = false;
+			for (auto &elem : blocks_list) {
+				if (elem.IsNull()) {
+					continue;
+				}
+				auto &f = StructValue::GetChildren(elem);
+				const string k = f[BlockTypes::KIND_IDX].IsNull() ? "" : f[BlockTypes::KIND_IDX].GetValue<string>();
+				const string t = f[BlockTypes::ELEMENT_TYPE_IDX].IsNull() ? "" : f[BlockTypes::ELEMENT_TYPE_IDX].GetValue<string>();
+				const int32_t lv = f[BlockTypes::LEVEL_IDX].IsNull() ? 0 : f[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+				const int32_t ord =
+				    f[BlockTypes::ELEMENT_ORDER_IDX].IsNull() ? 0 : f[BlockTypes::ELEMENT_ORDER_IDX].GetValue<int32_t>();
+				if (k == BlockTypes::KIND_BLOCK && lv == 1 && t != BlockTypes::TYPE_METADATA) {
+					has_body = true;
+					if (ord < first_body_order) { first_body_order = ord; }
+				} else if (k == BlockTypes::KIND_VALUE) {
+					has_value = true;
+					if (ord < first_value_order) { first_value_order = ord; }
+				}
+			}
+			for (auto &elem : blocks_list) {
+				if (elem.IsNull()) {
+					continue;
+				}
+				auto &f = StructValue::GetChildren(elem);
+				const string k = f[BlockTypes::KIND_IDX].IsNull() ? "" : f[BlockTypes::KIND_IDX].GetValue<string>();
+				const string t = f[BlockTypes::ELEMENT_TYPE_IDX].IsNull() ? "" : f[BlockTypes::ELEMENT_TYPE_IDX].GetValue<string>();
+				const int32_t lv = f[BlockTypes::LEVEL_IDX].IsNull() ? 0 : f[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
+				const int32_t ord =
+				    f[BlockTypes::ELEMENT_ORDER_IDX].IsNull() ? 0 : f[BlockTypes::ELEMENT_ORDER_IDX].GetValue<int32_t>();
+				string role;
+				if (!f[BlockTypes::ATTRIBUTES_IDX].IsNull()) {
+					for (auto &entry : MapValue::GetChildren(f[BlockTypes::ATTRIBUTES_IDX])) {
+						if (entry.IsNull()) {
+							continue;
+						}
+						auto &kv = StructValue::GetChildren(entry);
+						if (kv.size() >= 2 && !kv[0].IsNull() && kv[0].GetValue<string>() == BlockTypes::ATTR_ROLE &&
+						    !kv[1].IsNull()) {
+							role = kv[1].GetValue<string>();
+						}
+					}
+				}
+				if (t == BlockTypes::TYPE_METADATA && role == BlockTypes::ROLE_FRONTMATTER && has_body &&
+				    first_body_order < ord) {
+					child_list_t<Value> wv;
+					wv.push_back(make_pair("severity", Value("warning")));
+					wv.push_back(make_pair("message",
+					                       Value("metadata with role='frontmatter' has body blocks before it; front "
+					                             "matter is at the front, or the role is wrong")));
+					wv.push_back(make_pair("element_order", Value(ord)));
+					warnings.push_back(Value::STRUCT(std::move(wv)));
+				}
+				if (k == BlockTypes::KIND_BLOCK && lv == 1 && has_value && first_value_order < ord) {
+					child_list_t<Value> wv;
+					wv.push_back(make_pair("severity", Value("warning")));
+					wv.push_back(make_pair("message",
+					                       Value("a top-level block follows kind='value' metadata; values are "
+					                             "appended after the body, so nothing may come after them")));
+					wv.push_back(make_pair("element_order", Value(ord)));
+					warnings.push_back(Value::STRUCT(std::move(wv)));
+				}
+			}
+		}
+
 		result.SetValue(i, Value::LIST(warning_struct_type, std::move(warnings)));
 	}
 }

@@ -300,6 +300,32 @@ def main() -> int:
             "[{'kind':'block','element_type':'frontmatter','content':'x','level':1,"
             "'encoding':'yaml','attributes':MAP{},'element_order':0}::duck_block]",
         ),
+        (
+            True,
+            "frontmatter emitted after the body",
+            "[{'kind':'block','element_type':'paragraph','content':'b','level':1,'encoding':'text',"
+            "'attributes':MAP{},'element_order':0}::duck_block,"
+            "{'kind':'block','element_type':'metadata','content':'t','level':1,'encoding':'yaml',"
+            "'attributes':MAP{'role':'frontmatter'},'element_order':1}::duck_block]",
+        ),
+        (
+            True,
+            "a body block after kind='value' metadata",
+            "[{'kind':'value','element_type':'string','content':'T','level':1,'encoding':'text',"
+            "'attributes':MAP{'key':'title'},'element_order':0}::duck_block,"
+            "{'kind':'block','element_type':'paragraph','content':'b','level':1,'encoding':'text',"
+            "'attributes':MAP{},'element_order':1}::duck_block]",
+        ),
+        (
+            False,
+            "frontmatter first, values last -- the conforming shape",
+            "[{'kind':'block','element_type':'metadata','content':'t','level':1,'encoding':'yaml',"
+            "'attributes':MAP{'role':'frontmatter'},'element_order':0}::duck_block,"
+            "{'kind':'block','element_type':'paragraph','content':'b','level':1,'encoding':'text',"
+            "'attributes':MAP{},'element_order':1}::duck_block,"
+            "{'kind':'value','element_type':'string','content':'T','level':1,'encoding':'text',"
+            "'attributes':MAP{'key':'title'},'element_order':2}::duck_block]",
+        ),
         (False, "clean document", "pandoc_ast_to_blocks('[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"x\"}]}]')"),
         # Depth 3, because the pre-structural shape is worst at depth and the minimal case
         # understates it. webbed's reader emitted one top-level `list` PER NESTING LEVEL,
