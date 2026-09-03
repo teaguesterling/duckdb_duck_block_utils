@@ -427,33 +427,45 @@ values, so nothing will object if you do.
 | discrete FIELDS — title, author, date | `kind='value'`, this section | docx `core.xml`, EPUB Dublin Core, odt `meta.xml`, RTF `\info`, LaTeX `\title`, HTML `<head>`, Pandoc `Meta` |
 | a verbatim BLOB you must not reinterpret | `kind='block'`, `element_type='metadata'`, `encoding='yaml'` | a markdown file's YAML frontmatter, kept as written |
 
-**THE TWO HOMES SIT IN DIFFERENT PLACES, and the rule follows from what they are.**
-Measured 2026-09-02, two shipped implementations already disagreeing because this was
-never written down:
+**BOTH HOMES GO AT THE END OF THE LIST. There is no frontmatter position in
+duck_blocks.** Teague's ruling, 2026-09-02, superseding a ruling I made earlier the
+same day that let the two homes sit in different places because each position had a
+defensible reason. Two defensible answers to one question is the thing this vocabulary
+exists to prevent, and it had already produced a live divergence:
 
 ```
-duckdb_markdown   metadata blob  @1, BEFORE the body paragraph @2   (frontmatter first)
-duck_block_utils  value tree     AFTER every body block             (metadata last)
+BEFORE     duckdb_markdown   metadata blob  @1, ahead of the body   (frontmatter first)
+           duck_block_utils  value tree     after every body block  (metadata last)
+
+NOW        both homes        AFTER every body block
 ```
 
-Both are right, and the split is not arbitrary:
+**Metadata is TAILMATTER in duck_blocks, whatever it was in the source.** A `metadata`
+blob that was YAML frontmatter at the top of a `.md` file is emitted after the body,
+with `attributes['role'] = 'frontmatter'` recording what it WAS. The role carries the
+provenance so the position does not have to.
 
-- **The blob is a `kind='block'`.** It is part of the document's body sequence and sits
-  **where it appeared in the source** -- first, for frontmatter, because that is what
-  "front matter" means. A block's position is its position.
-- **The value tree is `kind='value'`.** It is not body content and has no place in the
-  document's order at all, so it is **appended after the blocks**. Two consequences
-  worth having: `element_order` 0 is the first body block whether or not the document
-  has metadata, and adding metadata shifts no body index -- the same reason
-  `duck_blocks_stamp` appends rather than prepends.
+Why the end rather than the beginning, since either would have normalised:
 
-So a document carrying BOTH homes has its frontmatter blob at the top and its
-structured fields at the bottom, and that is correct rather than a contradiction: one
-is a block the author wrote, the other is a projection of it.
+- **`element_order` 0 is the first body block, always**, whether or not the document
+  has metadata. A consumer indexing the body needs no special case.
+- **Adding metadata shifts no body index.** Prepending renumbers the entire document to
+  record something most documents do not have -- the same cost that makes
+  `duck_blocks_stamp` append.
+- **Optionality is free.** "This document has no metadata" and "this document has
+  metadata" produce identical body sequences, so a diff between them reports metadata
+  and nothing else.
 
-**Consumers must not infer metadata from position.** Filter on `kind='value'`, or on
-`element_type='metadata'` for the blob. A consumer that reads `blocks[0]` expecting
-frontmatter breaks on every document that has none.
+**A writer reconstructs frontmatter from the ROLE, not from the position.** A markdown
+writer emitting `---\ntitle: T\n---` at the top of its output finds that block by
+`element_type='metadata'` and `attributes['role']='frontmatter'`, wherever it sits in
+the list. That is the same rule as everywhere else here: never infer meaning from
+position.
+
+**Consumers must not infer metadata from position either.** Filter on `kind='value'`,
+or `element_type='metadata'` for the blob. A consumer reading `blocks[0]` expecting
+frontmatter breaks on every document that has none -- which, under this rule, is every
+document.
 
 They are not interchangeable and neither is a fallback for the other. The first is
 structured and queryable; the second is a preserved artifact whose internal syntax
