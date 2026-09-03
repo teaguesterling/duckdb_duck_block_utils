@@ -453,6 +453,37 @@ duckdb_markdown   read the literal `---` block at the top   -> emits it first
 duck_block_utils  receives pandoc's meta, which has no position -> appends it
 ```
 
+**METADATA NEED NOT BE CONTIGUOUS, and a document with both kinds will not be.**
+Asked by the webbed session: an HTML file with top-positioned frontmatter AND `<head>`
+metadata puts the frontmatter first, the head metadata last, and the body between them.
+That is intended.
+
+A consumer collecting "all metadata" must filter -- `kind='value'`, or
+`element_type='metadata'` for the blob -- and a consumer that filters does not care
+where the rows are. Contiguity is only worth anything to a consumer scanning by
+position, which this spec forbids two paragraphs above. Buying contiguity would mean
+inventing a position for metadata the source never positioned, to serve a technique
+that is already wrong.
+
+The split is also informative rather than merely tolerable: it distinguishes metadata
+the AUTHOR positioned from metadata the FORMAT supplied.
+
+**AN ABSENT `role` IS ITSELF THE SIGNAL, so unpositioned metadata needs no role.**
+`frontmatter` and `tailmatter` are positional claims; an element the source did not
+position has no claim to make. Checked as:
+
+```
+role='frontmatter'  -> must come before every top-level body block
+role='tailmatter'   -> must come after every top-level body block
+no role             -> must be appended
+```
+
+Recorded because webbed asked whether their `<head>` metadata should carry
+`role='document'` to fill an apparent gap. It should not, and this repo does not set a
+role there either -- which is the reason to check before asking a consumer to change:
+the gap was in both of us, and the right fix was to the rule rather than to either
+producer.
+
 **Both positions are CHECKED, in both implementations.** `duck_blocks_lint` and
 `vendor/duck_block_conformance.sql` each carry two advisory rules, and
 `test/check_conformance_macro.py` fails if they disagree:
