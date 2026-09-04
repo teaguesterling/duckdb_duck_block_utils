@@ -1,7 +1,9 @@
 #pragma once
 
 #include "duckdb.hpp"
+#include "duckdb/function/table_function.hpp"
 #include <type_traits>
+#include <utility>
 
 // duckdb_compat.hpp — fleet-standard cross-version shim for DuckDB extensions.
 //
@@ -147,23 +149,65 @@ inline Vector &CompatStructChild(ENTRIES &entries, idx_t index) {
 // too). String LITERALS need no helper: Identifier(const char *) is implicit by
 // design, so `names.push_back("blocks")` compiles unchanged on both versions.
 // Only signatures and RUNTIME strings move.
-#ifdef DUCKDB_HAS_IDENTIFIER
-using CompatName = Identifier;
-inline string CompatNameStr(const Identifier &id) {
-	return id.GetIdentifierName();
-}
-inline Identifier CompatMakeName(string name) {
-	return Identifier(std::move(name));
-}
-#else
-using CompatName = string;
+//
+// DERIVED from TableFunctionBindInput rather than selected by __has_include,
+// because the header and the signature do NOT move together. identifier.hpp was
+// backported to the stable branch WITHOUT changing table_function_bind_t:
+//
+//   v1.5-variegata @ our pin   no identifier.hpp    bind: vector<string>
+//   v1.5-variegata @ branch tip   HAS identifier.hpp   bind: vector<string>
+//   main (v2.0)                   HAS identifier.hpp   bind: vector<Identifier>
+//
+// So a __has_include probe is right today only because the pin predates the
+// backport, and would flip CompatName to Identifier on the very next submodule
+// bump -- against a DuckDB that still wants strings.
+//
+// Decomposed from table_function_bind_t ITSELF, the typedef that actually
+// changed, rather than from a sibling that happens to move with it. Deriving
+// from TableFunctionBindInput::input_table_names also works today -- I checked
+// both headers and the member and the `names` parameter do move together -- but
+// "happens to move together" is an assumption that has to be re-verified on
+// every bump, and not assuming is the entire point of this block.
+template <class T>
+struct CompatBindNamesOf;
+template <class R, class A, class B, class C, class D>
+struct CompatBindNamesOf<R (*)(A, B, C, D)> {
+	// `typename` is REQUIRED here, D being dependent, and must NOT appear on the
+	// namespace-scope alias below, where it is C++20-only and breaks MSVC.
+	using type = typename std::remove_reference<D>::type::value_type;
+};
+using CompatName = CompatBindNamesOf<table_function_bind_t>::type;
+
 inline string CompatNameStr(const string &name) {
 	return name;
 }
-inline string CompatMakeName(string name) {
-	return name;
+#ifdef DUCKDB_HAS_IDENTIFIER
+// Only an overload -- __has_include still answers "does this type exist", which
+// is the one question it is actually reliable for.
+inline string CompatNameStr(const Identifier &id) {
+	return id.GetIdentifierName();
 }
 #endif
+
+inline CompatName CompatMakeName(string name) {
+	return CompatName(std::move(name));
+}
+
+// Ties the derived TYPE to its OVERLOAD SET, and is the one assert here that can
+// actually fail. Deriving CompatName correctly still leaves a second failure
+// mode open: CompatName resolves to Identifier on a DuckDB whose identifier.hpp
+// this header did NOT find, so the Identifier overload was never declared and
+// CompatNameStr has nothing to match -- Identifier's operator const string & is
+// explicit, so there is no silent fallback to the string overload either. This
+// catches that at the header, next to the explanation, instead of at some
+// distant call site. It holds on both lines, so it is safe to ship.
+//
+// Note what is NOT asserted: `is_same<CompatName, string>` would be true on the
+// pin and FALSE on v2.0, so shipping it would hard-fail the very build this
+// header exists to make work. And asserting CompatName equals the derivation it
+// is defined as cannot fail -- it documents intent without checking anything.
+static_assert(std::is_same<decltype(CompatNameStr(std::declval<const CompatName &>())), string>::value,
+              "CompatNameStr must accept the derived CompatName on every DuckDB line");
 
 // --- LogicalType alias ---------------------------------------------------------
 // v1.5: void SetAlias(string)      -- mutates in place
@@ -264,73 +308,6 @@ inline VALUE *CompatFlatDataMutableImpl(Vector &vec, std::false_type) {
 template <class VALUE, class FV = FlatVector>
 inline VALUE *CompatFlatDataMutable(Vector &vec) {
 	return CompatFlatDataMutableImpl<VALUE, FV>(vec, CompatHasFlatGetDataMutable<FV>());
-}
-
-// --- scalar function fallibility ------------------------------------------------
-// v2.0 added a RUNTIME contract: a scalar function that can throw during
-// execution must declare it. Throwing from a function that has not is an
-// InternalException:
-//
-//   INTERNAL Error: Scalar function "f" threw an execution error, but the
-//   function is not marked as fallible - the function must call SetFallible().
-//
-// This is NOT a compile error and no grep finds it -- the only symptom is a test
-// that exercises an error path, and only on a build with assertions enabled, so
-// one CI arch can be green while another is red on the very same commit.
-//
-// No-op on v1.5, where the member does not exist. Must be called BEFORE the
-// function goes into a FunctionSet, since set members are no longer mutable
-// (see the FunctionSet<T>::functions change).
-template <class T, class = void>
-struct CompatHasSetFallible : std::false_type {};
-template <class T>
-struct CompatHasSetFallible<T, decltype(void(std::declval<T &>().SetFallible()))> : std::true_type {};
-
-template <class FUNC>
-inline void CompatSetFallibleImpl(FUNC &fun, std::true_type) {
-	fun.SetFallible();
-}
-template <class FUNC>
-inline void CompatSetFallibleImpl(FUNC &, std::false_type) {
-}
-template <class FUNC>
-inline void CompatSetFallible(FUNC &fun) {
-	CompatSetFallibleImpl(fun, CompatHasSetFallible<FUNC>());
-}
-
-// --- FlatVector validity mask -----------------------------------------------
-// v1.5: Validity(Vector &)              returns ValidityMask &
-// v2.0: Validity(const Vector &)        returns const ValidityMask &
-//       ValidityMutable(Vector &)       returns ValidityMask &
-//
-// Same copy-on-write split as GetData/GetDataMutable: ValidityMutable goes
-// through BufferMutable() and un-shares, Validity goes through Buffer() and does
-// not. Probed separately from the GetDataMutable change because they are two
-// independent upstream changes.
-//
-// Worse to diagnose than the GetData case: `auto &m = FlatVector::Validity(v)`
-// still COMPILES on v2.0, silently deducing a const reference. The error appears
-// later, at the mutation, as "passing 'const duckdb::ValidityMask' as 'this'
-// argument discards qualifiers" -- naming neither Validity nor FlatVector. Grep
-// for the MUTATION (SetInvalid/SetValid/SetAllInvalid/SetAllValid) and walk back
-// to where the reference was bound.
-template <class T, class = void>
-struct CompatHasFlatValidityMutable : std::false_type {};
-template <class T>
-struct CompatHasFlatValidityMutable<T, decltype(void(T::ValidityMutable(std::declval<Vector &>())))> : std::true_type {
-};
-
-template <class FV>
-inline ValidityMask &CompatFlatValidityMutableImpl(Vector &vec, std::true_type) {
-	return FV::ValidityMutable(vec);
-}
-template <class FV>
-inline ValidityMask &CompatFlatValidityMutableImpl(Vector &vec, std::false_type) {
-	return FV::Validity(vec);
-}
-template <class FV = FlatVector>
-inline ValidityMask &CompatFlatValidityMutable(Vector &vec) {
-	return CompatFlatValidityMutableImpl<FV>(vec, CompatHasFlatValidityMutable<FV>());
 }
 
 } // namespace duckdb

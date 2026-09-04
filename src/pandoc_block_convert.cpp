@@ -2997,14 +2997,16 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	// Fallible: every converter below can throw the Pandoc nesting-depth cap
 	// (CheckPandocDepth), and the file-backed ones can throw IOException. DuckDB
 	// v2.0 makes that a DECLARED property -- an undeclared throw becomes
-	// "INTERNAL Error: ... the function is not marked as fallible". No-op on v1.5.
-	CompatSetFallible(ast_to_blocks_func);
+	// "INTERNAL Error: ... the function is not marked as fallible". SetFallible
+	// exists identically on the pin, so this needs no shim: it is simply inert
+	// there, where nothing consults the flag the way v2.0 does.
+	ast_to_blocks_func.SetFallible();
 	loader.RegisterFunction(ast_to_blocks_func);
 
 	// duck_blocks_to_pandoc_blocks(blocks LIST(duck_block)) -> VARCHAR (JSON array of Pandoc blocks)
 	auto blocks_to_ast_func = ScalarFunction("duck_blocks_to_pandoc_blocks", {duck_block_list_type},
 	                                         LogicalType::VARCHAR, DuckBlocksToPandocBlocksFun);
-	CompatSetFallible(blocks_to_ast_func);
+	blocks_to_ast_func.SetFallible();
 	loader.RegisterFunction(blocks_to_ast_func);
 
 	// read_pandoc_ast(file_path VARCHAR) -> LIST(duck_block)
@@ -3030,14 +3032,14 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	auto read_pandoc_ast_func =
 	    ScalarFunction("read_pandoc_ast", {LogicalType::VARCHAR}, duck_block_list_type, ReadPandocAstFun);
 	read_pandoc_ast_func.SetStability(FunctionStability::VOLATILE);
-	CompatSetFallible(read_pandoc_ast_func);
+	read_pandoc_ast_func.SetFallible();
 	loader.RegisterFunction(read_pandoc_ast_func);
 
 	// duck_blocks_to_pandoc_ast(blocks LIST(duck_block)) -> STRUCT(pandoc-api-version, meta, blocks)
 	// Creates complete Pandoc AST as a struct for proper JSON serialization
 	auto duck_blocks_to_ast_func = ScalarFunction("duck_blocks_to_pandoc_ast", {duck_block_list_type},
 	                                              GetPandocAstType(), DuckBlocksToPandocAstFun);
-	CompatSetFallible(duck_blocks_to_ast_func);
+	duck_blocks_to_ast_func.SetFallible();
 	loader.RegisterFunction(duck_blocks_to_ast_func);
 
 	// write_pandoc_ast(file_path VARCHAR, blocks LIST(duck_block)) -> BOOLEAN
@@ -3048,7 +3050,7 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	auto write_pandoc_ast_func = ScalarFunction("write_pandoc_ast", {LogicalType::VARCHAR, duck_block_list_type},
 	                                            LogicalType::BOOLEAN, WritePandocAstFun);
 	write_pandoc_ast_func.SetStability(FunctionStability::VOLATILE);
-	CompatSetFallible(write_pandoc_ast_func);
+	write_pandoc_ast_func.SetFallible();
 	loader.RegisterFunction(write_pandoc_ast_func);
 
 	// pandoc_ast(blocks, meta := {}, api_version := [1,23,1]) -> TABLE(pandoc-api-version, meta, blocks)

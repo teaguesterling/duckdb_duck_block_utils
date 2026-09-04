@@ -853,8 +853,8 @@ void PandocInlineConvert::Register(ExtensionLoader &loader) {
 	auto duck_block_list_type = BlockTypes::DuckBlockListType();
 	auto duck_block_nested_list_type = LogicalType::LIST(duck_block_list_type);
 
-	// Registered through a local rather than inline, so CompatSetFallible can run
-	// BEFORE the function is handed over. Every converter here can throw the Pandoc
+	// Registered through a local rather than inline, so SetFallible can run BEFORE
+	// the function is handed over. Every converter here can throw the Pandoc
 	// nesting-depth cap (CheckPandocDepth), and DuckDB v2.0 makes that a DECLARED
 	// property: an undeclared throw becomes "INTERNAL Error: ... the function is not
 	// marked as fallible". It is a RUNTIME contract, so it compiles clean either way
@@ -862,7 +862,7 @@ void PandocInlineConvert::Register(ExtensionLoader &loader) {
 	// assertions on, which is why one CI arch can be green and another red on the
 	// same commit. No-op on v1.5.
 	auto register_fallible = [&loader](ScalarFunction fun) {
-		CompatSetFallible(fun);
+		fun.SetFallible();
 		loader.RegisterFunction(fun);
 	};
 
