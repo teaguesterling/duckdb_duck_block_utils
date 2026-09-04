@@ -79,7 +79,7 @@ query I
 SELECT list_bool_or(list_transform(duck_blocks_lint(duck_blocks_assemble([
     duck_block_heading(1, 'Title'),
     duck_block_heading(3, 'Skip')
-])), w -> w.message LIKE '%skip%'));
+])), lambda w: w.message LIKE '%skip%'));
 ----
 true
 
@@ -421,7 +421,7 @@ SELECT list_bool_or(list_transform(duck_blocks_lint([
   {'kind':'block','element_type':'list','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
   {'kind':'block','element_type':'list_item','content':NULL,'level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
   {'kind':'block','element_type':'plain','content':'x','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
-]), w -> w.message LIKE '%only child of `list_item`%'));
+]), lambda w: w.message LIKE '%only child of `list_item`%'));
 ----
 true
 
@@ -448,7 +448,7 @@ SELECT coalesce(list_bool_or(list_transform(duck_blocks_lint([
   {'kind':'block','element_type':'section','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
   {'kind':'block','element_type':'plain','content':'Lead','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
   {'kind':'block','element_type':'heading','content':'H','level':2,'encoding':'text','attributes':MAP{'heading_level':'2'},'element_order':2}::duck_block
-]), w -> w.message LIKE '%only child%')), false);
+]), lambda w: w.message LIKE '%only child%')), false);
 ----
 false
 
@@ -588,7 +588,7 @@ true	false
 query I
 SELECT list_bool_or(list_transform(duck_blocks_lint([
   {'kind':'block','element_type':'frontmatter','content':'t','level':1,'encoding':'yaml','attributes':MAP{},'element_order':0}::duck_block
-]), w -> w.message LIKE '%not in the vocabulary%'));
+]), lambda w: w.message LIKE '%not in the vocabulary%'));
 ----
 true
 

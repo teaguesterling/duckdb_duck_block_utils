@@ -82,7 +82,7 @@ WITH emitted AS (
   SELECT list_distinct(list(b.kind)) AS ks
   FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a "},{"t":"Strong","c":[{"t":"Str","c":"b"}]}]}]}')) AS b)
 )
-SELECT list_filter(duck_block_kind_names(), k -> NOT list_contains(ks, k)) FROM emitted;
+SELECT list_filter(duck_block_kind_names(), lambda k: NOT list_contains(ks, k)) FROM emitted;
 ----
 []
 
@@ -622,8 +622,8 @@ true	0	0
 # ORDERING IS A CONTRACT as of 6.2: value elements come AFTER the blocks. Two
 # producers asked where they go, which is a question a convenience cannot answer.
 query I
-SELECT list_position(list_transform(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a"}]}]}'), e -> e.kind), 'value')
-     > list_position(list_transform(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a"}]}]}'), e -> e.kind), 'block');
+SELECT list_position(list_transform(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a"}]}]}'), lambda e: e.kind), 'value')
+     > list_position(list_transform(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a"}]}]}'), lambda e: e.kind), 'block');
 ----
 true
 

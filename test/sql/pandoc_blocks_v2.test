@@ -898,7 +898,7 @@ Run make install first.
 
 # The code text is carried by a structured inline child
 query I
-SELECT list_filter(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"Run"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"make install"]},{"t":"Space"},{"t":"Str","c":"first."}]}]'), b -> b.kind = 'inline' AND b.element_type = 'code')[1].content;
+SELECT list_filter(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"Run"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"make install"]},{"t":"Space"},{"t":"Str","c":"first."}]}]'), lambda b: b.kind = 'inline' AND b.element_type = 'code')[1].content;
 ----
 make install
 
@@ -913,7 +913,7 @@ SELECT pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"Run"},{"t":"Space
 # ----------------------------------------------------------------------------
 
 query I
-SELECT list_filter(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"E"},{"t":"Space"},{"t":"Math","c":[{"t":"InlineMath"},"E=mc^2"]}]}]'), b -> b.kind = 'inline' AND b.element_type = 'math')[1].content;
+SELECT list_filter(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"E"},{"t":"Space"},{"t":"Math","c":[{"t":"InlineMath"},"E=mc^2"]}]}]'), lambda b: b.kind = 'inline' AND b.element_type = 'math')[1].content;
 ----
 E=mc^2
 
@@ -934,18 +934,18 @@ See the docs
 
 # The link keeps its href
 query I
-SELECT list_filter(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"See"},{"t":"Space"},{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"the docs"}],["http://x",""]]}]}]'), b -> b.element_type = 'link')[1].attributes['href'];
+SELECT list_filter(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"See"},{"t":"Space"},{"t":"Link","c":[["",[],[]],[{"t":"Str","c":"the docs"}],["http://x",""]]}]}]'), lambda b: b.element_type = 'link')[1].attributes['href'];
 ----
 http://x
 
 # Image alt text is kept as content plus an alt attribute, and src is the target
 query I
-SELECT list_filter(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"a"},{"t":"Space"},{"t":"Str","c":"duck"}],["duck.png","t"]]}]}]'), b -> b.element_type = 'image')[1].content;
+SELECT list_filter(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"a"},{"t":"Space"},{"t":"Str","c":"duck"}],["duck.png","t"]]}]}]'), lambda b: b.element_type = 'image')[1].content;
 ----
 a duck
 
 query I
-SELECT list_filter(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"a"},{"t":"Space"},{"t":"Str","c":"duck"}],["duck.png","t"]]}]}]'), b -> b.element_type = 'image')[1].attributes['src'];
+SELECT list_filter(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"a"},{"t":"Space"},{"t":"Str","c":"duck"}],["duck.png","t"]]}]}]'), lambda b: b.element_type = 'image')[1].attributes['src'];
 ----
 duck.png
 
@@ -968,7 +968,7 @@ fmt
 # ----------------------------------------------------------------------------
 
 query I
-SELECT list_transform(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"a"},{"t":"Code","c":[["",[],[]],"c"]}]},{"t":"Para","c":[{"t":"Str","c":"b"}]}]'), b -> b.element_order);
+SELECT list_transform(pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"a"},{"t":"Code","c":[["",[],[]],"c"]}]},{"t":"Para","c":[{"t":"Str","c":"b"}]}]'), lambda b: b.element_order);
 ----
 [0, 1, 2, 3]
 
@@ -1056,7 +1056,7 @@ query I
 SELECT list_contains(
   list_transform(pandoc_ast_to_blocks(
     '[{"t":"Para","c":[{"t":"Bogus","c":[{"t":"Str","c":"keepme"}]},{"t":"Code","c":[["",[],[]],"x"]}]}]'),
-    b -> b.content),
+    lambda b: b.content),
   'keepme');
 ----
 true
@@ -1065,7 +1065,7 @@ query I
 SELECT list_contains(
   list_transform(pandoc_ast_to_blocks(
     '[{"t":"Para","c":[{"t":"Bogus","c":[{"t":"Str","c":"keepme"}]},{"t":"Code","c":[["",[],[]],"x"]}]}]'),
-    b -> b.element_type),
+    lambda b: b.element_type),
   'generic');
 ----
 true
@@ -1206,39 +1206,39 @@ figure
 
 # the image survives as a real inline, not opaque JSON
 query I
-SELECT list_contains(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]'), b -> b.element_type), 'image');
+SELECT list_contains(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]'), lambda b: b.element_type), 'image');
 ----
 true
 
 # a caption container is emitted
 query I
-SELECT list_contains(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]'), b -> b.element_type), 'caption');
+SELECT list_contains(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]'), lambda b: b.element_type), 'caption');
 ----
 true
 
 # CONTENT COMES BEFORE CAPTION, so a renderer walking the flat list emits the
 # image before the words describing it
 query I
-SELECT list_position(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]'), b -> b.element_type), 'image')
-     < list_position(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]'), b -> b.element_type), 'caption');
+SELECT list_position(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]'), lambda b: b.element_type), 'image')
+     < list_position(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Image","c":[["",[],[]],[{"t":"Str","c":"cap"}],["img.png",""]]}]}]]}]'), lambda b: b.element_type), 'caption');
 ----
 true
 
 # caption FORMATTING survives -- the regression test for structured captions
 query I
-SELECT list_contains(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]}]],[{"t":"Plain","c":[{"t":"Str","c":"body"}]}]]}]'), b -> b.element_type), 'bold');
+SELECT list_contains(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Strong","c":[{"t":"Str","c":"bold"}]}]}]],[{"t":"Plain","c":[{"t":"Str","c":"body"}]}]]}]'), lambda b: b.element_type), 'bold');
 ----
 true
 
 # a figure with an empty caption emits no caption container
 query I
-SELECT list_contains(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[]],[{"t":"Plain","c":[{"t":"Str","c":"body"}]}]]}]'), b -> b.element_type), 'caption');
+SELECT list_contains(list_transform(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[]],[{"t":"Plain","c":[{"t":"Str","c":"body"}]}]]}]'), lambda b: b.element_type), 'caption');
 ----
 false
 
 # nested inside a Div, the figure is no longer dropped
 query I
-SELECT list_contains(list_transform(pandoc_ast_to_blocks('[{"t":"Div","c":[["",["note"],[]],[{"t":"Figure","c":[["",[],[]],[null,[]],[{"t":"Plain","c":[{"t":"Str","c":"inner"}]}]]}]]}]'), b -> b.element_type), 'figure');
+SELECT list_contains(list_transform(pandoc_ast_to_blocks('[{"t":"Div","c":[["",["note"],[]],[{"t":"Figure","c":[["",[],[]],[null,[]],[{"t":"Plain","c":[{"t":"Str","c":"inner"}]}]]}]]}]'), lambda b: b.element_type), 'figure');
 ----
 true
 
@@ -1285,7 +1285,7 @@ SELECT (SELECT "pandoc-api-version" FROM pandoc_ast(duck_block_paragraph([duck_b
 
 # metadata arrives as kind='value' elements
 query I
-SELECT list_contains(list_transform(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"T"}]},"draft":{"t":"MetaBool","c":true},"tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"one"}]}]},"author":{"t":"MetaMap","c":{"name":{"t":"MetaInlines","c":[{"t":"Str","c":"Someone"}]}}}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"Body"}]}]}'), b -> b.kind), 'value');
+SELECT list_contains(list_transform(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"T"}]},"draft":{"t":"MetaBool","c":true},"tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"one"}]}]},"author":{"t":"MetaMap","c":{"name":{"t":"MetaInlines","c":[{"t":"Str","c":"Someone"}]}}}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"Body"}]}]}'), lambda b: b.kind), 'value');
 ----
 true
 
@@ -1298,7 +1298,7 @@ paragraph
 # each MetaValue shape is represented
 query I
 SELECT list_has_all(
-  list_transform(list_filter(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"T"}]},"draft":{"t":"MetaBool","c":true},"tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"one"}]}]},"author":{"t":"MetaMap","c":{"name":{"t":"MetaInlines","c":[{"t":"Str","c":"Someone"}]}}}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"Body"}]}]}'), b -> b.kind = 'value'), b -> b.element_type),
+  list_transform(list_filter(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"T"}]},"draft":{"t":"MetaBool","c":true},"tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"one"}]}]},"author":{"t":"MetaMap","c":{"name":{"t":"MetaInlines","c":[{"t":"Str","c":"Someone"}]}}}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"Body"}]}]}'), lambda b: b.kind = 'value'), lambda b: b.element_type),
   ['inlines', 'bool', 'list', 'map']);
 ----
 true
@@ -1306,7 +1306,7 @@ true
 # keys are preserved
 query I
 SELECT list_has_all(
-  list_transform(list_filter(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"T"}]},"draft":{"t":"MetaBool","c":true},"tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"one"}]}]},"author":{"t":"MetaMap","c":{"name":{"t":"MetaInlines","c":[{"t":"Str","c":"Someone"}]}}}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"Body"}]}]}'), b -> b.kind = 'value'), b -> b.attributes['key']),
+  list_transform(list_filter(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"T"}]},"draft":{"t":"MetaBool","c":true},"tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"one"}]}]},"author":{"t":"MetaMap","c":{"name":{"t":"MetaInlines","c":[{"t":"Str","c":"Someone"}]}}}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"Body"}]}]}'), lambda b: b.kind = 'value'), lambda b: b.attributes['key']),
   ['title', 'draft', 'tags', 'author']);
 ----
 true

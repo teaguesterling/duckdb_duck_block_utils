@@ -65,7 +65,7 @@ maximum nesting depth
 
 statement ok
 CREATE MACRO deep_divs(n) AS (
-    list_transform(range(1, n + 1), i -> {
+    list_transform(range(1, n + 1), lambda i: {
         'kind': 'block', 'element_type': 'div', 'content': '',
         'level': i, 'encoding': 'text',
         'attributes': map([]::VARCHAR[], []::VARCHAR[]),
@@ -75,7 +75,7 @@ CREATE MACRO deep_divs(n) AS (
 
 statement ok
 CREATE MACRO deep_bolds(n) AS (
-    list_transform(range(1, n + 1), i -> {
+    list_transform(range(1, n + 1), lambda i: {
         'kind': 'inline', 'element_type': 'bold', 'content': '',
         'level': i, 'encoding': 'text',
         'attributes': map([]::VARCHAR[], []::VARCHAR[]),
