@@ -1,4 +1,5 @@
 #include "block_types.hpp"
+#include "duckdb_compat.hpp"
 
 #include <algorithm>
 #include "duckdb/function/cast/default_casts.hpp"
@@ -86,7 +87,7 @@ static Value StringListValue(const vector<const char *> &items) {
 
 static void BlockKindsFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto kinds = StringListValue({BlockTypes::KIND_BLOCK, BlockTypes::KIND_INLINE, BlockTypes::KIND_VALUE});
-	result.Reference(kinds);
+	CompatReferenceValue(result, kinds, args.size());
 }
 
 // The single list of declared element_type names. Shared rather than duplicated:
@@ -153,7 +154,7 @@ static void BlockEncodingsFun(DataChunk &args, ExpressionState &state, Vector &r
 	for (auto &n : BlockTypes::AllEncodingNames()) {
 		vals.push_back(Value(n));
 	}
-	result.Reference(Value::LIST(LogicalType::VARCHAR, std::move(vals)));
+	CompatReferenceValue(result, Value::LIST(LogicalType::VARCHAR, std::move(vals)), args.size());
 }
 
 static void BlockTypesFun(DataChunk &args, ExpressionState &state, Vector &result) {
@@ -161,12 +162,12 @@ static void BlockTypesFun(DataChunk &args, ExpressionState &state, Vector &resul
 	for (auto &n : BlockTypes::AllTypeNames()) {
 		vals.push_back(Value(n));
 	}
-	result.Reference(Value::LIST(LogicalType::VARCHAR, std::move(vals)));
+	CompatReferenceValue(result, Value::LIST(LogicalType::VARCHAR, std::move(vals)), args.size());
 }
 
 static void SpecVersionFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	Value v(BlockTypes::SPEC_VERSION);
-	result.Reference(v);
+	CompatReferenceValue(result, v, args.size());
 }
 
 // duck_blocks_stamp(blocks) -> blocks with a version marker appended.

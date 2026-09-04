@@ -2888,7 +2888,7 @@ static string ConvertMetaMapToJson(const Value &meta_map) {
 }
 
 static unique_ptr<FunctionData> PandocAstBind(ClientContext &context, TableFunctionBindInput &input,
-                                              vector<LogicalType> &return_types, vector<string> &names) {
+                                              vector<LogicalType> &return_types, vector<CompatName> &names) {
 	auto result = make_uniq<PandocAstBindData>();
 
 	if (!input.inputs.empty() && !input.inputs[0].IsNull()) {

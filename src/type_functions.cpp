@@ -1,4 +1,5 @@
 #include "type_functions.hpp"
+#include "duckdb_compat.hpp"
 #include "block_types.hpp"
 #include "duckdb/common/types/value.hpp"
 
