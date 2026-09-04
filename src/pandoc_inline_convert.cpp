@@ -1,4 +1,5 @@
 #include "pandoc_inline_convert.hpp"
+#include "duckdb_compat.hpp"
 #include "pandoc_convert_util.hpp"
 #include "block_types.hpp"
 #include "duckdb/common/types/value.hpp"
@@ -852,25 +853,38 @@ void PandocInlineConvert::Register(ExtensionLoader &loader) {
 	auto duck_block_list_type = BlockTypes::DuckBlockListType();
 	auto duck_block_nested_list_type = LogicalType::LIST(duck_block_list_type);
 
+	// Registered through a local rather than inline, so CompatSetFallible can run
+	// BEFORE the function is handed over. Every converter here can throw the Pandoc
+	// nesting-depth cap (CheckPandocDepth), and DuckDB v2.0 makes that a DECLARED
+	// property: an undeclared throw becomes "INTERNAL Error: ... the function is not
+	// marked as fallible". It is a RUNTIME contract, so it compiles clean either way
+	// and only shows up as a failing error-path test -- and only on a build with
+	// assertions on, which is why one CI arch can be green and another red on the
+	// same commit. No-op on v1.5.
+	auto register_fallible = [&loader](ScalarFunction fun) {
+		CompatSetFallible(fun);
+		loader.RegisterFunction(fun);
+	};
+
 	// pandoc_inlines_to_db_inlines(json VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("pandoc_inlines_to_db_inlines", {LogicalType::VARCHAR}, duck_block_list_type,
-	                                       PandocInlinesToDbInlinesFun));
+	register_fallible(ScalarFunction("pandoc_inlines_to_db_inlines", {LogicalType::VARCHAR}, duck_block_list_type,
+	                                 PandocInlinesToDbInlinesFun));
 
 	// duck_blocks_inlines_to_pandoc(LIST(duck_block)) -> VARCHAR (JSON)
-	loader.RegisterFunction(ScalarFunction("duck_blocks_inlines_to_pandoc", {duck_block_list_type},
-	                                       LogicalType::VARCHAR, DbInlinesToPandocFun));
+	register_fallible(ScalarFunction("duck_blocks_inlines_to_pandoc", {duck_block_list_type}, LogicalType::VARCHAR,
+	                                 DbInlinesToPandocFun));
 
 	// duck_blocks_inlines_to_pandoc(LIST(LIST(duck_block))) -> VARCHAR (JSON) - auto-flattening
-	loader.RegisterFunction(ScalarFunction("duck_blocks_inlines_to_pandoc", {duck_block_nested_list_type},
-	                                       LogicalType::VARCHAR, DbInlinesToPandocNestedFun));
+	register_fallible(ScalarFunction("duck_blocks_inlines_to_pandoc", {duck_block_nested_list_type},
+	                                 LogicalType::VARCHAR, DbInlinesToPandocNestedFun));
 
 	// pandoc_inlines_to_text(json VARCHAR) -> VARCHAR
-	loader.RegisterFunction(
+	register_fallible(
 	    ScalarFunction("pandoc_inlines_to_text", {LogicalType::VARCHAR}, LogicalType::VARCHAR, PandocInlinesToTextFun));
 
 	// pandoc_inlines_to_text(json VARCHAR, mode VARCHAR) -> VARCHAR
-	loader.RegisterFunction(ScalarFunction("pandoc_inlines_to_text", {LogicalType::VARCHAR, LogicalType::VARCHAR},
-	                                       LogicalType::VARCHAR, PandocInlinesToTextFun));
+	register_fallible(ScalarFunction("pandoc_inlines_to_text", {LogicalType::VARCHAR, LogicalType::VARCHAR},
+	                                 LogicalType::VARCHAR, PandocInlinesToTextFun));
 }
 
 } // namespace duckdb
