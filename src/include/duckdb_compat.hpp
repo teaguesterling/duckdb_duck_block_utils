@@ -109,6 +109,30 @@ inline void CompatReferenceValue(Vector &vec, const Value &value, idx_t count) {
 }
 #endif
 
+// --- StructVector children ------------------------------------------------------
+// v1.5: StructVector::GetEntries(vec) -> vector<unique_ptr<Vector>> &
+// v2.0: StructVector::GetEntries(vec) -> vector<Vector> &
+//
+// The child vectors are held BY VALUE now, so `entries[i]->SetValue(...)` stops
+// compiling: entries[i] is a Vector, not a pointer to one. The container type is
+// spelled via decltype rather than written out, so a helper that takes the entry
+// list as a parameter has one signature that is correct on both versions.
+using CompatStructEntries =
+    typename std::remove_reference<decltype(StructVector::GetEntries(std::declval<Vector &>()))>::type;
+
+// Templated so the element type is DEPENDENT and only the taken branch of the
+// `if constexpr` is instantiated -- `*entries[index]` is not valid on v2.0 and
+// `entries[index]` is not a Vector on v1.5.
+template <class ENTRIES = CompatStructEntries>
+inline Vector &CompatStructChild(ENTRIES &entries, idx_t index) {
+	using Elem = typename std::decay<decltype(entries[index])>::type;
+	if constexpr (std::is_same<Elem, Vector>::value) {
+		return entries[index];
+	} else {
+		return *entries[index];
+	}
+}
+
 // --- bind-signature name type -------------------------------------------------
 // Used wherever a bind callback receives or fills a vector of column names, and
 // wherever a COPY option key crosses the boundary (option keys are identifiers

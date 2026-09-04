@@ -3018,9 +3018,12 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	// A function that reads a file is not consistent: the same argument can yield
 	// different results, which is the definition of the flag. Every other file-reading
 	// scalar here has the same property.
+	// SetStability rather than the constructor's positional tail: DuckDB v2.0
+	// removed the bind_scalar_function_extended_t parameter, so the nullptr run
+	// shifts and a nullptr lands on the LogicalType varargs slot.
 	auto read_pandoc_ast_func =
-	    ScalarFunction("read_pandoc_ast", {LogicalType::VARCHAR}, duck_block_list_type, ReadPandocAstFun, nullptr,
-	                   nullptr, nullptr, nullptr, LogicalType(LogicalTypeId::INVALID), FunctionStability::VOLATILE);
+	    ScalarFunction("read_pandoc_ast", {LogicalType::VARCHAR}, duck_block_list_type, ReadPandocAstFun);
+	read_pandoc_ast_func.SetStability(FunctionStability::VOLATILE);
 	loader.RegisterFunction(read_pandoc_ast_func);
 
 	// duck_blocks_to_pandoc_ast(blocks LIST(duck_block)) -> STRUCT(pandoc-api-version, meta, blocks)
@@ -3034,9 +3037,9 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	// VOLATILE for the same reason as read_pandoc_ast, pointed the other way: a
 	// constant-folded WRITE can run twice, or be hoisted out of the query it was meant
 	// to run inside. A function whose whole purpose is a side effect is not consistent.
-	auto write_pandoc_ast_func = ScalarFunction(
-	    "write_pandoc_ast", {LogicalType::VARCHAR, duck_block_list_type}, LogicalType::BOOLEAN, WritePandocAstFun,
-	    nullptr, nullptr, nullptr, nullptr, LogicalType(LogicalTypeId::INVALID), FunctionStability::VOLATILE);
+	auto write_pandoc_ast_func = ScalarFunction("write_pandoc_ast", {LogicalType::VARCHAR, duck_block_list_type},
+	                                            LogicalType::BOOLEAN, WritePandocAstFun);
+	write_pandoc_ast_func.SetStability(FunctionStability::VOLATILE);
 	loader.RegisterFunction(write_pandoc_ast_func);
 
 	// pandoc_ast(blocks, meta := {}, api_version := [1,23,1]) -> TABLE(pandoc-api-version, meta, blocks)

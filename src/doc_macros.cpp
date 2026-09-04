@@ -1,4 +1,5 @@
 #include "doc_macros.hpp"
+#include "duckdb_compat.hpp"
 #include "duckdb/catalog/default/default_functions.hpp"
 #include "duckdb/catalog/default/default_table_functions.hpp"
 #include "duckdb/function/pragma_function.hpp"
@@ -71,7 +72,78 @@ CREATE OR REPLACE MACRO profile_file(path) AS TABLE
 // what a pragma is for. It is the core query surface that should not need one.
 // ---------------------------------------------------------------------------
 
-static const DefaultMacro DOC_SCALAR_MACROS[] = {
+// DuckDB's DefaultMacro changed SHAPE between the version this extension ships
+// against and DuckDB main, and it is a shape change rather than a rename:
+//
+//   v1.5: { schema; name; parameters[8]; named_parameters[8]; macro; }
+//   v2.0: { schema; name; macro_definition; }
+//
+// On v2.0 the signature moved INSIDE the definition string -- the generator now
+// builds "CREATE MACRO __dummy__(a, b, c := 'x') AS (body)" and lets the parser
+// work out parameters and defaults, instead of assembling ColumnRefExpressions
+// itself. DefaultTableMacro did NOT change, so DOC_TABLE_MACROS below is
+// untouched; only the scalar side needs this.
+//
+// The macros stay in the v1.5 shape and the v2.0 signature is SYNTHESISED from
+// it, so the SQL body is written once. Writing two arrays under an #ifdef would
+// put the same forty lines of SQL in the source twice, and the copy that the
+// local build never compiles is the one that would drift.
+struct DocScalarMacro {
+	const char *schema;
+	const char *name;
+	const char *parameters[8];
+	DefaultNamedParameter named_parameters[8];
+	const char *macro;
+};
+
+template <class T, class = void>
+struct HasMacroDefinition : std::false_type {};
+template <class T>
+struct HasMacroDefinition<T, decltype(void(std::declval<T &>().macro_definition))> : std::true_type {};
+
+// Templated on the DefaultMacro type so the member accesses are DEPENDENT: the
+// discarded branch of an `if constexpr` is still parsed, and naming a member
+// that does not exist on this version is a hard error unless lookup is deferred.
+template <class DM = DefaultMacro>
+static unique_ptr<CreateMacroInfo> CreateScalarMacroInfo(const DocScalarMacro &m) {
+	DM dm {};
+	if constexpr (HasMacroDefinition<DM>::value) {
+		string signature = "(";
+		bool first = true;
+		for (idx_t i = 0; i < 8 && m.parameters[i] != nullptr; i++) {
+			signature += first ? "" : ", ";
+			signature += m.parameters[i];
+			first = false;
+		}
+		for (idx_t i = 0; i < 8 && m.named_parameters[i].name != nullptr; i++) {
+			signature += first ? "" : ", ";
+			signature += m.named_parameters[i].name;
+			signature += " := ";
+			signature += m.named_parameters[i].default_value;
+			first = false;
+		}
+		signature += ") AS ";
+		signature += m.macro;
+
+		dm.schema = m.schema;
+		dm.name = m.name;
+		// `signature` outlives the call: CreateInternalMacroInfo parses the text
+		// immediately and keeps no pointer into it.
+		dm.macro_definition = signature.c_str();
+		return DefaultFunctionGenerator::CreateInternalMacroInfo(dm);
+	} else {
+		dm.schema = m.schema;
+		dm.name = m.name;
+		for (idx_t i = 0; i < 8; i++) {
+			dm.parameters[i] = m.parameters[i];
+			dm.named_parameters[i] = m.named_parameters[i];
+		}
+		dm.macro = m.macro;
+		return DefaultFunctionGenerator::CreateInternalMacroInfo(dm);
+	}
+}
+
+static const DocScalarMacro DOC_SCALAR_MACROS[] = {
     {DEFAULT_SCHEMA,
      "duck_blocks_get_section",
      {"blocks", "section_pattern", nullptr},
@@ -315,14 +387,20 @@ void DocMacros::Register(ExtensionLoader &loader) {
 	// 1. Register C++ scalar function duck_block_ensure_extension
 	// VOLATILE: it LOADs an extension if present, so its result depends on installed
 	// state and it has a side effect. Constant-folding either would be wrong.
+	// Stability set with the SETTER rather than threaded through the constructor's
+	// positional tail. DuckDB v2.0 REMOVED the bind_scalar_function_extended_t
+	// parameter, so the run of nullptrs that reached `stability` on v1.5 lands one
+	// slot earlier there and a nullptr arrives where a LogicalType varargs is
+	// expected. The short constructor plus a setter means the same two lines
+	// compile on both.
 	auto ensure_ext_func = ScalarFunction("duck_block_ensure_extension", {LogicalType::VARCHAR}, LogicalType::BOOLEAN,
-	                                      DbEnsureExtensionFun, nullptr, nullptr, nullptr, nullptr,
-	                                      LogicalType(LogicalTypeId::INVALID), FunctionStability::VOLATILE);
+	                                      DbEnsureExtensionFun);
+	ensure_ext_func.SetStability(FunctionStability::VOLATILE);
 	loader.RegisterFunction(ensure_ext_func);
 
 	// 2. The document-query macros, at LOAD (see above)
 	for (idx_t i = 0; DOC_SCALAR_MACROS[i].name != nullptr; i++) {
-		auto info = DefaultFunctionGenerator::CreateInternalMacroInfo(DOC_SCALAR_MACROS[i]);
+		auto info = CreateScalarMacroInfo(DOC_SCALAR_MACROS[i]);
 		loader.RegisterFunction(*info);
 	}
 	for (idx_t i = 0; DOC_TABLE_MACROS[i].name != nullptr; i++) {

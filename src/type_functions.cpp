@@ -60,13 +60,13 @@ void TypeFunctions::DuckBlockFun(DataChunk &args, ExpressionState &state, Vector
 	auto &entries = StructVector::GetEntries(result);
 
 	for (idx_t i = 0; i < count; i++) {
-		entries[BlockTypes::KIND_IDX]->SetValue(i, Value(BlockTypes::KIND_BLOCK));
-		entries[BlockTypes::ELEMENT_TYPE_IDX]->SetValue(i, block_type_vec.GetValue(i));
-		entries[BlockTypes::CONTENT_IDX]->SetValue(i, content_vec.GetValue(i));
-		entries[BlockTypes::LEVEL_IDX]->SetValue(i, level_vec.GetValue(i));
-		entries[BlockTypes::ENCODING_IDX]->SetValue(i, encoding_vec.GetValue(i));
-		entries[BlockTypes::ATTRIBUTES_IDX]->SetValue(i, attributes_vec.GetValue(i));
-		entries[BlockTypes::ELEMENT_ORDER_IDX]->SetValue(i, block_order_vec.GetValue(i));
+		CompatStructChild(entries, BlockTypes::KIND_IDX).SetValue(i, Value(BlockTypes::KIND_BLOCK));
+		CompatStructChild(entries, BlockTypes::ELEMENT_TYPE_IDX).SetValue(i, block_type_vec.GetValue(i));
+		CompatStructChild(entries, BlockTypes::CONTENT_IDX).SetValue(i, content_vec.GetValue(i));
+		CompatStructChild(entries, BlockTypes::LEVEL_IDX).SetValue(i, level_vec.GetValue(i));
+		CompatStructChild(entries, BlockTypes::ENCODING_IDX).SetValue(i, encoding_vec.GetValue(i));
+		CompatStructChild(entries, BlockTypes::ATTRIBUTES_IDX).SetValue(i, attributes_vec.GetValue(i));
+		CompatStructChild(entries, BlockTypes::ELEMENT_ORDER_IDX).SetValue(i, block_order_vec.GetValue(i));
 	}
 }
 
@@ -78,9 +78,9 @@ void TypeFunctions::DuckBlockSimpleFun(DataChunk &args, ExpressionState &state, 
 	auto &entries = StructVector::GetEntries(result);
 
 	for (idx_t i = 0; i < count; i++) {
-		entries[BlockTypes::KIND_IDX]->SetValue(i, Value(BlockTypes::KIND_BLOCK));
-		entries[BlockTypes::ELEMENT_TYPE_IDX]->SetValue(i, block_type_vec.GetValue(i));
-		entries[BlockTypes::CONTENT_IDX]->SetValue(i, content_vec.GetValue(i));
+		CompatStructChild(entries, BlockTypes::KIND_IDX).SetValue(i, Value(BlockTypes::KIND_BLOCK));
+		CompatStructChild(entries, BlockTypes::ELEMENT_TYPE_IDX).SetValue(i, block_type_vec.GetValue(i));
+		CompatStructChild(entries, BlockTypes::CONTENT_IDX).SetValue(i, content_vec.GetValue(i));
 		// LEVEL 1, not NULL. `duck_block('paragraph','x')` defaulted to NULL, which
 		// duck_blocks_validate REJECTS: "level is NULL; every element carries an
 		// explicit structural depth". So the vocabulary's own most basic constructor
@@ -91,10 +91,10 @@ void TypeFunctions::DuckBlockSimpleFun(DataChunk &args, ExpressionState &state, 
 		// `metadata` row. A default is the easiest place for a rule to not reach: every
 		// builder that passes a level explicitly was correct, and the one that omits it
 		// inherited a value from before the rule existed.
-		entries[BlockTypes::LEVEL_IDX]->SetValue(i, Value(1));
-		entries[BlockTypes::ENCODING_IDX]->SetValue(i, Value("text"));
-		entries[BlockTypes::ATTRIBUTES_IDX]->SetValue(i, CreateEmptyMap());
-		entries[BlockTypes::ELEMENT_ORDER_IDX]->SetValue(i, Value(0));
+		CompatStructChild(entries, BlockTypes::LEVEL_IDX).SetValue(i, Value(1));
+		CompatStructChild(entries, BlockTypes::ENCODING_IDX).SetValue(i, Value("text"));
+		CompatStructChild(entries, BlockTypes::ATTRIBUTES_IDX).SetValue(i, CreateEmptyMap());
+		CompatStructChild(entries, BlockTypes::ELEMENT_ORDER_IDX).SetValue(i, Value(0));
 	}
 }
 
@@ -136,13 +136,13 @@ void TypeFunctions::ToDuckBlockFun(DataChunk &args, ExpressionState &state, Vect
 			element_order = Value(0);
 		}
 
-		entries[BlockTypes::KIND_IDX]->SetValue(i, kind);
-		entries[BlockTypes::ELEMENT_TYPE_IDX]->SetValue(i, element_type);
-		entries[BlockTypes::CONTENT_IDX]->SetValue(i, content);
-		entries[BlockTypes::LEVEL_IDX]->SetValue(i, level);
-		entries[BlockTypes::ENCODING_IDX]->SetValue(i, encoding);
-		entries[BlockTypes::ATTRIBUTES_IDX]->SetValue(i, attributes);
-		entries[BlockTypes::ELEMENT_ORDER_IDX]->SetValue(i, element_order);
+		CompatStructChild(entries, BlockTypes::KIND_IDX).SetValue(i, kind);
+		CompatStructChild(entries, BlockTypes::ELEMENT_TYPE_IDX).SetValue(i, element_type);
+		CompatStructChild(entries, BlockTypes::CONTENT_IDX).SetValue(i, content);
+		CompatStructChild(entries, BlockTypes::LEVEL_IDX).SetValue(i, level);
+		CompatStructChild(entries, BlockTypes::ENCODING_IDX).SetValue(i, encoding);
+		CompatStructChild(entries, BlockTypes::ATTRIBUTES_IDX).SetValue(i, attributes);
+		CompatStructChild(entries, BlockTypes::ELEMENT_ORDER_IDX).SetValue(i, element_order);
 	}
 }
 

@@ -1448,7 +1448,9 @@ void RenderAnsiFunctions::Register(ExtensionLoader &loader) {
 
 	// duck_block_terminal_width() -> INTEGER
 	auto term_width = ScalarFunction("duck_block_terminal_width", {}, LogicalType::INTEGER, TerminalWidthFun);
-	term_width.stability = FunctionStability::VOLATILE;
+	// SetStability, not the field: on DuckDB v2.0 the stability moved into a
+	// protected FunctionProperties member. The setter exists on both versions.
+	term_width.SetStability(FunctionStability::VOLATILE);
 	loader.RegisterFunction(term_width);
 }
 

@@ -17,18 +17,18 @@ static Value CreateEmptyAttributesMap() {
 static bool VarcharToDuckBlockCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
 	auto &result_entries = StructVector::GetEntries(result);
 
-	UnaryExecutor::Execute<string_t, string_t>(source, *result_entries[BlockTypes::CONTENT_IDX], count,
-	                                           [&](string_t input) { return input; });
+	UnaryExecutor::Execute<string_t, string_t>(source, CompatStructChild(result_entries, BlockTypes::CONTENT_IDX),
+	                                           count, [&](string_t input) { return input; });
 
 	// Set constant values for the other struct fields
 	auto empty_attrs = CreateEmptyAttributesMap();
 	for (idx_t i = 0; i < count; i++) {
-		result_entries[BlockTypes::KIND_IDX]->SetValue(i, Value(BlockTypes::KIND_INLINE));
-		result_entries[BlockTypes::ELEMENT_TYPE_IDX]->SetValue(i, Value(BlockTypes::INLINE_TEXT));
-		result_entries[BlockTypes::LEVEL_IDX]->SetValue(i, Value(1));
-		result_entries[BlockTypes::ENCODING_IDX]->SetValue(i, Value(BlockTypes::ENCODING_TEXT));
-		result_entries[BlockTypes::ATTRIBUTES_IDX]->SetValue(i, empty_attrs);
-		result_entries[BlockTypes::ELEMENT_ORDER_IDX]->SetValue(i, Value(0));
+		CompatStructChild(result_entries, BlockTypes::KIND_IDX).SetValue(i, Value(BlockTypes::KIND_INLINE));
+		CompatStructChild(result_entries, BlockTypes::ELEMENT_TYPE_IDX).SetValue(i, Value(BlockTypes::INLINE_TEXT));
+		CompatStructChild(result_entries, BlockTypes::LEVEL_IDX).SetValue(i, Value(1));
+		CompatStructChild(result_entries, BlockTypes::ENCODING_IDX).SetValue(i, Value(BlockTypes::ENCODING_TEXT));
+		CompatStructChild(result_entries, BlockTypes::ATTRIBUTES_IDX).SetValue(i, empty_attrs);
+		CompatStructChild(result_entries, BlockTypes::ELEMENT_ORDER_IDX).SetValue(i, Value(0));
 	}
 
 	return true;
