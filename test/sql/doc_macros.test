@@ -33,8 +33,8 @@ SELECT count(*) > 0 FROM duck_blocks_toc_rows(parse_markdown_to_duck_blocks('# A
 true
 
 query I
-SELECT duck_blocks_get_section(parse_markdown_to_duck_blocks(
-  '# A' || chr(10) || chr(10) || 'body a' || chr(10) || chr(10) || '# B' || chr(10) || chr(10) || 'body b'), 'A')
+SELECT duck_blocks_to_text(duck_blocks_get_section(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'body a' || chr(10) || chr(10) || '# B' || chr(10) || chr(10) || 'body b'), 'A'))
   LIKE '%body a%';
 ----
 true
@@ -45,12 +45,11 @@ SELECT count(*) > 0 FROM duck_blocks_sections_like(parse_markdown_to_duck_blocks
 ----
 true
 
-# named parameters survive load-time registration
-query I
-SELECT duck_blocks_get_section(parse_markdown_to_duck_blocks(
-  '# A' || chr(10) || chr(10) || 'body a'), 'A', output_format := 'pandoc') LIKE '%pandoc-api-version%';
-----
-true
+# named parameters survive load-time registration. get_section no longer takes one --
+# it returns duck_blocks now -- so this asserts on get_pages, which still does.
+statement ok
+SELECT duck_blocks_get_pages(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'body a'), 1, 1, output_format := 'text');
 
 statement ok
 PRAGMA duck_block_doc_macros;
@@ -72,16 +71,16 @@ SELECT title FROM duck_blocks_toc_rows(parse_markdown_to_duck_blocks('# Overview
 Overview
 
 query I
-SELECT duck_blocks_get_section(parse_markdown_to_duck_blocks(
-  '# A' || chr(10) || chr(10) || 'body a' || chr(10) || chr(10) || '# B' || chr(10) || chr(10) || 'body b'), 'A')
+SELECT duck_blocks_to_text(duck_blocks_get_section(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'body a' || chr(10) || chr(10) || '# B' || chr(10) || chr(10) || 'body b'), 'A'))
   LIKE '%body a%';
 ----
 true
 
 # the slice stops at the next same-level heading
 query I
-SELECT duck_blocks_get_section(parse_markdown_to_duck_blocks(
-  '# A' || chr(10) || chr(10) || 'body a' || chr(10) || chr(10) || '# B' || chr(10) || chr(10) || 'body b'), 'A')
+SELECT duck_blocks_to_text(duck_blocks_get_section(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'body a' || chr(10) || chr(10) || '# B' || chr(10) || chr(10) || 'body b'), 'A'))
   LIKE '%body b%';
 ----
 false
@@ -92,20 +91,25 @@ SELECT count(*) > 0 FROM duck_blocks_sections_like(parse_markdown_to_duck_blocks
 ----
 true
 
-# doc_search honours output_format now -- the old inlined CASE silently fell
-# back to text for every format except text and ansi
+# BLOCKS, NOT TEXT. sections_like hands back the duck_blocks of each hit; rendering
+# is the caller's job through the existing verbs, so there is no output_format left to
+# silently degrade -- which is how it used to return JSON-as-text for 'blocks'.
 query I
-SELECT content LIKE '%pandoc-api-version%' FROM duck_blocks_sections_like(parse_markdown_to_duck_blocks(
-  '# A' || chr(10) || chr(10) || 'findme'), 'findme', output_format := 'pandoc') LIMIT 1;
+SELECT to_json(duck_blocks_to_pandoc_ast(blocks))::VARCHAR LIKE '%pandoc-api-version%'
+FROM duck_blocks_sections_like(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'findme'), 'findme') LIMIT 1;
 ----
 true
 
-# and an unsupported one raises rather than quietly returning text
-statement error
-SELECT content FROM duck_blocks_sections_like(parse_markdown_to_duck_blocks(
-  '# A' || chr(10) || chr(10) || 'findme'), 'findme', output_format := 'md');
+# DISCRIMINATING: the column is a real list of duck_blocks, not a rendered string.
+# len() over a VARCHAR would count characters and pass trivially, so assert the
+# element type too.
+query II
+SELECT len(blocks) > 0, typeof(blocks) LIKE '%STRUCT%'
+FROM duck_blocks_sections_like(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'findme'), 'findme') LIMIT 1;
 ----
-unsupported output_format
+true	true
 
 # ============================================================================
 # profile_table
@@ -139,16 +143,20 @@ true
 
 # the section macros keep output_format, with the CASE inlined
 query I
-SELECT duck_blocks_get_section(parse_markdown_to_duck_blocks(
-  '# A' || chr(10) || chr(10) || 'body a'), 'A', output_format := 'pandoc')
+SELECT to_json(duck_blocks_to_pandoc_ast(duck_blocks_get_section(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'body a'), 'A')))::VARCHAR
   LIKE '%pandoc-api-version%';
 ----
 true
 
-statement error
-SELECT duck_blocks_get_section(parse_markdown_to_duck_blocks('# A'), 'A', output_format := 'md');
+# BLOCKS, NOT TEXT: the section is duck_blocks the caller can query directly.
+query II
+SELECT len(duck_blocks_get_section(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'body a'), 'A')) > 0,
+       typeof(duck_blocks_get_section(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'body a'), 'A')) LIKE '%STRUCT%';
 ----
-unsupported output_format
+true	true
 
 # ============================================================================
 # Reader dispatch has MOVED TO PANDUCK. These must no longer exist here: this
@@ -217,8 +225,8 @@ SELECT duck_block_section('Title', 2)[1].attributes['heading_level'];
 
 # ...and the two coexist: builder and query macro, different names, both live
 query I
-SELECT duck_blocks_get_section(parse_markdown_to_duck_blocks(
-  '# A' || chr(10) || chr(10) || 'body a'), 'A') LIKE '%body a%';
+SELECT duck_blocks_to_text(duck_blocks_get_section(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'body a'), 'A')) LIKE '%body a%';
 ----
 true
 
@@ -248,8 +256,8 @@ CREATE TEMP TABLE sepdoc AS SELECT pandoc_ast_to_blocks('[{"t":"Header","c":[1,[
 
 # A phrase across a block boundary matches, and one inside a block still does.
 query II
-SELECT (SELECT count(*) FROM duck_blocks_sections_like((SELECT b FROM sepdoc), 'here second', 'text')),
-       (SELECT count(*) FROM duck_blocks_sections_like((SELECT b FROM sepdoc), 'second', 'text'));
+SELECT (SELECT count(*) FROM duck_blocks_sections_like((SELECT b FROM sepdoc), 'here second')),
+       (SELECT count(*) FROM duck_blocks_sections_like((SELECT b FROM sepdoc), 'second'));
 ----
 1	1
 
@@ -257,7 +265,8 @@ SELECT (SELECT count(*) FROM duck_blocks_sections_like((SELECT b FROM sepdoc), '
 # rendering too would make every section come back as one run-on line, which would
 # satisfy the assertion above perfectly.
 query I
-SELECT content LIKE '%' || chr(10) || '%' FROM duck_blocks_sections_like((SELECT b FROM sepdoc), 'here', 'text');
+SELECT duck_blocks_to_text(blocks) LIKE '%' || chr(10) || '%'
+FROM duck_blocks_sections_like((SELECT b FROM sepdoc), 'here');
 ----
 true
 

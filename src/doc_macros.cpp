@@ -147,19 +147,11 @@ static const DocScalarMacro DOC_SCALAR_MACROS[] = {
     {DEFAULT_SCHEMA,
      "duck_blocks_get_section",
      {"blocks", "section_pattern", nullptr},
-     {{"output_format", "'text'"}, {nullptr, nullptr}},
+     {{nullptr, nullptr}},
      "(\n"
      "    [\n"
      "        (\n"
-     "            SELECT CASE lower(output_format)\n"
-     "                       WHEN 'text'   THEN duck_blocks_to_text(sliced)\n"
-     "                       WHEN 'ansi'   THEN duck_blocks_render_ansi(sliced)\n"
-     "                       WHEN 'blocks' THEN to_json(sliced)::VARCHAR\n"
-     "                       WHEN 'pandoc' THEN to_json(duck_blocks_to_pandoc_ast(sliced))::VARCHAR\n"
-     "                       ELSE error('duck_blocks_get_section: unsupported output_format ' ||\n"
-     "                                  coalesce(output_format, 'NULL') ||\n"
-     "                                  '; expected text, ansi, blocks or pandoc')\n"
-     "                   END\n"
+     "            SELECT sliced\n"
      "            FROM (\n"
      "                WITH doc AS (SELECT blocks AS b),\n"
      "                     h AS (SELECT e.level AS lvl, e.title AS title, e.id AS id, e.element_order AS ord\n"
@@ -341,7 +333,7 @@ static const DefaultTableMacro DOC_TABLE_MACROS[] = {
     {DEFAULT_SCHEMA,
      "duck_blocks_sections_like",
      {"blocks", "query_term", nullptr},
-     {{"output_format", "'text'"}, {nullptr, nullptr}},
+     {{nullptr, nullptr}},
      "WITH doc AS (SELECT blocks AS b),\n"
      "         h AS (SELECT e.element_order AS ord, e.title AS title\n"
      "               FROM (SELECT unnest(duck_blocks_headings(b)) AS e FROM doc)),\n"
@@ -370,15 +362,7 @@ static const DefaultTableMacro DOC_TABLE_MACROS[] = {
      "query_term || '%')\n"
      "    SELECT hit.title AS section,\n"
      "           hit.s AS start_order,\n"
-     "           CASE lower(output_format)\n"
-     "               WHEN 'text'   THEN duck_blocks_to_text(hit.sec)\n"
-     "               WHEN 'ansi'   THEN duck_blocks_render_ansi(hit.sec)\n"
-     "               WHEN 'blocks' THEN to_json(hit.sec)::VARCHAR\n"
-     "               WHEN 'pandoc' THEN to_json(duck_blocks_to_pandoc_ast(hit.sec))::VARCHAR\n"
-     "               ELSE error('duck_blocks_sections_like: unsupported output_format ' ||\n"
-     "                          coalesce(output_format, 'NULL') ||\n"
-     "                          '; expected text, ansi, blocks or pandoc')\n"
-     "           END AS content\n"
+     "           hit.sec AS blocks\n"
      "    FROM hit\n"
      "    ORDER BY hit.s"},
     {nullptr, nullptr, {nullptr}, {{nullptr, nullptr}}, nullptr}};

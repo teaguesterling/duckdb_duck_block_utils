@@ -29,6 +29,11 @@ This extension complements format-specific document extensions (markdown, HTML, 
 > because deleting them first would leave a window with the converter in neither.
 
 - **Document queries over blocks**: `duck_blocks_toc_rows`, `duck_blocks_get_section`, `duck_blocks_sections_like`, and on the separate page axis `duck_blocks_page_rows`, `duck_blocks_get_pages` — these take `LIST(duck_block)`, not file paths
+  - `duck_blocks_get_section` and `duck_blocks_sections_like` **return `duck_block`s, not text.**
+    They took an `output_format` that could not work: a macro has one return type, so every
+    branch — `'blocks'` included — had to collapse to `VARCHAR`, and `'blocks'` handed back
+    `to_json(...)::VARCHAR`. Blocks in, blocks out; render with `duck_blocks_to_text`,
+    `duck_blocks_render_ansi`, `duck_blocks_to_md`, or `duck_blocks_to_pandoc_ast`.
 - **Comparing and reviewing documents**: `duck_blocks_diff` (what changed between two versions, as ADDED/REMOVED/MOVED) and `duck_blocks_quality` (document-quality rules that are NOT spec conformance — empty sections, duplicate headings, links with no text)
 
 ## Naming
@@ -98,8 +103,8 @@ Reader dispatch moved to `panduck`. Replacements:
 | `doc_supported_extensions()` | `panduck_supported_paths()` |
 | `doc_select_blocks(path, sel)` | `panduck_select_blocks(path, sel)` |
 | `doc_toc(path)` | `duck_blocks_toc_rows(panduck_read_blocks(path))` |
-| `doc_section(...)` | `duck_blocks_get_section(...)` — **not** `duck_block_section`, which is an existing builder |
-| `doc_search(...)` | `duck_blocks_sections_like(...)` |
+| `doc_section(...)` | `duck_blocks_get_section(...)` — returns `LIST(duck_block)`; **not** `duck_block_section`, which is an existing builder |
+| `doc_search(...)` | `duck_blocks_sections_like(...)` — returns a `blocks` column, not rendered `content` |
 | `doc_render(blocks, 'text')` | `duck_blocks_to_text(blocks)` |
 | `doc_render(blocks, 'ansi')` | `duck_blocks_render_ansi(blocks)` |
 | `doc_render(blocks, 'md')` | `duck_blocks_to_md(blocks)` — `LOAD markdown` |
