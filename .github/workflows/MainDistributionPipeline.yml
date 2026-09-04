@@ -12,10 +12,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Canary against DuckDB main (the v2.0 line). This extension SHIPS against the
+  # pinned v1.5 stable below -- this job exists only to prove the source still
+  # COMPILES against v2.0, because duckdb/community-extensions builds every
+  # release PR against `v2.0-cyanoptera` via build_next.yml and there is no
+  # per-extension opt-out.
+  #
+  # Gated on workflow_dispatch, not run unconditionally: a push and a
+  # pull_request both fire on the same commit and a PR's check rollup includes
+  # both, so an unrestricted canary would show red on every PR while v2.0
+  # support is in progress. `if:` rather than `continue-on-error:` because a job
+  # calling a REUSABLE workflow accepts only a fixed set of keys -- adding
+  # continue-on-error makes the whole workflow fail to parse and schedules zero
+  # jobs. Drive it with:
+  #   gh workflow run MainDistributionPipeline.yml --ref <branch>
   duckdb-next-build:
-    name: Build extension binaries
+    name: Build extension binaries (duckdb main canary)
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@main
-    if: false
+    if: github.event_name == 'workflow_dispatch'
     with:
       duckdb_version: main
       ci_tools_version: main
