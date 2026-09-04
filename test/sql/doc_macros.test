@@ -45,11 +45,14 @@ SELECT count(*) > 0 FROM duck_blocks_sections_like(parse_markdown_to_duck_blocks
 ----
 true
 
-# named parameters survive load-time registration. get_section no longer takes one --
-# it returns duck_blocks now -- so this asserts on get_pages, which still does.
+# Load-time macro registration still binds. This ASSERTED A NAMED PARAMETER until
+# 2026-09-04; no macro in this extension has one any more. output_format was the only
+# named parameter here and it is gone from every extractor, because an extractor
+# returns duck_blocks and a macro has one return type. Positional binding at LOAD is
+# what is left to check -- the coverage was not dropped silently.
 statement ok
 SELECT duck_blocks_get_pages(parse_markdown_to_duck_blocks(
-  '# A' || chr(10) || chr(10) || 'body a'), 1, 1, output_format := 'text');
+  '# A' || chr(10) || chr(10) || 'body a'), 1, 1);
 
 statement ok
 PRAGMA duck_block_doc_macros;
@@ -304,14 +307,23 @@ SELECT page_number, start_order, block_count FROM duck_blocks_page_rows((SELECT 
 # `alpha|||beta` distinguishes correct output from `alphabeta` concatenation, which
 # a words-survive assertion would not.
 query I
-SELECT replace(duck_blocks_get_pages((SELECT b FROM pagedoc), 1, 2), chr(10), '|');
+SELECT replace(duck_blocks_to_text(duck_blocks_get_pages((SELECT b FROM pagedoc), 1, 2)), chr(10), '|');
 ----
 alpha||beta||H
 
 query I
-SELECT replace(duck_blocks_get_pages((SELECT b FROM pagedoc), 3, 3), chr(10), '|');
+SELECT replace(duck_blocks_to_text(duck_blocks_get_pages((SELECT b FROM pagedoc), 3, 3)), chr(10), '|');
 ----
 gamma
+
+# BLOCKS, NOT TEXT: get_pages is an extractor, so it hands back duck_blocks. typeof is
+# asserted alongside len() because len() over a VARCHAR counts characters and passes
+# trivially.
+query II
+SELECT len(duck_blocks_get_pages((SELECT b FROM pagedoc), 1, 2)) > 0,
+       typeof(duck_blocks_get_pages((SELECT b FROM pagedoc), 1, 2)) LIKE '%STRUCT%';
+----
+true	true
 
 # DISCRIMINATING, and the whole point of the type: the outline must contain the
 # heading and NOT the three pages. An assertion that pages are listed somewhere

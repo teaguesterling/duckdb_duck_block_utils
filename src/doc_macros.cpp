@@ -174,19 +174,11 @@ static const DocScalarMacro DOC_SCALAR_MACROS[] = {
     {DEFAULT_SCHEMA,
      "duck_blocks_get_pages",
      {"blocks", "first_page", "last_page", nullptr},
-     {{"output_format", "'text'"}, {nullptr, nullptr}},
+     {{nullptr, nullptr}},
      "(\n"
      "    [\n"
      "        (\n"
-     "            SELECT CASE lower(output_format)\n"
-     "                       WHEN 'text'   THEN duck_blocks_to_text(sliced)\n"
-     "                       WHEN 'ansi'   THEN duck_blocks_render_ansi(sliced)\n"
-     "                       WHEN 'blocks' THEN to_json(sliced)::VARCHAR\n"
-     "                       WHEN 'pandoc' THEN to_json(duck_blocks_to_pandoc_ast(sliced))::VARCHAR\n"
-     "                       ELSE error('duck_blocks_get_pages: unsupported output_format ' ||\n"
-     "                                  coalesce(output_format, 'NULL') ||\n"
-     "                                  '; expected text, ansi, blocks or pandoc')\n"
-     "                   END\n"
+     "            SELECT sliced\n"
      "            FROM (\n"
      "                WITH doc AS (SELECT blocks AS b),\n"
      "         brk AS (SELECT e.element_order AS ord,\n"
