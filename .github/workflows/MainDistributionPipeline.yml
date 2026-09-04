@@ -34,30 +34,6 @@ jobs:
       duckdb_version: main
       ci_tools_version: main
       extension_name: duck_block_utils
-      # TEMPORARY DIAGNOSTIC -- remove before this branch is proposed for merge.
-      #
-      # DuckDB's parallel test runner (scripts/ci/run_tests.py, workers=3) prints
-      # the failing STATEMENT but swallows the error text for a failure it cannot
-      # classify as a wrong_result, so an assertion or crash arrives as a bare
-      # "test/sql/x.test:78: FAILED:" with nothing after it. That is unreadable,
-      # and it is the only signal the v2.0 half produces -- the pinned build
-      # cannot reproduce it, by design.
-      #
-      # post_build_command runs after `make release` and before the test phase, so
-      # running every file SERIALLY through the raw unittest binary gets the real
-      # messages into the log. The whole suite takes ~3s, so running all of it
-      # rather than named files means ONE round reports every remaining v2.0
-      # failure instead of the first one. `|| true` so this never decides the job:
-      # the real test phase still runs and is still what the result means.
-      post_build_command: |
-        IMG=$(docker images --format '{{.Repository}}' | grep '^duckdb/linux' | head -1)
-        echo "=== serial run of the whole suite in $IMG ==="
-        for t in test/sql/*.test; do
-          echo "----- $t -----"
-          docker run --env-file=docker_env.txt -v "$PWD":/duckdb_build_dir \
-            -v "$PWD/.ccache":/ccache_dir "$IMG" \
-            ./build/release/test/unittest "$t" 2>&1 | tail -40 || true
-        done
 
   # Shippable build. The submodules are pinned at the v1.5-variegata branch tip
   # (see .gitmodules), but the extension is BUILT against the v1.5.5 release tag
