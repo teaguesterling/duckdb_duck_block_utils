@@ -262,7 +262,6 @@ is now the single most costly mistake a producer can make here.
 
 | Function | Description |
 |----------|-------------|
-| `db_blocks_set_source(blocks, format)` | Set source_format on all blocks |
 | `db_blocks_normalize(blocks)` | Convert to core types only |
 | `db_blocks_map_types(blocks, mapping)` | Remap block types |
 
@@ -357,9 +356,11 @@ ORDER BY doc_order, element_order;
 SELECT
     language,
     content as code,
-    file_path
-FROM duck_blocks_code_blocks(
-    (SELECT list(b) FROM read_markdown_blocks('tutorial/*.md', include_filepath := true) b)
+    filename
+FROM (
+    SELECT filename, unnest(duck_blocks_code_blocks(list(b)), recursive := true)
+    FROM read_markdown_blocks('tutorial/*.md', filename := true) b
+    GROUP BY filename
 )
 WHERE language = 'python';
 ```

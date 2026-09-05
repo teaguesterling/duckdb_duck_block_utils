@@ -36,6 +36,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 VOCAB = REPO / "src" / "include" / "duck_block_vocabulary.hpp"
+
+
 def repo_duckdb():
     """The duckdb binary AND the extension beside it, or (None, None).
 
@@ -53,6 +55,7 @@ def repo_duckdb():
         if binary.exists() and ext.exists():
             return binary, ext
     return None, None
+
 
 PROBE = """
 #include "duck_block_vocabulary.hpp"
@@ -144,9 +147,17 @@ def main() -> int:
         pat = re.compile(r'^\s*static constexpr const char \*((?:TYPE|INLINE|VALUE)_[A-Z_]+)\s*=\s*"([^"]+)"')
         declared = {m.group(2) for m in (pat.match(l) for l in VOCAB.read_text().splitlines()) if m}
         proc = subprocess.run(
-            [str(duckdb), "-unsigned", "-noheader", "-list", "-c",
-             f"LOAD '{ext}'; SELECT unnest(duck_block_type_names());"],
-            capture_output=True, text=True)
+            [
+                str(duckdb),
+                "-unsigned",
+                "-noheader",
+                "-list",
+                "-c",
+                f"LOAD '{ext}'; SELECT unnest(duck_block_type_names());",
+            ],
+            capture_output=True,
+            text=True,
+        )
         enumerated = {x.strip() for x in proc.stdout.split() if x.strip()}
         if proc.returncode != 0 or not enumerated:
             failed = True

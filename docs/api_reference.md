@@ -27,9 +27,12 @@ STRUCT(
 | `block` | Block-level elements (heading, paragraph, code, list, etc.) |
 | `inline` | Inline elements (text, bold, italic, link, etc.) |
 
-### duck_block_ext
+### duck_block_ext (DEPRECATED)
 
-Extended element type with provenance tracking.
+**Deprecated; removed in the next release.** No function ever produced or consumed it.
+Provenance is the optional trailing `filename` field on `duck_block` itself — see the
+spec's "Provenance" section. The type stays registered for one release only so that
+a user's own `CAST(x AS duck_block_ext)` gets a release of warning.
 
 ```sql
 STRUCT(
@@ -424,6 +427,8 @@ duck_blocks_concat(blocks1 LIST(duck_block), blocks2 LIST(duck_block)) → LIST(
 - `blocks2`: Second list of elements
 
 **Notes:**
+- **Trusts neither input.** Raw append: touches neither the sequence nor `element_order`,
+  so two independently numbered lists come out with colliding orders.
 - Unlike `duck_blocks_merge`, does not adjust `element_order`
 - Use with `duck_blocks_assemble` to renumber after concatenation
 
@@ -494,8 +499,13 @@ duck_blocks_merge(blocks1 LIST(duck_block), blocks2 LIST(duck_block)) → LIST(d
 - `blocks2`: Second list of elements (orders will be offset)
 
 **Notes:**
+- **Trusts the LIST, repairs `element_order`.** This is the function for concatenating
+  independently numbered sources — pages parsed separately, documents that each start
+  at 0 — where the sequence is right and the orders are not.
 - Second list's `element_order` values are offset by `max(blocks1.element_order) + 1`
 - Preserves relative ordering within each list
+- It is binary; for N lists, fold it:
+  `reduce(list_of_lists, (acc, x) -> duck_blocks_merge(acc, x))`
 
 **Example:**
 ```sql
@@ -520,6 +530,10 @@ duck_blocks_reorder(blocks LIST(duck_block)) → LIST(duck_block)
 - `blocks`: List of elements to renumber
 
 **Notes:**
+- **Trusts `element_order`, repairs the LIST.** It sorts by the orders it is given and
+  renumbers; a list whose orders are already wrong (two page parses that each start at
+  0, flattened) comes out regrouped, not fixed. That case wants `duck_blocks_merge`.
+  The name reads like "fix the ordering"; it fixes the list to match the ordering.
 - Sorts by current `element_order` first
 - Assigns new values: 0, 1, 2, ...
 - Useful after filtering to eliminate gaps

@@ -666,16 +666,22 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				}
 				auto &f = StructValue::GetChildren(elem);
 				const string k = f[BlockTypes::KIND_IDX].IsNull() ? "" : f[BlockTypes::KIND_IDX].GetValue<string>();
-				const string t = f[BlockTypes::ELEMENT_TYPE_IDX].IsNull() ? "" : f[BlockTypes::ELEMENT_TYPE_IDX].GetValue<string>();
+				const string t =
+				    f[BlockTypes::ELEMENT_TYPE_IDX].IsNull() ? "" : f[BlockTypes::ELEMENT_TYPE_IDX].GetValue<string>();
 				const int32_t lv = f[BlockTypes::LEVEL_IDX].IsNull() ? 0 : f[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
-				const int32_t ord =
-				    f[BlockTypes::ELEMENT_ORDER_IDX].IsNull() ? 0 : f[BlockTypes::ELEMENT_ORDER_IDX].GetValue<int32_t>();
+				const int32_t ord = f[BlockTypes::ELEMENT_ORDER_IDX].IsNull()
+				                        ? 0
+				                        : f[BlockTypes::ELEMENT_ORDER_IDX].GetValue<int32_t>();
 				if (k == BlockTypes::KIND_BLOCK && lv == 1 && t != BlockTypes::TYPE_METADATA) {
 					has_body = true;
-					if (ord < first_body_order) { first_body_order = ord; }
+					if (ord < first_body_order) {
+						first_body_order = ord;
+					}
 				} else if (k == BlockTypes::KIND_VALUE) {
 					has_value = true;
-					if (ord < first_value_order) { first_value_order = ord; }
+					if (ord < first_value_order) {
+						first_value_order = ord;
+					}
 				}
 			}
 			for (auto &elem : blocks_list) {
@@ -684,10 +690,12 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				}
 				auto &f = StructValue::GetChildren(elem);
 				const string k = f[BlockTypes::KIND_IDX].IsNull() ? "" : f[BlockTypes::KIND_IDX].GetValue<string>();
-				const string t = f[BlockTypes::ELEMENT_TYPE_IDX].IsNull() ? "" : f[BlockTypes::ELEMENT_TYPE_IDX].GetValue<string>();
+				const string t =
+				    f[BlockTypes::ELEMENT_TYPE_IDX].IsNull() ? "" : f[BlockTypes::ELEMENT_TYPE_IDX].GetValue<string>();
 				const int32_t lv = f[BlockTypes::LEVEL_IDX].IsNull() ? 0 : f[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
-				const int32_t ord =
-				    f[BlockTypes::ELEMENT_ORDER_IDX].IsNull() ? 0 : f[BlockTypes::ELEMENT_ORDER_IDX].GetValue<int32_t>();
+				const int32_t ord = f[BlockTypes::ELEMENT_ORDER_IDX].IsNull()
+				                        ? 0
+				                        : f[BlockTypes::ELEMENT_ORDER_IDX].GetValue<int32_t>();
 				string role;
 				if (!f[BlockTypes::ATTRIBUTES_IDX].IsNull()) {
 					for (auto &entry : MapValue::GetChildren(f[BlockTypes::ATTRIBUTES_IDX])) {
@@ -705,18 +713,18 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				    first_body_order < ord) {
 					child_list_t<Value> wv;
 					wv.push_back(make_pair("severity", Value("warning")));
-					wv.push_back(make_pair("message",
-					                       Value("metadata with role='frontmatter' has body blocks before it; front "
-					                             "matter is at the front, or the role is wrong")));
+					wv.push_back(
+					    make_pair("message", Value("metadata with role='frontmatter' has body blocks before it; front "
+					                               "matter is at the front, or the role is wrong")));
 					wv.push_back(make_pair("element_order", Value(ord)));
 					warnings.push_back(Value::STRUCT(std::move(wv)));
 				}
 				if (k == BlockTypes::KIND_BLOCK && lv == 1 && has_value && first_value_order < ord) {
 					child_list_t<Value> wv;
 					wv.push_back(make_pair("severity", Value("warning")));
-					wv.push_back(make_pair("message",
-					                       Value("a top-level block follows kind='value' metadata; values are "
-					                             "appended after the body, so nothing may come after them")));
+					wv.push_back(
+					    make_pair("message", Value("a top-level block follows kind='value' metadata; values are "
+					                               "appended after the body, so nothing may come after them")));
 					wv.push_back(make_pair("element_order", Value(ord)));
 					warnings.push_back(Value::STRUCT(std::move(wv)));
 				}

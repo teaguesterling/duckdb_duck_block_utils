@@ -36,6 +36,78 @@ STRUCT(
 )
 ```
 
+### Provenance: the optional trailing `filename`
+
+A reader that reads several files needs to say which one each row came from. It does
+so the way DuckDB's own `read_csv` and `read_parquet` do: an opt-in `filename := true`
+that adds a `filename VARCHAR` column, holding the path as the reader received it after
+glob expansion. Because the documented idiom folds a reader's row into the struct —
+`list(b)` — that column becomes an **8th field**, and this is the ONE widened shape the
+vocabulary accepts:
+
+```sql
+STRUCT(kind, element_type, content, level, encoding, attributes, element_order,
+       filename VARCHAR)                       -- trailing, optional, exactly here
+```
+
+- **Consumers MUST accept both** the 7-field and the 8-field shape. How is not
+  normative: duck_block_utils registers one implicit cast for the struct and one for
+  the list, which covers every function from one place; per-function overloads are
+  also conformant, though panduck measured that two arities make an untyped `NULL`
+  argument ambiguous.
+- **Producers MAY emit the 8th field**, and SHOULD do so only behind `filename := true`.
+  **The parameter is `filename` and the column is `filename`, in every reader**, as it
+  is in `read_csv`, `read_json` and `read_parquet` (measured by panduck, 2026-09-04:
+  unanimous). Core's parameter also accepts a VARCHAR that RENAMES the column
+  (`filename := 'src_path'`). A renamed column is not the accepted shape — `list(b)`
+  over it does not bind, measured — so a reader that honours the VARCHAR form is
+  handing the caller a row that no consumer accepts as a block. Readers SHOULD accept
+  the boolean form only; one that accepts a string MUST say in its own docs that the
+  renamed column forfeits the `list(b)` idiom. This is a deliberate narrowing of
+  core's contract, stated so nobody reads it as an oversight.
+- **Trailing only, one type.** `filename` in any other position, an extra field under
+  any other name, or a ninth field is a binder error, on purpose: consumers read
+  fields by index (`FILENAME_IDX` is 7), and optional fields append in ADOPTION order,
+  so a later one takes 8. Slots are never reserved ahead of adoption.
+- **A reader emitting provenance MUST append the column AFTER `element_order`.** A
+  leading or interior `filename` column does not bind. This is said to producers
+  separately because the type definition alone did not reach them: on 2026-09-04 both
+  shipped emitters (webbed, markdown) read "trailing", implemented provenance, and put
+  the column FIRST anyway, because first is where a file column naturally goes.
+  Measured by panduck through the parquet bridge: neither bound. Assert the exact
+  emitted type string in your own tests, so a reordering fails in the producer and not
+  in a consumer three repos away.
+- **Why acceptance is one exact type and not an arity.** Had consumers accepted "any
+  eight fields", a leading `filename` would have been read as `kind` by every
+  index-based consumer and the corruption would have been silent. The exact type turns
+  the same mistake into a binder error at the junction, which is the only place it can
+  be seen: no single repo's suite covers an emitter in one extension feeding a consumer
+  in another.
+- **Functions that return blocks return the 7-field shape.** Provenance lives on the
+  reader's rows and survives `GROUP BY filename`; it does not survive
+  `duck_blocks_merge` or an extractor. Keep provenance by working per file:
+
+  ```sql
+  SELECT filename, duck_blocks_toc(list(b))
+  FROM read_html_blocks('docs/*.html', filename := true) b
+  GROUP BY filename;
+  ```
+
+- It is a field, not `attributes['filename']`: a column is dictionary-encoded and
+  groupable, a map entry is repeated per block and is neither. And it is not a
+  `kind='value'` marker, which is lost the moment two files' rows are interleaved.
+
+**`duck_block` is a shape, not a catalog name.** Every function in every extension binds
+the anonymous STRUCT above; the catalog type `duck_block` exists only so that
+`::duck_block` and `::duck_block[]` work, and only duck_block_utils registers it.
+**Sibling extensions MUST NOT register a catalog type named `duck_block`** — type
+registration errors on conflict, so a second registrant fails to load.
+
+The `duck_block_ext` catalog type (the seven fields plus `source_format` and
+`file_path`) was never produced or consumed by any function. It is **deprecated** and
+remains registered for one release only, because a user's own `CAST(x AS duck_block_ext)`
+is invisible to us; its two field offsets are already gone from the vocabulary header.
+
 ### Kind Values
 
 | Kind | Description |
@@ -94,10 +166,13 @@ with the type names.
 
 **`level` is the same rule for every type**, and the column below says it per row
 only because the table predates the rule being stated: a TOP-LEVEL element carries
-NULL, and a child carries its parent's effective depth + 1, where NULL reads as
-depth 1. So a top-level container is 1, its children 2, its grandchildren 3. A
-container and a leaf sitting side by side at top level both carry 1 — depth is not
-a property of being a container.
+1, and a child carries its parent's depth + 1. So a top-level container is 1, its
+children 2, its grandchildren 3. A container and a leaf sitting side by side at top
+level both carry 1 — depth is not a property of being a container. Markers (`hr`,
+`page_break`) are no exception: they carry the depth of the position they occupy.
+(Until 2026-09-04 eight rows below still said `NULL`, a leftover from before every
+element carried an explicit level; the validator rejected what the table said.
+Found by panduck.)
 
 Earlier revisions documented a NULL at top level. That convention was never
 approved and has been removed: NULL and 1 both resolved to depth 1, so a child at
@@ -111,23 +186,23 @@ now rejects a NULL level outright.
 | `heading` | Section heading | depth (top level 1) | `text` | `heading_level` (1-6) |
 | `paragraph` | Text paragraph | depth (top level 1) | `text`, `markdown` | |
 | `plain` | Block-level text run with NO paragraph semantics | depth (top level 1) | `text` | |
-| `code` | Code block | NULL | `text` | `language` |
+| `code` | Code block | depth (top level 1) | `text` | `language` |
 | `blockquote` | Quoted content | depth (top level 1) | `text` if it carries content, else — | |
 | `list` | List container | depth (top level 1) | — (never carries content; its text lives in its items) | `list_type` (canonical): `bullet`, `ordered`, `definition`. `ordered` (legacy alias). For ordered: `start`, `number_style`, `number_delim` |
 | `list_item` | List item | parent `list` + 1 | `text` if it carries content, else — | |
-| `deflist` | Definition list | NULL | `json` | |
-| `lineblock` | Preserved line breaks | NULL | `text` (lines joined with `\n`) | |
-| `table` | Table | NULL | `json` | |
-| `hr` | Horizontal rule | NULL | `text` | |
-| `page_break` | **Physical** page boundary — a marker, not a container | NULL | `text` | `page_number` |
+| `deflist` | Definition list | depth (top level 1) | `json` | |
+| `lineblock` | Preserved line breaks | depth (top level 1) | `text` (lines joined with `\n`) | |
+| `table` | Table | depth (top level 1) | `json` | |
+| `hr` | Horizontal rule | depth (top level 1) | `text` | |
+| `page_break` | **Physical** page boundary — a marker, not a container | depth (top level 1) | `text` | `page_number` |
 | `metadata` | A verbatim metadata blob — *not* the `kind='value'` tree; see "two homes" below | depth (top level 1) | `yaml` | `role` |
 | `image` | Block-level image | depth (top level 1) | `text` | `src`, `alt`, `title` |
-| `raw` | Raw content in a *named* format | NULL | format name | `format` |
+| `raw` | Raw content in a *named* format | depth (top level 1) | format name | `format` |
 | `div` | Generic container | depth (top level 1) | `text` if it carries content, else — | `id`, `class` |
 | `section` | **Semantic** sectioning container | depth (top level 1) | `text` if it carries content, else — | `role`, `id`, `class` |
 | `figure` | Figure: content plus a caption | depth (top level 1) | `text` if it carries content, else — | `id`, `class` |
 | `caption` | Caption belonging to the container before it | parent + 1 | `text` if it carries content, else — | `short_caption` |
-| `generic` | Structurally valid, type not in this vocabulary | NULL | `json` | `source_type` |
+| `generic` | Structurally valid, type not in this vocabulary | depth (top level 1) | `json` | `source_type` |
 
 ### Containers nest by `level`
 

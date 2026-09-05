@@ -84,10 +84,10 @@ def repo_ref(repo_root):
     apart from a real disagreement.
     """
     try:
-        br = subprocess.run(["git", "-C", str(repo_root), "branch", "--show-current"],
-                            capture_output=True, text=True)
-        sha = subprocess.run(["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
-                             capture_output=True, text=True)
+        br = subprocess.run(["git", "-C", str(repo_root), "branch", "--show-current"], capture_output=True, text=True)
+        sha = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"], capture_output=True, text=True
+        )
         if br.returncode or sha.returncode:
             return None
         return f"{br.stdout.strip() or 'DETACHED'}@{sha.stdout.strip()}"
@@ -98,15 +98,18 @@ def repo_ref(repo_root):
 def branches_with(repo_root, rel):
     """Local branches whose tree contains `rel`, so an absence can name where it lives."""
     try:
-        out = subprocess.run(["git", "-C", str(repo_root), "for-each-ref",
-                              "--format=%(refname:short)", "refs/heads"],
-                             capture_output=True, text=True)
+        out = subprocess.run(
+            ["git", "-C", str(repo_root), "for-each-ref", "--format=%(refname:short)", "refs/heads"],
+            capture_output=True,
+            text=True,
+        )
         if out.returncode:
             return []
         found = []
         for br in out.stdout.split():
-            ls = subprocess.run(["git", "-C", str(repo_root), "ls-tree", "-r", "--name-only", br],
-                                capture_output=True, text=True)
+            ls = subprocess.run(
+                ["git", "-C", str(repo_root), "ls-tree", "-r", "--name-only", br], capture_output=True, text=True
+            )
             if ls.returncode == 0 and any(line.endswith(rel) for line in ls.stdout.splitlines()):
                 found.append(br)
         return found
@@ -132,8 +135,7 @@ def main() -> int:
         if path is None:
             where = branches_with(root, pathlib.Path(rel).name) if root.exists() else []
             if where:
-                print(f"  SKIP {name} [{ref}] -- vendored header not on this branch;"
-                      f" it is on {', '.join(where)}")
+                print(f"  SKIP {name} [{ref}] -- vendored header not on this branch;" f" it is on {', '.join(where)}")
                 print("       Checked out elsewhere is not drift. Re-run with that branch checked out.")
             else:
                 print(f"  SKIP {name} -- no checkout here (absence is not alignment)")

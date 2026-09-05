@@ -51,6 +51,37 @@ LogicalType BlockTypes::DuckBlockListType() {
 	return LogicalType::LIST(DuckBlockType());
 }
 
+// The ONE widened shape the spec accepts: canonical, then a trailing `filename`.
+LogicalType BlockTypes::DuckBlockWithFilenameType() {
+	auto children = StructType::GetChildTypes(DuckBlockType());
+	children.push_back(make_pair(BlockTypes::FIELD_FILENAME, LogicalType::VARCHAR));
+	return LogicalType::STRUCT(std::move(children));
+}
+
+// ---------------------------------------------------------------------------
+// Accepting the 8-field shape.
+//
+// DuckDB's named STRUCT-to-STRUCT cast already matches children BY NAME and skips
+// a source child the target lacks, so an explicit `::duck_block[]` on an 8-field
+// list has always worked and dropped `filename`. What refused the IMPLICIT cast was
+// one rule in cast_rules.cpp: a child-count mismatch costs -1. The binder consults
+// REGISTERED casts before that rule, so registering the pair with a cost is enough;
+// the bound cast itself is DuckDB's own default, which does the name matching.
+//
+// Two registrations -- the struct and the list of it -- cover every function that
+// binds LIST(duck_block) or duck_block, and the doc_* macros that route into them,
+// from this one place. Not per-function overloads: panduck measured that two
+// arities make an untyped NULL argument ambiguous ("Could not choose a best
+// candidate function"), which silently removes NULL-in, empty-document-out
+// behaviour from every consumer that has it.
+//
+// The source type is EXACT, and that is the point: `filename` in any other
+// position, any other extra field, or a ninth field stays a loud binder error.
+// ---------------------------------------------------------------------------
+static BoundCastInfo BindDefaultCast(BindCastInput &input, const LogicalType &source, const LogicalType &target) {
+	return DefaultCasts::GetDefaultCastFunction(input, source, target);
+}
+
 LogicalType BlockTypes::DuckBlockExtType() {
 	child_list_t<LogicalType> struct_children;
 	struct_children.push_back(make_pair("kind", LogicalType::VARCHAR));
@@ -234,6 +265,8 @@ static void BlocksVersionFun(DataChunk &args, ExpressionState &state, Vector &re
 void BlockTypes::Register(ExtensionLoader &loader) {
 	auto duck_block_type = DuckBlockType();
 	loader.RegisterType("duck_block", duck_block_type);
+	// DEPRECATED since 6.4, removed in 6.5. Nothing produces or consumes it; it stays
+	// one release because a user's own CAST(x AS duck_block_ext) is invisible to us.
 	loader.RegisterType("duck_block_ext", DuckBlockExtType());
 
 	auto varchar_list = LogicalType::LIST(LogicalType::VARCHAR);
@@ -250,6 +283,13 @@ void BlockTypes::Register(ExtensionLoader &loader) {
 	// Using implicit_cast_cost = -1 means explicit cast only (not implicit)
 	// This avoids ambiguity in function overload resolution
 	loader.RegisterCastFunction(LogicalType::VARCHAR, duck_block_type, BoundCastInfo(VarcharToDuckBlockCast), -1);
+
+	// The 8-field shape, implicitly. A small positive cost: cheaper than any
+	// to-VARCHAR fallback, dearer than an exact match, and no function here is
+	// overloaded on its block argument, so nothing competes with it.
+	auto with_filename = DuckBlockWithFilenameType();
+	loader.RegisterCastFunction(with_filename, duck_block_type, BindDefaultCast, 10);
+	loader.RegisterCastFunction(LogicalType::LIST(with_filename), DuckBlockListType(), BindDefaultCast, 10);
 }
 
 } // namespace duckdb
