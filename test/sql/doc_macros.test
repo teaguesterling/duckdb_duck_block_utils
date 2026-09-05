@@ -325,6 +325,28 @@ SELECT len(duck_blocks_get_pages((SELECT b FROM pagedoc), 1, 2)) > 0,
 ----
 true	true
 
+# page_rows is an extractor too, so it returns the blocks and not just a count.
+query II
+SELECT len(blocks) > 0, typeof(blocks) LIKE '%STRUCT%'
+FROM duck_blocks_page_rows((SELECT b FROM pagedoc)) ORDER BY start_order LIMIT 1;
+----
+true	true
+
+# DISCRIMINATING: block_count must be len() of the list actually returned. These were
+# two separate duck_blocks_slice calls before; sharing one slice is what makes them
+# unable to disagree, and this asserts it rather than trusting it.
+query I
+SELECT bool_and(block_count = len(blocks)) FROM duck_blocks_page_rows((SELECT b FROM pagedoc));
+----
+true
+
+# the blocks really are that page's content, not the whole document
+query I
+SELECT duck_blocks_to_text(blocks) FROM duck_blocks_page_rows((SELECT b FROM pagedoc))
+WHERE page_number = 3;
+----
+gamma
+
 # DISCRIMINATING, and the whole point of the type: the outline must contain the
 # heading and NOT the three pages. An assertion that pages are listed somewhere
 # would pass just as well if they were listed in the table of contents, which is

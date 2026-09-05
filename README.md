@@ -28,8 +28,8 @@ This extension complements format-specific document extensions (markdown, HTML, 
 > removed in a later release, once panduck's converter is installable — not before,
 > because deleting them first would leave a window with the converter in neither.
 
-- **Document queries over blocks**: `duck_blocks_toc_rows`, `duck_blocks_get_section`, `duck_blocks_sections_like`, and on the separate page axis `duck_blocks_page_rows`, `duck_blocks_get_pages` — these take `LIST(duck_block)`, not file paths
-  - The extractors — `duck_blocks_get_section`, `duck_blocks_get_pages`, `duck_blocks_sections_like` — **return `duck_block`s, not text.**
+- **Document queries over blocks**: `duck_blocks_toc_rows`, `duck_blocks_get_section`, `duck_blocks_sections_like`, and on the separate page axis `duck_blocks_page_rows` (which carries each page's `blocks`), `duck_blocks_get_pages` — these take `LIST(duck_block)`, not file paths
+  - The extractors — `duck_blocks_get_section`, `duck_blocks_get_pages`, `duck_blocks_sections_like`, `duck_blocks_page_rows` — **return `duck_block`s, not text.**
     They took an `output_format` that could not work: a macro has one return type, so every
     branch — `'blocks'` included — had to collapse to `VARCHAR`, and `'blocks'` handed back
     `to_json(...)::VARCHAR`. Blocks in, blocks out; render with `duck_blocks_to_text`,

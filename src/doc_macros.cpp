@@ -315,13 +315,21 @@ static const DefaultTableMacro DOC_TABLE_MACROS[] = {
      "                  FROM numbered\n"
      "                  UNION ALL\n"
      "                  SELECT NULL::INTEGER, 0, ((SELECT min(ord) FROM brk) - 1)::INTEGER\n"
-     "                  WHERE (SELECT min(ord) FROM brk) > 0)\n"
-     "    SELECT span.page_number AS page_number,\n"
-     "           span.s AS start_order,\n"
-     "           span.e AS end_order,\n"
-     "           len(duck_blocks_slice(doc.b, span.s, span.e)) AS block_count\n"
-     "    FROM doc, span\n"
-     "    ORDER BY span.s"},
+     "                  WHERE (SELECT min(ord) FROM brk) > 0),\n"
+     // page_rows is an EXTRACTOR, so it hands back the blocks, not just a count of
+     // them. The slice is computed once in `sliced` and shared: block_count is len()
+     // of the very list returned, so the two can never disagree. Computing the slice
+     // twice would let a future edit change one and not the other.
+     "         sliced AS (SELECT span.page_number AS page_number, span.s AS s, span.e AS e,\n"
+     "                           duck_blocks_slice(doc.b, span.s, span.e) AS sec\n"
+     "                    FROM doc, span)\n"
+     "    SELECT page_number,\n"
+     "           s AS start_order,\n"
+     "           e AS end_order,\n"
+     "           len(sec) AS block_count,\n"
+     "           sec AS blocks\n"
+     "    FROM sliced\n"
+     "    ORDER BY s"},
     {DEFAULT_SCHEMA,
      "duck_blocks_sections_like",
      {"blocks", "query_term", nullptr},
