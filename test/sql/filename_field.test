@@ -18,17 +18,17 @@ SELECT 'block' AS kind, 'heading' AS element_type, 'Title' AS "content", 1 AS "l
 query I
 SELECT duck_block_spec_version();
 ----
-6.4
+6.5
 
 # --- the list(b) idiom, the shape every consumer in the field uses
 query I
-SELECT duck_blocks_toc(list(b)) FROM reader_rows b;
+SELECT duck_blocks_toc_structs(list(b)) FROM reader_rows b;
 ----
 [{'level': 1, 'title': Title, 'id': '', 'indent': 0, 'element_order': 0}]
 
 # --- same answer as the canonical shape
 query I
-SELECT duck_blocks_toc(list(b)) = duck_blocks_toc(list(b::duck_block)) FROM reader_rows b;
+SELECT duck_blocks_toc_structs(list(b)) = duck_blocks_toc_structs(list(b::duck_block)) FROM reader_rows b;
 ----
 true
 
@@ -40,7 +40,7 @@ true
 
 # --- provenance survives on the rows: this is what the field is FOR
 query II
-SELECT filename, duck_blocks_toc(list(b))[1].title FROM reader_rows b GROUP BY filename;
+SELECT filename, duck_blocks_toc_structs(list(b))[1].title FROM reader_rows b GROUP BY filename;
 ----
 x.docx	Title
 
@@ -52,13 +52,13 @@ STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "
 
 # --- an untyped NULL must not become ambiguous (the failure mode overloads have)
 query I
-SELECT duck_blocks_toc(NULL);
+SELECT duck_blocks_toc_structs(NULL);
 ----
 NULL
 
 # --- the canonical shape is unchanged
 query I
-SELECT duck_blocks_toc([struct_pack(kind := 'block', element_type := 'heading', content := 'T', level := 1,
+SELECT duck_blocks_toc_structs([struct_pack(kind := 'block', element_type := 'heading', content := 'T', level := 1,
     encoding := 'text', attributes := MAP{'heading_level': '1'}, element_order := 0)])[1].title;
 ----
 T
@@ -69,21 +69,21 @@ T
 
 # filename in a non-trailing position
 statement error
-SELECT duck_blocks_toc([struct_pack(kind := 'block', filename := 'x', element_type := 'heading', content := 'T',
+SELECT duck_blocks_toc_structs([struct_pack(kind := 'block', filename := 'x', element_type := 'heading', content := 'T',
     level := 1, encoding := 'text', attributes := MAP{'heading_level': '1'}, element_order := 0)]);
 ----
 No function matches
 
 # an extra field under any other name
 statement error
-SELECT duck_blocks_toc([struct_pack(kind := 'block', element_type := 'heading', content := 'T', level := 1,
+SELECT duck_blocks_toc_structs([struct_pack(kind := 'block', element_type := 'heading', content := 'T', level := 1,
     encoding := 'text', attributes := MAP{'heading_level': '1'}, element_order := 0, file_path := 'x')]);
 ----
 No function matches
 
 # a ninth field
 statement error
-SELECT duck_blocks_toc([struct_pack(kind := 'block', element_type := 'heading', content := 'T', level := 1,
+SELECT duck_blocks_toc_structs([struct_pack(kind := 'block', element_type := 'heading', content := 'T', level := 1,
     encoding := 'text', attributes := MAP{'heading_level': '1'}, element_order := 0, filename := 'x',
     source_format := 'docx')]);
 ----
@@ -91,7 +91,7 @@ No function matches
 
 # filename with the wrong type
 statement error
-SELECT duck_blocks_toc([struct_pack(kind := 'block', element_type := 'heading', content := 'T', level := 1,
+SELECT duck_blocks_toc_structs([struct_pack(kind := 'block', element_type := 'heading', content := 'T', level := 1,
     encoding := 'text', attributes := MAP{'heading_level': '1'}, element_order := 0, filename := 42)]);
 ----
 No function matches

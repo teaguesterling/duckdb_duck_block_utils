@@ -1,0 +1,245 @@
+# name: test/sql/reshape_v65.test
+# description: spec 6.5 -- extractors return blocks; _structs / _text siblings keep the original behaviour
+# group: [sql]
+
+require duck_block_utils
+
+# A document with DELIBERATELY SPARSE element_order (0, 5, 17, ...). The recovery
+# contract says projections carry element_order through unrenumbered; a renumbering
+# implementation would return 0,1,2,... here and could not pass by coincidence.
+# Heading levels run h1, h3, h2, h2, h3, h1 so the outline rule is exercised on a
+# skipped level and on a return to a shallower one.
+statement ok
+CREATE TABLE d AS SELECT [
+  struct_pack(kind := 'block',  element_type := 'heading',   content := 'A',      level := 1, encoding := 'text', attributes := MAP{'heading_level': '1'}::MAP(VARCHAR, VARCHAR), element_order := 0),
+  struct_pack(kind := 'block',  element_type := 'paragraph', content := 'p1',     level := 1, encoding := 'text', attributes := MAP{}::MAP(VARCHAR, VARCHAR),                     element_order := 5),
+  struct_pack(kind := 'block',  element_type := 'heading',   content := '',       level := 1, encoding := 'text', attributes := MAP{'heading_level': '3', 'id': 'b'}::MAP(VARCHAR, VARCHAR), element_order := 17),
+  struct_pack(kind := 'inline', element_type := 'bold',      content := 'B',      level := 2, encoding := 'text', attributes := MAP{}::MAP(VARCHAR, VARCHAR),                     element_order := 18),
+  struct_pack(kind := 'inline', element_type := 'text',      content := ' title', level := 2, encoding := 'text', attributes := MAP{}::MAP(VARCHAR, VARCHAR),                     element_order := 19),
+  struct_pack(kind := 'block',  element_type := 'code',      content := 'x = 1',  level := 1, encoding := 'text', attributes := MAP{'language': 'python'}::MAP(VARCHAR, VARCHAR),  element_order := 40),
+  struct_pack(kind := 'block',  element_type := 'heading',   content := 'C',      level := 1, encoding := 'text', attributes := MAP{'heading_level': '2'}::MAP(VARCHAR, VARCHAR), element_order := 41),
+  struct_pack(kind := 'inline', element_type := 'link',      content := 'click',  level := 2, encoding := 'text', attributes := MAP{'href': 'http://x', 'title': 'X'}::MAP(VARCHAR, VARCHAR), element_order := 42),
+  struct_pack(kind := 'block',  element_type := 'image',     content := 'alt',    level := 1, encoding := 'text', attributes := MAP{'src': 'i.png'}::MAP(VARCHAR, VARCHAR),        element_order := 43),
+  struct_pack(kind := 'block',  element_type := 'heading',   content := 'D',      level := 1, encoding := 'text', attributes := MAP{'heading_level': '2'}::MAP(VARCHAR, VARCHAR), element_order := 44),
+  struct_pack(kind := 'block',  element_type := 'heading',   content := 'E',      level := 1, encoding := 'text', attributes := MAP{'heading_level': '3'}::MAP(VARCHAR, VARCHAR), element_order := 45),
+  struct_pack(kind := 'block',  element_type := 'heading',   content := 'F',      level := 1, encoding := 'text', attributes := MAP{'heading_level': '1'}::MAP(VARCHAR, VARCHAR), element_order := 46)
+]::duck_block[] AS b;
+
+statement ok
+CREATE TABLE pages AS SELECT [
+  struct_pack(kind := 'block', element_type := 'page_break', content := '',    level := 1, encoding := 'text', attributes := MAP{'page_number': '1'}::MAP(VARCHAR, VARCHAR), element_order := 0),
+  struct_pack(kind := 'block', element_type := 'paragraph',  content := 'one', level := 1, encoding := 'text', attributes := MAP{}::MAP(VARCHAR, VARCHAR),                   element_order := 1),
+  struct_pack(kind := 'block', element_type := 'page_break', content := '',    level := 1, encoding := 'text', attributes := MAP{'page_number': '2'}::MAP(VARCHAR, VARCHAR), element_order := 2),
+  struct_pack(kind := 'block', element_type := 'paragraph',  content := 'two', level := 1, encoding := 'text', attributes := MAP{}::MAP(VARCHAR, VARCHAR),                   element_order := 3)
+]::duck_block[] AS b;
+
+# ---------------------------------------------------------------------------
+# 1. the build says 6.5
+# ---------------------------------------------------------------------------
+query I
+SELECT duck_block_spec_version();
+----
+6.5
+
+# ---------------------------------------------------------------------------
+# 2. _structs siblings: today's projections, byte-for-byte (the ergonomic form)
+# ---------------------------------------------------------------------------
+query I
+SELECT typeof(duck_blocks_toc_structs(b)) FROM d;
+----
+STRUCT("level" INTEGER, title VARCHAR, id VARCHAR, indent INTEGER, element_order INTEGER)[]
+
+query I
+SELECT typeof(duck_blocks_headings_structs(b)) FROM d;
+----
+STRUCT("level" INTEGER, title VARCHAR, id VARCHAR, element_order INTEGER)[]
+
+query I
+SELECT typeof(duck_blocks_code_blocks_structs(b)) FROM d;
+----
+STRUCT("language" VARCHAR, "content" VARCHAR, element_order INTEGER)[]
+
+query I
+SELECT typeof(duck_blocks_links_structs(b)) FROM d;
+----
+STRUCT(href VARCHAR, "text" VARCHAR, title VARCHAR, element_order INTEGER)[]
+
+# panduck's doc_toc, verbatim shape: five projected columns
+query IIIII
+SELECT (t).level, (t).title, (t).id, (t).indent, (t).element_order
+FROM (SELECT unnest(duck_blocks_toc_structs(b)) AS t FROM d) ORDER BY 5 LIMIT 2;
+----
+1	A	(empty)	0	0
+3	B title	b	2	17
+
+# ---------------------------------------------------------------------------
+# 3. _text siblings: the ORIGINAL behaviour, defined as to_text over the blocks form
+# ---------------------------------------------------------------------------
+# The document is passed as a scalar subquery, not a correlated column: get_section's
+# body decorrelates badly on a bare table column (INTERNAL Error, inequal types), which
+# predates this change and is the same on the published release. get_pages does not
+# hit it. Tracked separately; every documented call shape passes a value.
+query I
+SELECT duck_blocks_get_section_text((SELECT b FROM d), 'C') = duck_blocks_to_text(duck_blocks_get_section((SELECT b FROM d), 'C'));
+----
+true
+
+# section C runs to the next heading of level <= 2 (D at 44): heading C, the link
+# inline, the image; the image contributes its alt text. Separators made visible.
+query I
+SELECT replace(duck_blocks_get_section_text((SELECT b FROM d), 'C'), chr(10), '|');
+----
+C||alt
+
+query I
+SELECT duck_blocks_get_pages_text(b, 2, 2) FROM pages;
+----
+two
+
+query II
+SELECT section, replace(content, chr(10), '|') FROM duck_blocks_sections_like_text((SELECT b FROM d), 'p1');
+----
+A	A||p1
+
+# ---------------------------------------------------------------------------
+# 4. blocks forms: constructions, element_order preserved with gaps
+# ---------------------------------------------------------------------------
+query I
+SELECT typeof(duck_blocks_headings(b)) FROM d;
+----
+STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR, VARCHAR), element_order INTEGER)[]
+
+query I
+SELECT list_transform(duck_blocks_headings(b), x -> x.element_order) FROM d;
+----
+[0, 17, 41, 44, 45, 46]
+
+# the blocks form's content IS the projection's title, joined on element_order
+query I
+SELECT bool_and(h.content = s.title) AND count(*) = 6
+FROM (SELECT unnest(duck_blocks_headings(b)) AS h FROM d) hh,
+     (SELECT unnest(duck_blocks_headings_structs(b)) AS s FROM d) ss
+WHERE h.element_order = s.element_order;
+----
+true
+
+# a heading whose text lived in inline children comes back flattened, children dropped
+query II
+SELECT h.content, h.attributes['id'] FROM (SELECT unnest(duck_blocks_headings(b)) AS h FROM d) WHERE h.element_order = 17;
+----
+B title	b
+
+query I
+SELECT list_transform(duck_blocks_toc(b), x -> x.attributes['indent']) FROM d;
+----
+[0, 2, 1, 1, 2, 0]
+
+query III
+SELECT c.element_type, c.attributes['language'], c.element_order FROM (SELECT unnest(duck_blocks_code_blocks(b)) AS c FROM d);
+----
+code	python	40
+
+# links: the source elements that carry a URL, AS THEY ARE -- an image stays an image
+query III
+SELECT l.element_type, coalesce(l.attributes['href'], l.attributes['src']), l.element_order
+FROM (SELECT unnest(duck_blocks_links(b)) AS l FROM d) ORDER BY 3;
+----
+link	http://x	42
+image	i.png	43
+
+# ---------------------------------------------------------------------------
+# 5. outline: positions in the outline, not the heading's digit; never NULL
+# ---------------------------------------------------------------------------
+query I
+SELECT list_transform(duck_blocks_headings(b), x -> x.attributes['outline']) FROM d;
+----
+[1, 1.1, 1.2, 1.3, 1.3.1, 2]
+
+query I
+SELECT list_transform(duck_blocks_toc(b), x -> x.attributes['outline']) FROM d;
+----
+[1, 1.1, 1.2, 1.3, 1.3.1, 2]
+
+# ---------------------------------------------------------------------------
+# 6. the loud failure, kept on purpose: blocks have no `title`
+# ---------------------------------------------------------------------------
+statement error
+SELECT (t).title FROM (SELECT unnest(duck_blocks_toc(b)) AS t FROM d);
+----
+title
+
+# ---------------------------------------------------------------------------
+# 7. pins that must not drift (duckeye, issues #21 #22 #23)
+# ---------------------------------------------------------------------------
+# "no page information" and "one page" are different facts: zero rows, not one
+query I
+SELECT count(*) FROM duck_blocks_page_rows((SELECT b FROM d));
+----
+0
+
+query I
+SELECT max(end_order) FROM duck_blocks_page_rows((SELECT b FROM pages));
+----
+2147483647
+
+# #22: the stamp pandoc 3.x accepts
+query I
+SELECT (duck_blocks_to_pandoc_ast(duck_block_paragraph('x')))['pandoc-api-version'];
+----
+[1, 23, 1]
+
+# #23: Table is pandoc's array constructor, not the native {headers, rows} object
+# (checked as text so the test needs no json extension: the constructor's `c` opens an array)
+query I
+SELECT (duck_blocks_to_pandoc_ast([
+  struct_pack(kind := 'block', element_type := 'table', content := '{"headers":["a","b"],"rows":[["1","2"]]}',
+              level := 1, encoding := 'json', attributes := MAP{}::MAP(VARCHAR, VARCHAR), element_order := 0)
+]::duck_block[])).blocks::VARCHAR LIKE '[{"t":"Table","c":[%';
+----
+true
+
+# #21: Code and Math carry a bare string in `c`; their text must survive
+query I
+SELECT list(e.element_type || '=' || e.content ORDER BY e.element_order)
+FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"code_here"]},{"t":"Space"},{"t":"Math","c":[{"t":"InlineMath"},"x^2"]}]}]}')) AS e)
+WHERE e.element_type IN ('code', 'math');
+----
+['code=code_here', 'math=x^2']
+
+# ---------------------------------------------------------------------------
+# 8. the two to_text jobs have two names: render joins with a blank line, MATCH
+#    flattens with a space. A search predicate on the render form misses phrases
+#    that span a block boundary; a render on the match form runs paragraphs
+#    together. Naming the second job makes the wrong choice read wrong on sight.
+# ---------------------------------------------------------------------------
+query I
+SELECT duck_blocks_to_match_text((SELECT b FROM d)) = duck_blocks_to_text((SELECT b FROM d), ' ');
+----
+true
+
+query I
+SELECT duck_blocks_to_match_text((SELECT b FROM d)) ILIKE '%p1 B title%';
+----
+true
+
+query I
+SELECT duck_blocks_to_text((SELECT b FROM d)) ILIKE '%p1 B title%';
+----
+false
+
+# ---------------------------------------------------------------------------
+# 9. get_section on a CORRELATED TABLE COLUMN. Its outermost-section step was a
+#    NOT EXISTS anti-join over the same CTE, which DuckDB failed to decorrelate
+#    ("INTERNAL Error: inequal types (INTEGER != BIGINT)"), on the published
+#    release too. A value or scalar-subquery argument never hit it; a bare column
+#    always did. Rewritten as a window over sections ordered by start.
+# ---------------------------------------------------------------------------
+query I
+SELECT list_transform(duck_blocks_get_section(b, 'C'), x -> x.element_order) FROM d;
+----
+[41, 42, 43]
+
+query I
+SELECT duck_blocks_get_section_text(b, 'A') IS NOT NULL FROM d;
+----
+true

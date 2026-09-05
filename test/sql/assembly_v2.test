@@ -329,7 +329,7 @@ SELECT duck_blocks_rebase_levels([
 
 # Test duck_blocks_headings reads from level field when heading_level attribute is not set
 query I
-SELECT duck_blocks_headings([
+SELECT duck_blocks_headings_structs([
     duck_block('heading', 'Old Format', 3, 'text', MAP{}, 0)
 ])[1].level;
 ----
@@ -337,7 +337,7 @@ SELECT duck_blocks_headings([
 
 # Test duck_blocks_headings prefers heading_level attribute over level field
 query I
-SELECT duck_blocks_headings([
+SELECT duck_blocks_headings_structs([
     duck_block('heading', 'New Format', 99, 'text', MAP{'heading_level': '2'}, 0)
 ])[1].level;
 ----

@@ -4,6 +4,7 @@
 #include "duckdb/common/types/value.hpp"
 
 #include <map>
+#include <functional>
 
 namespace duckdb {
 
@@ -454,7 +455,7 @@ void ExtractionFunctions::DbBlocksTocFun(DataChunk &args, ExpressionState &state
 	toc_struct_children.push_back(make_pair("level", LogicalType::INTEGER));
 	toc_struct_children.push_back(make_pair("title", LogicalType::VARCHAR));
 	toc_struct_children.push_back(make_pair("id", LogicalType::VARCHAR));
-	toc_struct_children.push_back(make_pair("indent", LogicalType::INTEGER));
+	toc_struct_children.push_back(make_pair(BlockTypes::ATTR_INDENT, LogicalType::INTEGER));
 	toc_struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
 	auto toc_struct_type = LogicalType::STRUCT(std::move(toc_struct_children));
 
@@ -545,7 +546,7 @@ void ExtractionFunctions::DbBlocksTocFun(DataChunk &args, ExpressionState &state
 			toc_values.push_back(make_pair("level", Value(level)));
 			toc_values.push_back(make_pair("title", Value(title)));
 			toc_values.push_back(make_pair("id", Value(id)));
-			toc_values.push_back(make_pair("indent", Value(indent)));
+			toc_values.push_back(make_pair(BlockTypes::ATTR_INDENT, Value(indent)));
 			toc_values.push_back(make_pair("element_order", Value(element_order)));
 
 			toc_entries.push_back(Value::STRUCT(std::move(toc_values)));
@@ -687,6 +688,228 @@ void ExtractionFunctions::DbBlocksStatsFun(DataChunk &args, ExpressionState &sta
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Spec 6.5: blocks-returning forms of the four projections.
+//
+// The projections (now `_structs`) stay byte-for-byte what they were; these build
+// duck_blocks. element_order is carried through from the source UNRENUMBERED --
+// duckeye computes section spans from heading element_order and slices with them,
+// so a renumbering here would not fail to bind, it would return the wrong span.
+// ---------------------------------------------------------------------------
+struct HeadingInfo {
+	int32_t level;
+	string title;
+	string id;
+	int32_t order;
+	idx_t index;
+};
+
+// Same walk as DbBlocksHeadingsFun / DbBlocksTocFun: skips kind='value' scopes,
+// reads heading_level with the level-field fallback, flattens the title.
+static vector<HeadingInfo> CollectHeadings(const vector<Value> &blocks_list) {
+	vector<HeadingInfo> out;
+	int32_t value_scope = -1;
+	idx_t bi = 0;
+	while (bi < blocks_list.size()) {
+		auto &block = blocks_list[bi];
+		if (block.IsNull()) {
+			bi++;
+			continue;
+		}
+		if (GetElementStringField(block, BlockTypes::KIND_IDX) == BlockTypes::KIND_VALUE) {
+			value_scope = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
+			bi++;
+			continue;
+		}
+		if (value_scope >= 0) {
+			if (GetElementIntField(block, BlockTypes::LEVEL_IDX, 1) > value_scope) {
+				bi++;
+				continue;
+			}
+			value_scope = -1;
+		}
+		if (GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX) != BlockTypes::TYPE_HEADING) {
+			bi++;
+			continue;
+		}
+		HeadingInfo h;
+		h.index = bi;
+		auto heading_level_str = GetElementAttribute(block, BlockTypes::ATTR_HEADING_LEVEL);
+		auto fallback = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
+		h.level = heading_level_str.empty() ? fallback : ParseInt32OrDefault(heading_level_str, fallback);
+		h.id = GetElementAttribute(block, "id");
+		h.order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
+		h.title = BlockText(blocks_list, bi); // advances bi past the inline run
+		out.push_back(std::move(h));
+	}
+	return out;
+}
+
+// Outline positions are positions in the OUTLINE, not the heading's own digit:
+// h1, h3, h2 reads 1, 1.1, 1.2. Never NULL, never padded. A stack of (level,
+// counter): pop deeper entries remembering the last popped counter; a sibling
+// increments; anything else pushes at popped+1 so a shallower-but-not-sibling
+// heading continues its parent's numbering.
+static vector<string> ComputeOutlines(const vector<HeadingInfo> &headings) {
+	vector<string> out;
+	vector<std::pair<int32_t, int32_t>> stack;
+	for (auto &h : headings) {
+		int32_t popped = 0;
+		while (!stack.empty() && stack.back().first > h.level) {
+			popped = stack.back().second;
+			stack.pop_back();
+		}
+		if (!stack.empty() && stack.back().first == h.level) {
+			stack.back().second++;
+		} else {
+			stack.emplace_back(h.level, popped + 1);
+		}
+		string s;
+		for (size_t k = 0; k < stack.size(); k++) {
+			if (k) {
+				s += '.';
+			}
+			s += std::to_string(stack[k].second);
+		}
+		out.push_back(std::move(s));
+	}
+	return out;
+}
+
+static vector<std::pair<string, string>> AttributePairs(const Value &element) {
+	vector<std::pair<string, string>> out;
+	auto &children = StructValue::GetChildren(element);
+	auto &attrs = children[BlockTypes::ATTRIBUTES_IDX];
+	if (attrs.IsNull()) {
+		return out;
+	}
+	for (auto &entry : MapValue::GetChildren(attrs)) {
+		auto &kv = StructValue::GetChildren(entry);
+		if (kv[0].IsNull()) {
+			continue;
+		}
+		out.emplace_back(kv[0].GetValue<string>(), kv[1].IsNull() ? "" : kv[1].GetValue<string>());
+	}
+	return out;
+}
+
+static void SetAttribute(vector<std::pair<string, string>> &attrs, const string &key, const string &value) {
+	for (auto &p : attrs) {
+		if (p.first == key) {
+			p.second = value;
+			return;
+		}
+	}
+	attrs.emplace_back(key, value);
+}
+
+static Value MapFromPairs(const vector<std::pair<string, string>> &attrs) {
+	vector<Value> keys, values;
+	for (auto &p : attrs) {
+		keys.push_back(Value(p.first));
+		values.push_back(Value(p.second));
+	}
+	return Value::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR, std::move(keys), std::move(values));
+}
+
+static Value MakeBlock(const string &kind, const string &type, const string &content, int32_t level,
+                       const string &encoding, const vector<std::pair<string, string>> &attrs, int32_t order) {
+	child_list_t<Value> v;
+	v.push_back(make_pair("kind", Value(kind)));
+	v.push_back(make_pair("element_type", Value(type)));
+	v.push_back(make_pair("content", Value(content)));
+	v.push_back(make_pair("level", Value(level)));
+	v.push_back(make_pair("encoding", Value(encoding)));
+	v.push_back(make_pair("attributes", MapFromPairs(attrs)));
+	v.push_back(make_pair("element_order", Value(order)));
+	return Value::STRUCT(std::move(v));
+}
+
+// One block per heading: content is the flattened title (inline children are NOT
+// carried -- that is the polish that makes the form usable standalone), attributes
+// are the source's plus heading_level, outline and, for toc, indent.
+static void HeadingBlocks(DataChunk &args, Vector &result, bool with_indent) {
+	auto &blocks_vec = args.data[0];
+	auto block_type = BlockTypes::DuckBlockType();
+	for (idx_t i = 0; i < args.size(); i++) {
+		auto blocks_val = blocks_vec.GetValue(i);
+		if (blocks_val.IsNull()) {
+			result.SetValue(i, Value::LIST(block_type, vector<Value>()));
+			continue;
+		}
+		auto &blocks_list = ListValue::GetChildren(blocks_val);
+		auto headings = CollectHeadings(blocks_list);
+		auto outlines = ComputeOutlines(headings);
+		int32_t min_level = 7;
+		for (auto &h : headings) {
+			min_level = MinValue<int32_t>(min_level, h.level);
+		}
+		vector<Value> out;
+		for (idx_t k = 0; k < headings.size(); k++) {
+			auto &h = headings[k];
+			auto &src = blocks_list[h.index];
+			auto attrs = AttributePairs(src);
+			SetAttribute(attrs, BlockTypes::ATTR_HEADING_LEVEL, std::to_string(h.level));
+			SetAttribute(attrs, BlockTypes::ATTR_OUTLINE, outlines[k]);
+			if (with_indent) {
+				SetAttribute(attrs, BlockTypes::ATTR_INDENT, std::to_string(h.level - min_level));
+			}
+			auto encoding = GetElementStringField(src, BlockTypes::ENCODING_IDX);
+			out.push_back(MakeBlock(BlockTypes::KIND_BLOCK, BlockTypes::TYPE_HEADING, h.title,
+			                        GetElementIntField(src, BlockTypes::LEVEL_IDX, 1),
+			                        encoding.empty() ? BlockTypes::ENCODING_TEXT : encoding, attrs, h.order));
+		}
+		result.SetValue(i, Value::LIST(block_type, std::move(out)));
+	}
+}
+
+void ExtractionFunctions::DbBlocksHeadingsBlocksFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	HeadingBlocks(args, result, false);
+}
+
+void ExtractionFunctions::DbBlocksTocBlocksFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	HeadingBlocks(args, result, true);
+}
+
+// The source elements, as they are. Lossless by design: an image stays an image;
+// the projection sibling is where href unifies href and src.
+static void FilterBlocks(DataChunk &args, Vector &result, const std::function<bool(const Value &)> &keep) {
+	auto &blocks_vec = args.data[0];
+	auto block_type = BlockTypes::DuckBlockType();
+	for (idx_t i = 0; i < args.size(); i++) {
+		auto blocks_val = blocks_vec.GetValue(i);
+		if (blocks_val.IsNull()) {
+			result.SetValue(i, Value::LIST(block_type, vector<Value>()));
+			continue;
+		}
+		vector<Value> out;
+		for (auto &block : ListValue::GetChildren(blocks_val)) {
+			if (!block.IsNull() && keep(block)) {
+				out.push_back(block);
+			}
+		}
+		result.SetValue(i, Value::LIST(block_type, std::move(out)));
+	}
+}
+
+void ExtractionFunctions::DbBlocksCodeBlocksBlocksFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	FilterBlocks(args, result, [](const Value &b) {
+		return GetElementStringField(b, BlockTypes::KIND_IDX) == BlockTypes::KIND_BLOCK &&
+		       GetElementStringField(b, BlockTypes::ELEMENT_TYPE_IDX) == BlockTypes::TYPE_CODE;
+	});
+}
+
+void ExtractionFunctions::DbBlocksLinksBlocksFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	FilterBlocks(args, result, [](const Value &b) {
+		auto type = GetElementStringField(b, BlockTypes::ELEMENT_TYPE_IDX);
+		if (type == BlockTypes::INLINE_LINK) {
+			return true;
+		}
+		return (type == BlockTypes::TYPE_IMAGE || type == BlockTypes::INLINE_IMAGE) &&
+		       !GetElementAttribute(b, "src").empty();
+	});
+}
+
 void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	auto duck_block_list_type = BlockTypes::DuckBlockListType();
 
@@ -710,8 +933,11 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 
 	// duck_blocks_headings(blocks LIST(duck_block)) -> LIST(STRUCT)
 	auto headings_func =
-	    ScalarFunction("duck_blocks_headings", {duck_block_list_type}, heading_list_type, DbBlocksHeadingsFun);
+	    ScalarFunction("duck_blocks_headings_structs", {duck_block_list_type}, heading_list_type, DbBlocksHeadingsFun);
 	loader.RegisterFunction(headings_func);
+	// 6.5: the base name returns blocks; the projection above lives on as _structs.
+	loader.RegisterFunction(ScalarFunction("duck_blocks_headings", {duck_block_list_type}, duck_block_list_type,
+	                                       ExtractionFunctions::DbBlocksHeadingsBlocksFun));
 
 	// Define return types for code blocks
 	child_list_t<LogicalType> code_struct_children;
@@ -721,9 +947,12 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	auto code_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(code_struct_children)));
 
 	// duck_blocks_code_blocks(blocks LIST(duck_block)) -> LIST(STRUCT)
-	auto code_blocks_func =
-	    ScalarFunction("duck_blocks_code_blocks", {duck_block_list_type}, code_list_type, DbBlocksCodeBlocksFun);
+	auto code_blocks_func = ScalarFunction("duck_blocks_code_blocks_structs", {duck_block_list_type}, code_list_type,
+	                                       DbBlocksCodeBlocksFun);
 	loader.RegisterFunction(code_blocks_func);
+	// 6.5: the base name returns blocks; the projection above lives on as _structs.
+	loader.RegisterFunction(ScalarFunction("duck_blocks_code_blocks", {duck_block_list_type}, duck_block_list_type,
+	                                       ExtractionFunctions::DbBlocksCodeBlocksBlocksFun));
 
 	// Define return types for stats
 	child_list_t<LogicalType> stats_struct_children;
@@ -742,13 +971,16 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	toc_struct_children.push_back(make_pair("level", LogicalType::INTEGER));
 	toc_struct_children.push_back(make_pair("title", LogicalType::VARCHAR));
 	toc_struct_children.push_back(make_pair("id", LogicalType::VARCHAR));
-	toc_struct_children.push_back(make_pair("indent", LogicalType::INTEGER));
+	toc_struct_children.push_back(make_pair(BlockTypes::ATTR_INDENT, LogicalType::INTEGER));
 	toc_struct_children.push_back(make_pair("element_order", LogicalType::INTEGER));
 	auto toc_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(toc_struct_children)));
 
 	// duck_blocks_toc(blocks LIST(duck_block)) -> LIST(STRUCT)
-	auto toc_func = ScalarFunction("duck_blocks_toc", {duck_block_list_type}, toc_list_type, DbBlocksTocFun);
+	auto toc_func = ScalarFunction("duck_blocks_toc_structs", {duck_block_list_type}, toc_list_type, DbBlocksTocFun);
 	loader.RegisterFunction(toc_func);
+	// 6.5: the base name returns blocks; the projection above lives on as _structs.
+	loader.RegisterFunction(ScalarFunction("duck_blocks_toc", {duck_block_list_type}, duck_block_list_type,
+	                                       ExtractionFunctions::DbBlocksTocBlocksFun));
 
 	// Define return types for links
 	child_list_t<LogicalType> link_struct_children;
@@ -759,8 +991,12 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	auto link_list_type = LogicalType::LIST(LogicalType::STRUCT(std::move(link_struct_children)));
 
 	// duck_blocks_links(blocks LIST(duck_block)) -> LIST(STRUCT)
-	auto links_func = ScalarFunction("duck_blocks_links", {duck_block_list_type}, link_list_type, DbBlocksLinksFun);
+	auto links_func =
+	    ScalarFunction("duck_blocks_links_structs", {duck_block_list_type}, link_list_type, DbBlocksLinksFun);
 	loader.RegisterFunction(links_func);
+	// 6.5: the base name returns blocks; the projection above lives on as _structs.
+	loader.RegisterFunction(ScalarFunction("duck_blocks_links", {duck_block_list_type}, duck_block_list_type,
+	                                       ExtractionFunctions::DbBlocksLinksBlocksFun));
 }
 
 } // namespace duckdb

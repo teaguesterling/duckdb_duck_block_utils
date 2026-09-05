@@ -155,17 +155,30 @@ static const DocScalarMacro DOC_SCALAR_MACROS[] = {
      "            FROM (\n"
      "                WITH doc AS (SELECT blocks AS b),\n"
      "                     h AS (SELECT e.level AS lvl, e.title AS title, e.id AS id, e.element_order AS ord\n"
-     "                           FROM (SELECT unnest(duck_blocks_headings(b)) AS e FROM doc)),\n"
+     "                           FROM (SELECT unnest(duck_blocks_headings_structs(b)) AS e FROM doc)),\n"
      "                     sec AS (SELECT h1.ord AS s, coalesce(min(h2.ord) - 1, 2147483647) AS e\n"
      "                             FROM h h1 LEFT JOIN h h2 ON h2.ord > h1.ord AND h2.lvl <= h1.lvl\n"
      "                             WHERE h1.title ILIKE '%' || section_pattern || '%' OR h1.id = section_pattern\n"
      "                             GROUP BY h1.ord),\n"
-     "                     top AS (SELECT s, e FROM sec a\n"
-     "                             WHERE NOT EXISTS (SELECT 1 FROM sec b2\n"
-     "                                               WHERE b2.s <= a.s AND b2.e >= a.e AND (b2.s, b2.e) <> (a.s, "
-     "a.e)))\n"
-     "                SELECT duck_blocks_reorder(flatten(list(duck_blocks_slice(doc.b, top.s, top.e) ORDER BY top.s))) "
-     "AS sliced\n"
+     // OUTERMOST matching sections only: a section contained in another match is
+     // dropped. This was a NOT EXISTS anti-join over `sec`, which DuckDB could not
+     // decorrelate when `blocks` was a bare TABLE COLUMN -- "INTERNAL Error: Failed to
+     // bind column reference: inequal types (INTEGER != BIGINT)", on the published
+     // release too; a value or scalar-subquery argument never hit it. Ordered by start
+     // (ties: longest first), every earlier row starts at or before this one, so "an
+     // earlier row ends at or after me" IS containment, and a window says it without a
+     // second reference to the CTE. Agrees with the anti-join on every value input.
+     "                     top AS (SELECT s, e FROM (\n"
+     "                               SELECT s, e, max(e) OVER (ORDER BY s, e DESC\n"
+     "                                      ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS prev_e\n"
+     "                               FROM sec)\n"
+     "                             WHERE prev_e IS NULL OR prev_e < e)\n"
+     // element_order is PRESERVED, not renumbered (recovery contract): the outermost
+     // sections are disjoint and listed by start, so the concatenation is already in
+     // document order, and a caller can join the result back to the document -- or to
+     // page_rows -- by element_order. get_pages and sections_like never renumbered;
+     // this one did, through a duck_blocks_reorder that ordering never needed.
+     "                SELECT flatten(list(duck_blocks_slice(doc.b, top.s, top.e) ORDER BY top.s)) AS sliced\n"
      "                FROM doc, top\n"
      "            )\n"
      "        )\n"
@@ -201,6 +214,34 @@ static const DocScalarMacro DOC_SCALAR_MACROS[] = {
      "        )\n"
      "    ][1]\n"
      ")"},
+    // The two to_text jobs have two NAMES. Rendering joins blocks with a blank line;
+    // MATCHING flattens them with a space so a phrase that spans a block boundary is
+    // found. Both are right for their job, and `to_text(x, ' ')` looks exactly as
+    // deliberate at a call site as `to_text(x)`, so a wrong choice read as a right
+    // one -- the sections_like predicate below was the one bare-literal call site and
+    // it is what generated the trap. A search on the render form reads wrong on sight
+    // now, and so does a render on the match form. (Proposed by Tiiny, ruled by Teague.)
+    {DEFAULT_SCHEMA,
+     "duck_blocks_to_match_text",
+     {"blocks", nullptr},
+     {{nullptr, nullptr}},
+     "duck_blocks_to_text(blocks, ' ')"},
+    // 6.5: the ORIGINAL text behaviour, by construction. The pre-reshape default was
+    // literally duck_blocks_to_text(sliced); this is the same call over the same value,
+    // moved outside the subquery, which is exact because to_text(NULL) IS NULL (the
+    // no-match case). ONE-arg to_text on purpose: the two-arg form a few lines up in
+    // sections_like is a SEARCH predicate and flattens with ' ', and a port that used it
+    // would keep every row and silently change the separator in the text (Tiiny).
+    {DEFAULT_SCHEMA,
+     "duck_blocks_get_section_text",
+     {"blocks", "section_pattern", nullptr},
+     {{nullptr, nullptr}},
+     "duck_blocks_to_text(duck_blocks_get_section(blocks, section_pattern))"},
+    {DEFAULT_SCHEMA,
+     "duck_blocks_get_pages_text",
+     {"blocks", "first_page", "last_page", nullptr},
+     {{nullptr, nullptr}},
+     "duck_blocks_to_text(duck_blocks_get_pages(blocks, first_page, last_page))"},
     {nullptr, nullptr, {nullptr}, {{nullptr, nullptr}}, nullptr}};
 
 static const DefaultTableMacro DOC_TABLE_MACROS[] = {
@@ -213,7 +254,7 @@ static const DefaultTableMacro DOC_TABLE_MACROS[] = {
      "           (toc).id AS id,\n"
      "           (toc).indent AS indent,\n"
      "           (toc).element_order AS element_order\n"
-     "    FROM (SELECT unnest(duck_blocks_toc(blocks)) AS toc)"},
+     "    FROM (SELECT unnest(duck_blocks_toc_structs(blocks)) AS toc)"},
     {DEFAULT_SCHEMA,
      "duck_blocks_diff",
      {"before", "after", nullptr},
@@ -336,7 +377,7 @@ static const DefaultTableMacro DOC_TABLE_MACROS[] = {
      {{nullptr, nullptr}},
      "WITH doc AS (SELECT blocks AS b),\n"
      "         h AS (SELECT e.element_order AS ord, e.title AS title\n"
-     "               FROM (SELECT unnest(duck_blocks_headings(b)) AS e FROM doc)),\n"
+     "               FROM (SELECT unnest(duck_blocks_headings_structs(b)) AS e FROM doc)),\n"
      "         span AS (SELECT ord AS s, coalesce(lead(ord) OVER (ORDER BY ord) - 1, 2147483647) AS e, title FROM h\n"
      "                  UNION ALL\n"
      "                  SELECT 0 AS s, coalesce((SELECT min(ord) - 1 FROM h), 2147483647)::INT AS e, '(preamble)' AS "
@@ -358,13 +399,22 @@ static const DefaultTableMacro DOC_TABLE_MACROS[] = {
      //
      // The output branches below keep the default separator: what you SEE should read
      // as a document. Only the predicate is flattened.
-     "                 WHERE duck_blocks_to_text(duck_blocks_slice(doc.b, span.s, span.e), ' ') ILIKE '%' || "
+     "                 WHERE duck_blocks_to_match_text(duck_blocks_slice(doc.b, span.s, span.e)) ILIKE '%' || "
      "query_term || '%')\n"
      "    SELECT hit.title AS section,\n"
      "           hit.s AS start_order,\n"
      "           hit.sec AS blocks\n"
      "    FROM hit\n"
      "    ORDER BY hit.s"},
+    // 6.5: original sections_like shape (section, start_order, content VARCHAR), rows
+    // unchanged. The parameter is `doc`, not `blocks`, because the inner macro's third
+    // COLUMN is named blocks and a parameter of that name would be substituted into it.
+    {DEFAULT_SCHEMA,
+     "duck_blocks_sections_like_text",
+     {"doc", "query_term", nullptr},
+     {{nullptr, nullptr}},
+     "SELECT section, start_order, duck_blocks_to_text(blocks) AS content\n"
+     "    FROM duck_blocks_sections_like(doc, query_term)"},
     {nullptr, nullptr, {nullptr}, {{nullptr, nullptr}}, nullptr}};
 
 void DocMacros::Register(ExtensionLoader &loader) {

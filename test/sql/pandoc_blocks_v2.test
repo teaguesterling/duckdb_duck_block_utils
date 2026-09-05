@@ -954,12 +954,12 @@ duck.png
 # ----------------------------------------------------------------------------
 
 query I
-SELECT duck_blocks_headings(pandoc_ast_to_blocks('[{"t":"Header","c":[2,["fmt",[],[]],[{"t":"Str","c":"The"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"mrconfig"]},{"t":"Space"},{"t":"Str","c":"format"}]]}]'))[1].title;
+SELECT duck_blocks_headings_structs(pandoc_ast_to_blocks('[{"t":"Header","c":[2,["fmt",[],[]],[{"t":"Str","c":"The"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"mrconfig"]},{"t":"Space"},{"t":"Str","c":"format"}]]}]'))[1].title;
 ----
 The mrconfig format
 
 query I
-SELECT duck_blocks_headings(pandoc_ast_to_blocks('[{"t":"Header","c":[2,["fmt",[],[]],[{"t":"Str","c":"The"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"mrconfig"]},{"t":"Space"},{"t":"Str","c":"format"}]]}]'))[1].id;
+SELECT duck_blocks_headings_structs(pandoc_ast_to_blocks('[{"t":"Header","c":[2,["fmt",[],[]],[{"t":"Str","c":"The"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"mrconfig"]},{"t":"Space"},{"t":"Str","c":"format"}]]}]'))[1].id;
 ----
 fmt
 

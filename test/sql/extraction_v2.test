@@ -68,7 +68,7 @@ true
 
 # Test extracting headings
 query I
-SELECT len(duck_blocks_headings(duck_blocks_assemble([
+SELECT len(duck_blocks_headings_structs(duck_blocks_assemble([
     duck_block_heading(1, 'Title'),
     duck_block_paragraph('Text'),
     duck_block_heading(2, 'Section 1'),
@@ -80,19 +80,19 @@ SELECT len(duck_blocks_headings(duck_blocks_assemble([
 
 # Test heading structure - level
 query I
-SELECT duck_blocks_headings(duck_block_heading(1, 'Title'))[1].level;
+SELECT duck_blocks_headings_structs(duck_block_heading(1, 'Title'))[1].level;
 ----
 1
 
 # Test heading structure - title
 query I
-SELECT duck_blocks_headings(duck_block_heading(2, 'My Title'))[1].title;
+SELECT duck_blocks_headings_structs(duck_block_heading(2, 'My Title'))[1].title;
 ----
 My Title
 
 # Test heading structure - element_order
 query I
-SELECT duck_blocks_headings(duck_blocks_assemble([
+SELECT duck_blocks_headings_structs(duck_blocks_assemble([
     duck_block_heading(1, 'First'),
     duck_block_paragraph('Text'),
     duck_block_heading(2, 'Second')
@@ -102,7 +102,7 @@ SELECT duck_blocks_headings(duck_blocks_assemble([
 
 # Test non-headings are excluded
 query I
-SELECT len(duck_blocks_headings(duck_blocks_assemble([
+SELECT len(duck_blocks_headings_structs(duck_blocks_assemble([
     duck_block_paragraph('Text'),
     duck_block_code('py', 'code'),
     duck_block_hr()
@@ -116,7 +116,7 @@ SELECT len(duck_blocks_headings(duck_blocks_assemble([
 
 # Test extracting code blocks
 query I
-SELECT len(duck_blocks_code_blocks(duck_blocks_assemble([
+SELECT len(duck_blocks_code_blocks_structs(duck_blocks_assemble([
     duck_block_paragraph('Intro'),
     duck_block_code('python', 'print(1)'),
     duck_block_paragraph('More text'),
@@ -127,25 +127,25 @@ SELECT len(duck_blocks_code_blocks(duck_blocks_assemble([
 
 # Test code block structure - language
 query I
-SELECT duck_blocks_code_blocks(duck_block_code('python', 'x=1'))[1].language;
+SELECT duck_blocks_code_blocks_structs(duck_block_code('python', 'x=1'))[1].language;
 ----
 python
 
 # Test code block structure - content
 query I
-SELECT duck_blocks_code_blocks(duck_block_code('py', 'print("hello")'))[1].content;
+SELECT duck_blocks_code_blocks_structs(duck_block_code('py', 'print("hello")'))[1].content;
 ----
 print("hello")
 
 # Test code without language
 query I
-SELECT duck_blocks_code_blocks(duck_block_code('plain code'))[1].language;
+SELECT duck_blocks_code_blocks_structs(duck_block_code('plain code'))[1].language;
 ----
 (empty)
 
 # Test non-code blocks are excluded
 query I
-SELECT len(duck_blocks_code_blocks(duck_blocks_assemble([
+SELECT len(duck_blocks_code_blocks_structs(duck_blocks_assemble([
     duck_block_heading(1, 'Title'),
     duck_block_paragraph('Text')
 ])));
@@ -199,7 +199,7 @@ SELECT len(duck_blocks_stats([]));
 
 # Test extracting headings from a complex document
 query I
-SELECT len(duck_blocks_headings(duck_blocks_assemble([
+SELECT len(duck_blocks_headings_structs(duck_blocks_assemble([
     duck_block_metadata('title: Test'),
     duck_block_heading(1, 'Introduction'),
     duck_block_paragraph('Welcome'),
@@ -227,7 +227,7 @@ true
 
 # Test TOC generation from headings
 query I
-SELECT len(duck_blocks_toc(duck_blocks_assemble([
+SELECT len(duck_blocks_toc_structs(duck_blocks_assemble([
     duck_block_heading(1, 'Introduction'),
     duck_block_paragraph('Text'),
     duck_block_heading(2, 'Chapter 1'),
@@ -239,19 +239,19 @@ SELECT len(duck_blocks_toc(duck_blocks_assemble([
 
 # Test TOC entry structure - level
 query I
-SELECT duck_blocks_toc(duck_block_heading(1, 'Title'))[1].level;
+SELECT duck_blocks_toc_structs(duck_block_heading(1, 'Title'))[1].level;
 ----
 1
 
 # Test TOC entry structure - title
 query I
-SELECT duck_blocks_toc(duck_block_heading(2, 'My Section'))[1].title;
+SELECT duck_blocks_toc_structs(duck_block_heading(2, 'My Section'))[1].title;
 ----
 My Section
 
 # Test TOC entry structure - indent (relative to min level)
 query I
-SELECT duck_blocks_toc(duck_blocks_assemble([
+SELECT duck_blocks_toc_structs(duck_blocks_assemble([
     duck_block_heading(2, 'Chapter'),
     duck_block_heading(3, 'Section')
 ]))[1].indent;
@@ -259,7 +259,7 @@ SELECT duck_blocks_toc(duck_blocks_assemble([
 0
 
 query I
-SELECT duck_blocks_toc(duck_blocks_assemble([
+SELECT duck_blocks_toc_structs(duck_blocks_assemble([
     duck_block_heading(2, 'Chapter'),
     duck_block_heading(3, 'Section')
 ]))[2].indent;
@@ -268,13 +268,13 @@ SELECT duck_blocks_toc(duck_blocks_assemble([
 
 # Test empty list returns empty TOC
 query I
-SELECT len(duck_blocks_toc([]));
+SELECT len(duck_blocks_toc_structs([]));
 ----
 0
 
 # Test TOC with only paragraphs returns empty
 query I
-SELECT len(duck_blocks_toc(duck_blocks_assemble([duck_block_paragraph('Text'), duck_block_paragraph('More')])));
+SELECT len(duck_blocks_toc_structs(duck_blocks_assemble([duck_block_paragraph('Text'), duck_block_paragraph('More')])));
 ----
 0
 
@@ -284,7 +284,7 @@ SELECT len(duck_blocks_toc(duck_blocks_assemble([duck_block_paragraph('Text'), d
 
 # Test extracting links from inline link elements
 query I
-SELECT len(duck_blocks_links(duck_blocks_assemble([
+SELECT len(duck_blocks_links_structs(duck_blocks_assemble([
     duck_block_link('https://example.com', 'Click here'),
     duck_block_paragraph('Text'),
     duck_block_link('https://test.com', 'Another link')
@@ -294,37 +294,37 @@ SELECT len(duck_blocks_links(duck_blocks_assemble([
 
 # Test link structure - href
 query I
-SELECT duck_blocks_links(duck_block_link('https://example.com', 'Click'))[1].href;
+SELECT duck_blocks_links_structs(duck_block_link('https://example.com', 'Click'))[1].href;
 ----
 https://example.com
 
 # Test link structure - text
 query I
-SELECT duck_blocks_links(duck_block_link('https://example.com', 'Click me'))[1].text;
+SELECT duck_blocks_links_structs(duck_block_link('https://example.com', 'Click me'))[1].text;
 ----
 Click me
 
 # Test extracting images as links
 query I
-SELECT len(duck_blocks_links(duck_block_inline_image('/path/to/img.png', 'Alt text')));
+SELECT len(duck_blocks_links_structs(duck_block_inline_image('/path/to/img.png', 'Alt text')));
 ----
 1
 
 # Test image link href is src
 query I
-SELECT duck_blocks_links(duck_block_inline_image('/img.png', 'Alt'))[1].href;
+SELECT duck_blocks_links_structs(duck_block_inline_image('/img.png', 'Alt'))[1].href;
 ----
 /img.png
 
 # Test empty list returns no links
 query I
-SELECT len(duck_blocks_links([]));
+SELECT len(duck_blocks_links_structs([]));
 ----
 0
 
 # Test paragraphs without links return empty
 query I
-SELECT len(duck_blocks_links(duck_blocks_assemble([duck_block_paragraph('Just text'), duck_block_heading(1, 'Title')])));
+SELECT len(duck_blocks_links_structs(duck_blocks_assemble([duck_block_paragraph('Just text'), duck_block_heading(1, 'Title')])));
 ----
 0
 
@@ -354,25 +354,25 @@ CREATE MACRO webbed_h2() AS ([
 
 # Title falls back to the inline children (was '')
 query I
-SELECT duck_blocks_headings(webbed_h2())[1].title;
+SELECT duck_blocks_headings_structs(webbed_h2())[1].title;
 ----
 The mrconfig format
 
 # The heading level still comes from the heading_level attribute
 query I
-SELECT duck_blocks_headings(webbed_h2())[1].level;
+SELECT duck_blocks_headings_structs(webbed_h2())[1].level;
 ----
 2
 
 # Inline children are not mistaken for headings of their own
 query I
-SELECT len(duck_blocks_headings(webbed_h2()));
+SELECT len(duck_blocks_headings_structs(webbed_h2()));
 ----
 1
 
 # duck_blocks_toc gets the same fallback (was a blank TOC line)
 query I
-SELECT duck_blocks_toc(webbed_h2())[1].title;
+SELECT duck_blocks_toc_structs(webbed_h2())[1].title;
 ----
 The mrconfig format
 
@@ -385,25 +385,25 @@ The mrconfig format
 
 # Same heading built with this extension's own builders
 query I
-SELECT duck_blocks_headings(duck_block_heading(2, [duck_block_text('The '), duck_block_inline_code('mrconfig'), duck_block_text(' format')]))[1].title;
+SELECT duck_blocks_headings_structs(duck_block_heading(2, [duck_block_text('The '), duck_block_inline_code('mrconfig'), duck_block_text(' format')]))[1].title;
 ----
 The mrconfig format
 
 # Nested inline containers contribute their children's text
 query I
-SELECT duck_blocks_headings(duck_block_heading(3, [duck_block_text('A '), duck_block_bold([duck_block_text('bold '), duck_block_italic('word')])]))[1].title;
+SELECT duck_blocks_headings_structs(duck_block_heading(3, [duck_block_text('A '), duck_block_bold([duck_block_text('bold '), duck_block_italic('word')])]))[1].title;
 ----
 A bold word
 
 # A populated content field still wins over any children
 query I
-SELECT duck_blocks_headings(duck_block_heading(2, 'Plain title'))[1].title;
+SELECT duck_blocks_headings_structs(duck_block_heading(2, 'Plain title'))[1].title;
 ----
 Plain title
 
 # Headings with inline children are still counted and ordered correctly
 query I
-SELECT len(duck_blocks_headings(duck_blocks_assemble([
+SELECT len(duck_blocks_headings_structs(duck_blocks_assemble([
     duck_block_heading(1, [duck_block_text('One')]),
     duck_block_paragraph([duck_block_text('body '), duck_block_inline_code('text')]),
     duck_block_heading(2, [duck_block_text('Two')])

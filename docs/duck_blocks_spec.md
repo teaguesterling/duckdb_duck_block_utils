@@ -1152,6 +1152,35 @@ rather than assuming.
 *Measured 2026-08-31 by the duckeye and duckdb_markdown sessions against both the
 shipped binary and main, after three implementations hit the same four defects.*
 
+## Retrieval returns blocks: the recovery contract and computed attributes
+
+Retrieval functions in duck_block_utils return `LIST(duck_block)` under their base
+names (`duck_blocks_get_section`, `_get_pages`, `_sections_like`, `_headings`, `_toc`,
+`_code_blocks`, `_links`), and a suffix names what the original returned: `_text` for
+the renderings, `_structs` for the projections. The suffixed forms are permanent.
+
+**The recovery contract.** `element_order` is dense from 0 over the list a reader
+EMITS, including synthetic elements the reader inserts, such as `page_break` markers.
+That emitted list is the source document as far as every consumer is concerned. A
+function that **projects or constructs from** a document — the seven above, their
+siblings, `duck_blocks_slice` — carries `element_order` through **unrenumbered, with
+gaps**: it is the join key back to the document and between the blocks and `_structs`
+forms of the same call. A function that **builds a standalone document** —
+`duck_blocks_assemble`, `duck_blocks_merge`, `duck_blocks_reorder` — renumbers, and
+says so. This is normative because a consumer that computes section spans from heading
+`element_order` and slices with them would not fail to bind under a renumbering; it
+would return the wrong span silently. (`duck_blocks_slice` is a range filter, which is
+what lets a span boundary sit inside a gap; an index-based slice would break this.)
+
+**Computed attributes.** The heading constructions set two attributes no reader emits:
+`attributes['outline']`, the heading's position in the outline as `"1.2.1"`, and on
+`duck_blocks_toc` also `attributes['indent']`, heading level minus the document's
+minimum heading level. Outline positions are positions in the outline, not the
+heading's own digit: `h1, h3, h2, h2, h3, h1` reads `1, 1.1, 1.2, 1.3, 1.3.1, 2`.
+Never NULL, never padded. Computed attributes are legitimate only on the output of a
+construction, must be named in the vocabulary header (`ATTR_OUTLINE`, `ATTR_INDENT`),
+and a reader MUST NOT emit them as if sourced.
+
 ## Validation Rules
 
 A duck_block is **canonical** if:
