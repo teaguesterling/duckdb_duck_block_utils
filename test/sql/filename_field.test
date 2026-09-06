@@ -1,0 +1,117 @@
+# name: test/sql/filename_field.test
+# description: an 8-field duck_block with a trailing `filename` binds wherever a 7-field one does
+# group: [sql]
+
+require duck_block_utils
+
+# A reader that emits a `filename` column makes `list(b)` an 8-field struct. The
+# spec (6.4) accepts exactly ONE widened shape: the seven canonical fields, then
+# `filename VARCHAR`. Everything else must keep failing to bind.
+
+statement ok
+CREATE TABLE reader_rows AS
+SELECT 'block' AS kind, 'heading' AS element_type, 'Title' AS "content", 1 AS "level",
+       'text' AS encoding, MAP{'heading_level': '1'} AS attributes, 0 AS element_order,
+       'x.docx' AS filename;
+
+# --- the shipped build says which spec it implements
+query I
+SELECT duck_block_spec_version();
+----
+6.5
+
+# --- the list(b) idiom, the shape every consumer in the field uses
+query I
+SELECT duck_blocks_toc_structs(list(b)) FROM reader_rows b;
+----
+[{'level': 1, 'title': Title, 'id': '', 'indent': 0, 'element_order': 0}]
+
+# --- same answer as the canonical shape
+query I
+SELECT duck_blocks_toc_structs(list(b)) = duck_blocks_toc_structs(list(b::duck_block)) FROM reader_rows b;
+----
+true
+
+# --- a function taking a bare duck_block, not a list
+query I
+SELECT duck_block_valid(b) FROM reader_rows b;
+----
+true
+
+# --- provenance survives on the rows: this is what the field is FOR
+query II
+SELECT filename, duck_blocks_toc_structs(list(b))[1].title FROM reader_rows b GROUP BY filename;
+----
+x.docx	Title
+
+# --- a function RETURNING blocks returns the canonical 7-field shape
+query I
+SELECT typeof(duck_blocks_stamp(list(b))) FROM reader_rows b;
+----
+STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR, VARCHAR), element_order INTEGER)[]
+
+# --- an untyped NULL must not become ambiguous (the failure mode overloads have)
+query I
+SELECT duck_blocks_toc_structs(NULL);
+----
+NULL
+
+# --- the canonical shape is unchanged
+query I
+SELECT duck_blocks_toc_structs([struct_pack(kind := 'block', element_type := 'heading', content := 'T', level := 1,
+    encoding := 'text', attributes := MAP{'heading_level': '1'}, element_order := 0)])[1].title;
+----
+T
+
+# ============================================================================
+# Discriminating negatives: only the one blessed shape is accepted
+# ============================================================================
+
+# filename in a non-trailing position
+statement error
+SELECT duck_blocks_toc_structs([struct_pack(kind := 'block', filename := 'x', element_type := 'heading', content := 'T',
+    level := 1, encoding := 'text', attributes := MAP{'heading_level': '1'}, element_order := 0)]);
+----
+No function matches
+
+# an extra field under any other name
+statement error
+SELECT duck_blocks_toc_structs([struct_pack(kind := 'block', element_type := 'heading', content := 'T', level := 1,
+    encoding := 'text', attributes := MAP{'heading_level': '1'}, element_order := 0, file_path := 'x')]);
+----
+No function matches
+
+# a ninth field
+statement error
+SELECT duck_blocks_toc_structs([struct_pack(kind := 'block', element_type := 'heading', content := 'T', level := 1,
+    encoding := 'text', attributes := MAP{'heading_level': '1'}, element_order := 0, filename := 'x',
+    source_format := 'docx')]);
+----
+No function matches
+
+# filename with the wrong type
+statement error
+SELECT duck_blocks_toc_structs([struct_pack(kind := 'block', element_type := 'heading', content := 'T', level := 1,
+    encoding := 'text', attributes := MAP{'heading_level': '1'}, element_order := 0, filename := 42)]);
+----
+No function matches
+
+# ============================================================================
+# A false negative to know about when probing the bare-struct path by hand
+# ============================================================================
+
+# `MAP{}` infers MAP("NULL", "NULL"), not MAP(VARCHAR, VARCHAR), so a struct literal
+# built with it is NOT the registered shape and the cast is (correctly) not offered.
+# markdown nearly reported the struct cast as broken from exactly this. The typed
+# empty map binds.
+query I
+SELECT duck_block_valid(struct_pack(kind := 'block', element_type := 'paragraph', content := 'x', level := 1,
+    encoding := 'text', attributes := MAP{}::MAP(VARCHAR, VARCHAR), element_order := 0, filename := 'f'));
+----
+true
+
+statement error
+SELECT duck_block_valid(struct_pack(kind := 'block', element_type := 'paragraph', content := 'x', level := 1,
+    encoding := 'text', attributes := MAP{}, element_order := 0, filename := 'f'));
+----
+No function matches

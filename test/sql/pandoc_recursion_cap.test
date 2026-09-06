@@ -29,7 +29,7 @@ SELECT len(pandoc_ast_to_blocks(repeat('{"t":"Div","c":[["",[],[]],[', 127) || '
 statement error
 SELECT pandoc_ast_to_blocks(repeat('{"t":"Div","c":[["",[],[]],[', 140) || '{"t":"Para","c":[{"t":"Str","c":"deep"}]}' || repeat(']]}', 140));
 ----
-maximum nesting depth
+Invalid Input Error: Pandoc AST conversion exceeded the maximum nesting depth
 
 # ============================================================================
 # Depth cap: parsing Pandoc inline JSON (nested Strong)
@@ -43,7 +43,7 @@ SELECT len(pandoc_inlines_to_db_inlines(repeat('{"t":"Strong","c":[', 10) || '{"
 statement error
 SELECT pandoc_inlines_to_db_inlines(repeat('{"t":"Strong","c":[', 140) || '{"t":"Str","c":"x"}' || repeat(']}', 140));
 ----
-maximum nesting depth
+Invalid Input Error: Pandoc AST conversion exceeded the maximum nesting depth
 
 # ============================================================================
 # Depth cap: rendering Pandoc inline JSON to text (nested Strong)
@@ -57,7 +57,7 @@ x
 statement error
 SELECT pandoc_inlines_to_text(repeat('{"t":"Strong","c":[', 140) || '{"t":"Str","c":"x"}' || repeat(']}', 140), 'text');
 ----
-maximum nesting depth
+Invalid Input Error: Pandoc AST conversion exceeded the maximum nesting depth
 
 # ============================================================================
 # Depth cap: emitting Pandoc JSON from duck_blocks (nested divs / inlines)
@@ -65,7 +65,7 @@ maximum nesting depth
 
 statement ok
 CREATE MACRO deep_divs(n) AS (
-    list_transform(range(1, n + 1), i -> {
+    list_transform(range(1, n + 1), lambda i: {
         'kind': 'block', 'element_type': 'div', 'content': '',
         'level': i, 'encoding': 'text',
         'attributes': map([]::VARCHAR[], []::VARCHAR[]),
@@ -75,7 +75,7 @@ CREATE MACRO deep_divs(n) AS (
 
 statement ok
 CREATE MACRO deep_bolds(n) AS (
-    list_transform(range(1, n + 1), i -> {
+    list_transform(range(1, n + 1), lambda i: {
         'kind': 'inline', 'element_type': 'bold', 'content': '',
         'level': i, 'encoding': 'text',
         'attributes': map([]::VARCHAR[], []::VARCHAR[]),
@@ -91,7 +91,7 @@ true
 statement error
 SELECT duck_blocks_to_pandoc_blocks(deep_divs(140));
 ----
-maximum nesting depth
+Invalid Input Error: Pandoc AST conversion exceeded the maximum nesting depth
 
 query I
 SELECT duck_blocks_inlines_to_pandoc(deep_bolds(100)) LIKE '%Strong%';
@@ -101,7 +101,7 @@ true
 statement error
 SELECT duck_blocks_inlines_to_pandoc(deep_bolds(140));
 ----
-maximum nesting depth
+Invalid Input Error: Pandoc AST conversion exceeded the maximum nesting depth
 
 # ============================================================================
 # Safe integer parsing: malformed / out-of-range values must not abort

@@ -23,7 +23,11 @@ public:
 	// Create a LIST(duck_block) type
 	static LogicalType DuckBlockListType();
 
-	// Create the extended duck_block type with provenance fields
+	// The one accepted widened shape: duck_block plus a trailing `filename VARCHAR`.
+	// Accepted on input everywhere via a registered implicit cast; never returned.
+	static LogicalType DuckBlockWithFilenameType();
+
+	// DEPRECATED since 6.4, removed in 6.5. Never produced by any function.
 	static LogicalType DuckBlockExtType();
 
 	// Register types with the extension loader

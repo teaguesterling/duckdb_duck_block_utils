@@ -27,9 +27,12 @@ STRUCT(
 | `block` | Block-level elements (heading, paragraph, code, list, etc.) |
 | `inline` | Inline elements (text, bold, italic, link, etc.) |
 
-### duck_block_ext
+### duck_block_ext (DEPRECATED)
 
-Extended element type with provenance tracking.
+**Deprecated; removed in the next release.** No function ever produced or consumed it.
+Provenance is the optional trailing `filename` field on `duck_block` itself — see the
+spec's "Provenance" section. The type stays registered for one release only so that
+a user's own `CAST(x AS duck_block_ext)` gets a release of warning.
 
 ```sql
 STRUCT(
@@ -424,6 +427,8 @@ duck_blocks_concat(blocks1 LIST(duck_block), blocks2 LIST(duck_block)) → LIST(
 - `blocks2`: Second list of elements
 
 **Notes:**
+- **Trusts neither input.** Raw append: touches neither the sequence nor `element_order`,
+  so two independently numbered lists come out with colliding orders.
 - Unlike `duck_blocks_merge`, does not adjust `element_order`
 - Use with `duck_blocks_assemble` to renumber after concatenation
 
@@ -494,8 +499,13 @@ duck_blocks_merge(blocks1 LIST(duck_block), blocks2 LIST(duck_block)) → LIST(d
 - `blocks2`: Second list of elements (orders will be offset)
 
 **Notes:**
+- **Trusts the LIST, repairs `element_order`.** This is the function for concatenating
+  independently numbered sources — pages parsed separately, documents that each start
+  at 0 — where the sequence is right and the orders are not.
 - Second list's `element_order` values are offset by `max(blocks1.element_order) + 1`
 - Preserves relative ordering within each list
+- It is binary; for N lists, fold it:
+  `reduce(list_of_lists, (acc, x) -> duck_blocks_merge(acc, x))`
 
 **Example:**
 ```sql
@@ -520,6 +530,10 @@ duck_blocks_reorder(blocks LIST(duck_block)) → LIST(duck_block)
 - `blocks`: List of elements to renumber
 
 **Notes:**
+- **Trusts `element_order`, repairs the LIST.** It sorts by the orders it is given and
+  renumbers; a list whose orders are already wrong (two page parses that each start at
+  0, flattened) comes out regrouped, not fixed. That case wants `duck_blocks_merge`.
+  The name reads like "fix the ordering"; it fixes the list to match the ordering.
 - Sorts by current `element_order` first
 - Assigns new values: 0, 1, 2, ...
 - Useful after filtering to eliminate gaps
@@ -584,12 +598,17 @@ SELECT db_blocks_transform(
 
 ## Content Extraction Functions
 
-### duck_blocks_to_text
+### duck_blocks_to_text / duck_blocks_to_match_text
 
-Extract plain text content from elements.
+Extract plain text content from elements. Two jobs, two names: **rendering** joins
+blocks with a blank line so the result reads as a document; **matching** flattens them
+with a space so a search phrase that spans a block boundary is found. A search on the
+render form misses cross-block phrases; a render on the match form runs paragraphs
+together. The two-argument form is the escape hatch for any other joiner.
 
 ```sql
-duck_blocks_to_text(blocks LIST(duck_block)) → VARCHAR
+duck_blocks_to_text(blocks LIST(duck_block)) → VARCHAR                  -- render: "\n\n"
+duck_blocks_to_match_text(blocks LIST(duck_block)) → VARCHAR            -- match: " "
 duck_blocks_to_text(blocks LIST(duck_block), separator VARCHAR) → VARCHAR
 ```
 
@@ -608,27 +627,63 @@ SELECT duck_blocks_to_text([
 
 ---
 
+### Retrieval returns blocks; a suffix names the original
+
+Every retrieval function's base name returns `LIST(duck_block)`, so its result can be
+sliced, rendered, searched and re-emitted. The shape each function returned before
+lives on under a suffix that names it: **`_structs`** for the projections, **`_text`**
+for the text renderings. The suffixed forms are the ergonomic ones and are permanent,
+not a compatibility shim.
+
+| Base name → `LIST(duck_block)` | Sibling, original behaviour |
+|---|---|
+| `duck_blocks_headings(blocks)` | `duck_blocks_headings_structs(blocks)` |
+| `duck_blocks_toc(blocks)` | `duck_blocks_toc_structs(blocks)` |
+| `duck_blocks_code_blocks(blocks)` | `duck_blocks_code_blocks_structs(blocks)` |
+| `duck_blocks_links(blocks)` | `duck_blocks_links_structs(blocks)` |
+| `duck_blocks_get_section(blocks, pattern)` | `duck_blocks_get_section_text(blocks, pattern)` → VARCHAR |
+| `duck_blocks_get_pages(blocks, first, last)` | `duck_blocks_get_pages_text(blocks, first, last)` → VARCHAR |
+| `duck_blocks_sections_like(blocks, term)` → `(section, start_order, blocks)` | `duck_blocks_sections_like_text(doc, term)` → `(section, start_order, content)` |
+
+**The recovery contract.** Every function in this table carries `element_order` through
+from the source **unrenumbered, with gaps**. It is the join key back to the document and
+between the blocks and `_structs` forms of the same call. Only `duck_blocks_assemble`,
+`duck_blocks_merge` and `duck_blocks_reorder` renumber. A consumer that computes spans
+from heading `element_order` and slices with them depends on this; renumbering would not
+fail to bind, it would return the wrong span.
+
+The `_text` siblings are defined as the one-argument `duck_blocks_to_text` over the
+blocks form, which is byte-identical to what the old default computed.
+
+---
+
 ### duck_blocks_headings
 
-Extract heading information.
+One block per heading: `element_type='heading'`, `content` = the heading's flattened
+text (inline children are collapsed into `content` and not carried), the source's
+`attributes` plus `heading_level` and a computed **`outline`**, `element_order` from
+the source.
 
 ```sql
-duck_blocks_headings(blocks LIST(duck_block)) → LIST(STRUCT(level, title, id, element_order))
+duck_blocks_headings(blocks LIST(duck_block)) → LIST(duck_block)
+duck_blocks_headings_structs(blocks LIST(duck_block)) → LIST(STRUCT(level, title, id, element_order))
 ```
 
-**Returns:** List of structs containing:
-- `level`: Heading level (1-6)
-- `title`: Heading text
-- `id`: ID attribute if present
-- `element_order`: Position in document
+**`_structs` returns** `level` (heading level 1-6), `title`, `id` (from
+`attributes['id']`, `''` when absent), `element_order`.
 
-**Example:**
-```sql
-SELECT duck_blocks_headings(my_blocks);
--- Returns: [{level: 1, title: 'Introduction', id: '', element_order: 0}, ...]
+**`attributes['outline']`** is the heading's position in the outline, as
+`"1.2.1"`: positions, not the heading's own digit, so a skipped level does not pad
+and a return to a shallower level continues the parent's numbering.
+
+```
+h1 A -> 1      h3 B -> 1.1      h2 C -> 1.2      h2 D -> 1.3      h3 E -> 1.3.1      h1 F -> 2
 ```
 
-**Heading text resolution:** `title` is the heading's `content` when that is
+Never NULL. It is the first attribute a function here computes rather than copies from a
+source; readers never emit it.
+
+**Heading text resolution:** the title is the heading's `content` when that is
 populated, and otherwise the text of the heading's structured inline children —
 the `kind='inline'` elements that immediately follow it. Producers differ here:
 `markdown` flattens plain heading text into `content`, while `webbed` leaves
@@ -638,18 +693,44 @@ the `kind='inline'` elements that immediately follow it. Producers differ here:
 
 ---
 
-### duck_blocks_code_blocks
+### duck_blocks_toc
 
-Extract code block information.
+The heading blocks of `duck_blocks_headings` plus **`attributes['indent']`**: heading
+level minus the document's minimum heading level, 0-based. A superset by design; the
+projection sibling is where `indent` is a column. For a row-shaped table of contents
+use `duck_blocks_toc_rows(blocks)`, whose columns are unchanged.
 
 ```sql
-duck_blocks_code_blocks(blocks LIST(duck_block)) → LIST(STRUCT(language, content, element_order))
+duck_blocks_toc(blocks LIST(duck_block)) → LIST(duck_block)
+duck_blocks_toc_structs(blocks LIST(duck_block)) → LIST(STRUCT(level, title, id, indent, element_order))
 ```
 
-**Returns:** List of structs containing:
-- `language`: Programming language
-- `content`: Code content
-- `element_order`: Position in document
+---
+
+### duck_blocks_code_blocks
+
+The `code` blocks of the document, as they are, `element_order` preserved.
+
+```sql
+duck_blocks_code_blocks(blocks LIST(duck_block)) → LIST(duck_block)
+duck_blocks_code_blocks_structs(blocks LIST(duck_block)) → LIST(STRUCT(language, content, element_order))
+```
+
+**`_structs` returns** `language` (from `attributes['language']`), `content`,
+`element_order`.
+
+---
+
+### duck_blocks_links
+
+The elements that carry a URL — inline `link` elements and block or inline `image`
+elements with a `src` — **as they are**: an image stays an image. The projection is
+where `href` unifies `href` and `src`.
+
+```sql
+duck_blocks_links(blocks LIST(duck_block)) → LIST(duck_block)
+duck_blocks_links_structs(blocks LIST(duck_block)) → LIST(STRUCT(href, text, title, element_order))
+```
 
 ---
 

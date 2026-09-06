@@ -35,7 +35,7 @@ true
 query I
 SELECT duck_block_spec_version();
 ----
-6.3
+6.5
 
 # ...and it must be well-formed MAJOR.MINOR, since the contract in the header
 # says consumers assert major equality plus a minor floor. A version that does
@@ -82,7 +82,7 @@ WITH emitted AS (
   SELECT list_distinct(list(b.kind)) AS ks
   FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a "},{"t":"Strong","c":[{"t":"Str","c":"b"}]}]}]}')) AS b)
 )
-SELECT list_filter(duck_block_kind_names(), k -> NOT list_contains(ks, k)) FROM emitted;
+SELECT list_filter(duck_block_kind_names(), lambda k: NOT list_contains(ks, k)) FROM emitted;
 ----
 []
 
@@ -136,7 +136,7 @@ Body
 
 # a heading TOC must not pick up metadata either
 query I
-SELECT count(*) FROM (SELECT unnest(duck_blocks_toc(pandoc_ast_to_blocks(
+SELECT count(*) FROM (SELECT unnest(duck_blocks_toc_structs(pandoc_ast_to_blocks(
   '{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"LEAK"}]}},
     "blocks":[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"Real"}]]}]}'))) AS t)
 WHERE (t).title = 'LEAK';
@@ -385,7 +385,7 @@ REALBODY
 
 # the TOC must not pick up a heading buried in metadata either
 query I
-SELECT count(*) FROM (SELECT unnest(duck_blocks_toc(pandoc_ast_to_blocks(
+SELECT count(*) FROM (SELECT unnest(duck_blocks_toc_structs(pandoc_ast_to_blocks(
   '{"meta":{"abstract":{"t":"MetaBlocks","c":[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"METAHEAD"}]]}]}},
     "blocks":[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"Real"}]]}]}'))) AS t)
 WHERE (t).title = 'METAHEAD';
@@ -421,7 +421,7 @@ true
 
 # it is NOT a heading: the TOC must ignore it
 query I
-SELECT count(*) FROM (SELECT unnest(duck_blocks_toc([
+SELECT count(*) FROM (SELECT unnest(duck_blocks_toc_structs([
   {'kind':'block','element_type':'page_break','content':'','level':1,'encoding':'text',
    'attributes':MAP{'page_number':'1'},'element_order':0}::duck_block,
   {'kind':'block','element_type':'heading','content':'Real','level':1,'encoding':'text',
@@ -622,8 +622,8 @@ true	0	0
 # ORDERING IS A CONTRACT as of 6.2: value elements come AFTER the blocks. Two
 # producers asked where they go, which is a question a convenience cannot answer.
 query I
-SELECT list_position(list_transform(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a"}]}]}'), e -> e.kind), 'value')
-     > list_position(list_transform(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a"}]}]}'), e -> e.kind), 'block');
+SELECT list_position(list_transform(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a"}]}]}'), lambda e: e.kind), 'value')
+     > list_position(list_transform(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a"}]}]}'), lambda e: e.kind), 'block');
 ----
 true
 

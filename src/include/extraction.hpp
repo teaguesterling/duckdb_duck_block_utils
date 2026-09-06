@@ -34,6 +34,13 @@ private:
 	// duck_blocks_links(blocks LIST(duck_block)) -> LIST(STRUCT(href, text, title, element_order))
 	// Extract links from blocks
 	static void DbBlocksLinksFun(DataChunk &args, ExpressionState &state, Vector &result);
+
+	// Spec 6.5: the base names return LIST(duck_block); the functions above live on
+	// under the `_structs` names. See docs/superpowers/specs/2026-09-05-extractor-reshape-design.md.
+	static void DbBlocksHeadingsBlocksFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbBlocksTocBlocksFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbBlocksCodeBlocksBlocksFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbBlocksLinksBlocksFun(DataChunk &args, ExpressionState &state, Vector &result);
 };
 
 } // namespace duckdb

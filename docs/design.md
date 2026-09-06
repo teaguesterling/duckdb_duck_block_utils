@@ -105,7 +105,8 @@ CREATE TYPE duck_block AS STRUCT(
     element_order INTEGER
 );
 
--- Extended version with provenance
+-- Extended version with provenance. DEPRECATED: never produced by any function;
+-- provenance is now the optional trailing `filename` field on duck_block itself.
 CREATE TYPE duck_block_ext AS STRUCT(
     kind VARCHAR,
     element_type VARCHAR,

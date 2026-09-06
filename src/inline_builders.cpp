@@ -1,4 +1,5 @@
 #include "inline_builders.hpp"
+#include "duckdb_compat.hpp"
 #include "block_types.hpp"
 #include "duckdb/common/types/value.hpp"
 
@@ -35,16 +36,16 @@ static Value FlattenNestedList(const Value &nested_list) {
 }
 
 // Helper to set all struct fields for an inline element
-static void SetInlineFields(vector<unique_ptr<Vector>> &entries, idx_t i, const char *element_type,
-                            const Value &content, const char *encoding, const map<string, string> &attrs,
-                            int32_t level = 1, int32_t element_order = 0) {
-	entries[BlockTypes::KIND_IDX]->SetValue(i, Value(BlockTypes::KIND_INLINE));
-	entries[BlockTypes::ELEMENT_TYPE_IDX]->SetValue(i, Value(element_type));
-	entries[BlockTypes::CONTENT_IDX]->SetValue(i, content);
-	entries[BlockTypes::LEVEL_IDX]->SetValue(i, Value(level));
-	entries[BlockTypes::ENCODING_IDX]->SetValue(i, Value(encoding));
-	entries[BlockTypes::ATTRIBUTES_IDX]->SetValue(i, CreateAttributesMap(attrs));
-	entries[BlockTypes::ELEMENT_ORDER_IDX]->SetValue(i, Value(element_order));
+static void SetInlineFields(CompatStructEntries &entries, idx_t i, const char *element_type, const Value &content,
+                            const char *encoding, const map<string, string> &attrs, int32_t level = 1,
+                            int32_t element_order = 0) {
+	CompatStructChild(entries, BlockTypes::KIND_IDX).SetValue(i, Value(BlockTypes::KIND_INLINE));
+	CompatStructChild(entries, BlockTypes::ELEMENT_TYPE_IDX).SetValue(i, Value(element_type));
+	CompatStructChild(entries, BlockTypes::CONTENT_IDX).SetValue(i, content);
+	CompatStructChild(entries, BlockTypes::LEVEL_IDX).SetValue(i, Value(level));
+	CompatStructChild(entries, BlockTypes::ENCODING_IDX).SetValue(i, Value(encoding));
+	CompatStructChild(entries, BlockTypes::ATTRIBUTES_IDX).SetValue(i, CreateAttributesMap(attrs));
+	CompatStructChild(entries, BlockTypes::ELEMENT_ORDER_IDX).SetValue(i, Value(element_order));
 }
 
 Value InlineBuilderFunctions::CreateInline(const string &inline_type, const string &content,

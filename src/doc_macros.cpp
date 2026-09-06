@@ -1,4 +1,5 @@
 #include "doc_macros.hpp"
+#include "duckdb_compat.hpp"
 #include "duckdb/catalog/default/default_functions.hpp"
 #include "duckdb/catalog/default/default_table_functions.hpp"
 #include "duckdb/function/pragma_function.hpp"
@@ -71,37 +72,113 @@ CREATE OR REPLACE MACRO profile_file(path) AS TABLE
 // what a pragma is for. It is the core query surface that should not need one.
 // ---------------------------------------------------------------------------
 
-static const DefaultMacro DOC_SCALAR_MACROS[] = {
+// DuckDB's DefaultMacro changed SHAPE between the version this extension ships
+// against and DuckDB main, and it is a shape change rather than a rename:
+//
+//   v1.5: { schema; name; parameters[8]; named_parameters[8]; macro; }
+//   v2.0: { schema; name; macro_definition; }
+//
+// On v2.0 the signature moved INSIDE the definition string -- the generator now
+// builds "CREATE MACRO __dummy__(a, b, c := 'x') AS (body)" and lets the parser
+// work out parameters and defaults, instead of assembling ColumnRefExpressions
+// itself. DefaultTableMacro did NOT change, so DOC_TABLE_MACROS below is
+// untouched; only the scalar side needs this.
+//
+// The macros stay in the v1.5 shape and the v2.0 signature is SYNTHESISED from
+// it, so the SQL body is written once. Writing two arrays under an #ifdef would
+// put the same forty lines of SQL in the source twice, and the copy that the
+// local build never compiles is the one that would drift.
+struct DocScalarMacro {
+	const char *schema;
+	const char *name;
+	const char *parameters[8];
+	DefaultNamedParameter named_parameters[8];
+	const char *macro;
+};
+
+template <class T, class = void>
+struct HasMacroDefinition : std::false_type {};
+template <class T>
+struct HasMacroDefinition<T, decltype(void(std::declval<T &>().macro_definition))> : std::true_type {};
+
+// Templated on the DefaultMacro type so the member accesses are DEPENDENT: the
+// discarded branch of an `if constexpr` is still parsed, and naming a member
+// that does not exist on this version is a hard error unless lookup is deferred.
+template <class DM = DefaultMacro>
+static unique_ptr<CreateMacroInfo> CreateScalarMacroInfo(const DocScalarMacro &m) {
+	DM dm {};
+	if constexpr (HasMacroDefinition<DM>::value) {
+		string signature = "(";
+		bool first = true;
+		for (idx_t i = 0; i < 8 && m.parameters[i] != nullptr; i++) {
+			signature += first ? "" : ", ";
+			signature += m.parameters[i];
+			first = false;
+		}
+		for (idx_t i = 0; i < 8 && m.named_parameters[i].name != nullptr; i++) {
+			signature += first ? "" : ", ";
+			signature += m.named_parameters[i].name;
+			signature += " := ";
+			signature += m.named_parameters[i].default_value;
+			first = false;
+		}
+		signature += ") AS ";
+		signature += m.macro;
+
+		dm.schema = m.schema;
+		dm.name = m.name;
+		// `signature` outlives the call: CreateInternalMacroInfo parses the text
+		// immediately and keeps no pointer into it.
+		dm.macro_definition = signature.c_str();
+		return DefaultFunctionGenerator::CreateInternalMacroInfo(dm);
+	} else {
+		dm.schema = m.schema;
+		dm.name = m.name;
+		for (idx_t i = 0; i < 8; i++) {
+			dm.parameters[i] = m.parameters[i];
+			dm.named_parameters[i] = m.named_parameters[i];
+		}
+		dm.macro = m.macro;
+		return DefaultFunctionGenerator::CreateInternalMacroInfo(dm);
+	}
+}
+
+static const DocScalarMacro DOC_SCALAR_MACROS[] = {
     {DEFAULT_SCHEMA,
      "duck_blocks_get_section",
      {"blocks", "section_pattern", nullptr},
-     {{"output_format", "'text'"}, {nullptr, nullptr}},
+     {{nullptr, nullptr}},
      "(\n"
      "    [\n"
      "        (\n"
-     "            SELECT CASE lower(output_format)\n"
-     "                       WHEN 'text'   THEN duck_blocks_to_text(sliced)\n"
-     "                       WHEN 'ansi'   THEN duck_blocks_render_ansi(sliced)\n"
-     "                       WHEN 'blocks' THEN to_json(sliced)::VARCHAR\n"
-     "                       WHEN 'pandoc' THEN to_json(duck_blocks_to_pandoc_ast(sliced))::VARCHAR\n"
-     "                       ELSE error('duck_blocks_get_section: unsupported output_format ' ||\n"
-     "                                  coalesce(output_format, 'NULL') ||\n"
-     "                                  '; expected text, ansi, blocks or pandoc')\n"
-     "                   END\n"
+     "            SELECT sliced\n"
      "            FROM (\n"
      "                WITH doc AS (SELECT blocks AS b),\n"
      "                     h AS (SELECT e.level AS lvl, e.title AS title, e.id AS id, e.element_order AS ord\n"
-     "                           FROM (SELECT unnest(duck_blocks_headings(b)) AS e FROM doc)),\n"
+     "                           FROM (SELECT unnest(duck_blocks_headings_structs(b)) AS e FROM doc)),\n"
      "                     sec AS (SELECT h1.ord AS s, coalesce(min(h2.ord) - 1, 2147483647) AS e\n"
      "                             FROM h h1 LEFT JOIN h h2 ON h2.ord > h1.ord AND h2.lvl <= h1.lvl\n"
      "                             WHERE h1.title ILIKE '%' || section_pattern || '%' OR h1.id = section_pattern\n"
      "                             GROUP BY h1.ord),\n"
-     "                     top AS (SELECT s, e FROM sec a\n"
-     "                             WHERE NOT EXISTS (SELECT 1 FROM sec b2\n"
-     "                                               WHERE b2.s <= a.s AND b2.e >= a.e AND (b2.s, b2.e) <> (a.s, "
-     "a.e)))\n"
-     "                SELECT duck_blocks_reorder(flatten(list(duck_blocks_slice(doc.b, top.s, top.e) ORDER BY top.s))) "
-     "AS sliced\n"
+     // OUTERMOST matching sections only: a section contained in another match is
+     // dropped. This was a NOT EXISTS anti-join over `sec`, which DuckDB could not
+     // decorrelate when `blocks` was a bare TABLE COLUMN -- "INTERNAL Error: Failed to
+     // bind column reference: inequal types (INTEGER != BIGINT)", on the published
+     // release too; a value or scalar-subquery argument never hit it. Ordered by start
+     // (ties: longest first), every earlier row starts at or before this one, so "an
+     // earlier row ends at or after me" IS containment, and a window says it without a
+     // second reference to the CTE. Agrees with the anti-join on every value input.
+     "                     top AS (SELECT s, e FROM (\n"
+     "                               SELECT s, e, max(e) OVER (ORDER BY s, e DESC\n"
+     "                                      ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS prev_e\n"
+     "                               FROM sec)\n"
+     "                             WHERE prev_e IS NULL OR prev_e < e)\n"
+     // element_order is PRESERVED, not renumbered (recovery contract): the outermost
+     // sections are disjoint and listed by start, so the concatenation is already in
+     // document order, and a caller can join the result back to the document -- or to
+     // page_rows -- by element_order. get_pages and sections_like never renumbered;
+     // this one did, through a duck_blocks_reorder that ordering never needed.
+     "                SELECT flatten(list(duck_blocks_slice(doc.b, top.s, top.e) ORDER BY top.s)) AS sliced\n"
      "                FROM doc, top\n"
      "            )\n"
      "        )\n"
@@ -110,19 +187,11 @@ static const DefaultMacro DOC_SCALAR_MACROS[] = {
     {DEFAULT_SCHEMA,
      "duck_blocks_get_pages",
      {"blocks", "first_page", "last_page", nullptr},
-     {{"output_format", "'text'"}, {nullptr, nullptr}},
+     {{nullptr, nullptr}},
      "(\n"
      "    [\n"
      "        (\n"
-     "            SELECT CASE lower(output_format)\n"
-     "                       WHEN 'text'   THEN duck_blocks_to_text(sliced)\n"
-     "                       WHEN 'ansi'   THEN duck_blocks_render_ansi(sliced)\n"
-     "                       WHEN 'blocks' THEN to_json(sliced)::VARCHAR\n"
-     "                       WHEN 'pandoc' THEN to_json(duck_blocks_to_pandoc_ast(sliced))::VARCHAR\n"
-     "                       ELSE error('duck_blocks_get_pages: unsupported output_format ' ||\n"
-     "                                  coalesce(output_format, 'NULL') ||\n"
-     "                                  '; expected text, ansi, blocks or pandoc')\n"
-     "                   END\n"
+     "            SELECT sliced\n"
      "            FROM (\n"
      "                WITH doc AS (SELECT blocks AS b),\n"
      "         brk AS (SELECT e.element_order AS ord,\n"
@@ -145,6 +214,34 @@ static const DefaultMacro DOC_SCALAR_MACROS[] = {
      "        )\n"
      "    ][1]\n"
      ")"},
+    // The two to_text jobs have two NAMES. Rendering joins blocks with a blank line;
+    // MATCHING flattens them with a space so a phrase that spans a block boundary is
+    // found. Both are right for their job, and `to_text(x, ' ')` looks exactly as
+    // deliberate at a call site as `to_text(x)`, so a wrong choice read as a right
+    // one -- the sections_like predicate below was the one bare-literal call site and
+    // it is what generated the trap. A search on the render form reads wrong on sight
+    // now, and so does a render on the match form. (Proposed by Tiiny, ruled by Teague.)
+    {DEFAULT_SCHEMA,
+     "duck_blocks_to_match_text",
+     {"blocks", nullptr},
+     {{nullptr, nullptr}},
+     "duck_blocks_to_text(blocks, ' ')"},
+    // 6.5: the ORIGINAL text behaviour, by construction. The pre-reshape default was
+    // literally duck_blocks_to_text(sliced); this is the same call over the same value,
+    // moved outside the subquery, which is exact because to_text(NULL) IS NULL (the
+    // no-match case). ONE-arg to_text on purpose: the two-arg form a few lines up in
+    // sections_like is a SEARCH predicate and flattens with ' ', and a port that used it
+    // would keep every row and silently change the separator in the text (Tiiny).
+    {DEFAULT_SCHEMA,
+     "duck_blocks_get_section_text",
+     {"blocks", "section_pattern", nullptr},
+     {{nullptr, nullptr}},
+     "duck_blocks_to_text(duck_blocks_get_section(blocks, section_pattern))"},
+    {DEFAULT_SCHEMA,
+     "duck_blocks_get_pages_text",
+     {"blocks", "first_page", "last_page", nullptr},
+     {{nullptr, nullptr}},
+     "duck_blocks_to_text(duck_blocks_get_pages(blocks, first_page, last_page))"},
     {nullptr, nullptr, {nullptr}, {{nullptr, nullptr}}, nullptr}};
 
 static const DefaultTableMacro DOC_TABLE_MACROS[] = {
@@ -157,7 +254,7 @@ static const DefaultTableMacro DOC_TABLE_MACROS[] = {
      "           (toc).id AS id,\n"
      "           (toc).indent AS indent,\n"
      "           (toc).element_order AS element_order\n"
-     "    FROM (SELECT unnest(duck_blocks_toc(blocks)) AS toc)"},
+     "    FROM (SELECT unnest(duck_blocks_toc_structs(blocks)) AS toc)"},
     {DEFAULT_SCHEMA,
      "duck_blocks_diff",
      {"before", "after", nullptr},
@@ -259,20 +356,28 @@ static const DefaultTableMacro DOC_TABLE_MACROS[] = {
      "                  FROM numbered\n"
      "                  UNION ALL\n"
      "                  SELECT NULL::INTEGER, 0, ((SELECT min(ord) FROM brk) - 1)::INTEGER\n"
-     "                  WHERE (SELECT min(ord) FROM brk) > 0)\n"
-     "    SELECT span.page_number AS page_number,\n"
-     "           span.s AS start_order,\n"
-     "           span.e AS end_order,\n"
-     "           len(duck_blocks_slice(doc.b, span.s, span.e)) AS block_count\n"
-     "    FROM doc, span\n"
-     "    ORDER BY span.s"},
+     "                  WHERE (SELECT min(ord) FROM brk) > 0),\n"
+     // page_rows is an EXTRACTOR, so it hands back the blocks, not just a count of
+     // them. The slice is computed once in `sliced` and shared: block_count is len()
+     // of the very list returned, so the two can never disagree. Computing the slice
+     // twice would let a future edit change one and not the other.
+     "         sliced AS (SELECT span.page_number AS page_number, span.s AS s, span.e AS e,\n"
+     "                           duck_blocks_slice(doc.b, span.s, span.e) AS sec\n"
+     "                    FROM doc, span)\n"
+     "    SELECT page_number,\n"
+     "           s AS start_order,\n"
+     "           e AS end_order,\n"
+     "           len(sec) AS block_count,\n"
+     "           sec AS blocks\n"
+     "    FROM sliced\n"
+     "    ORDER BY s"},
     {DEFAULT_SCHEMA,
      "duck_blocks_sections_like",
      {"blocks", "query_term", nullptr},
-     {{"output_format", "'text'"}, {nullptr, nullptr}},
+     {{nullptr, nullptr}},
      "WITH doc AS (SELECT blocks AS b),\n"
      "         h AS (SELECT e.element_order AS ord, e.title AS title\n"
-     "               FROM (SELECT unnest(duck_blocks_headings(b)) AS e FROM doc)),\n"
+     "               FROM (SELECT unnest(duck_blocks_headings_structs(b)) AS e FROM doc)),\n"
      "         span AS (SELECT ord AS s, coalesce(lead(ord) OVER (ORDER BY ord) - 1, 2147483647) AS e, title FROM h\n"
      "                  UNION ALL\n"
      "                  SELECT 0 AS s, coalesce((SELECT min(ord) - 1 FROM h), 2147483647)::INT AS e, '(preamble)' AS "
@@ -294,35 +399,42 @@ static const DefaultTableMacro DOC_TABLE_MACROS[] = {
      //
      // The output branches below keep the default separator: what you SEE should read
      // as a document. Only the predicate is flattened.
-     "                 WHERE duck_blocks_to_text(duck_blocks_slice(doc.b, span.s, span.e), ' ') ILIKE '%' || "
+     "                 WHERE duck_blocks_to_match_text(duck_blocks_slice(doc.b, span.s, span.e)) ILIKE '%' || "
      "query_term || '%')\n"
      "    SELECT hit.title AS section,\n"
      "           hit.s AS start_order,\n"
-     "           CASE lower(output_format)\n"
-     "               WHEN 'text'   THEN duck_blocks_to_text(hit.sec)\n"
-     "               WHEN 'ansi'   THEN duck_blocks_render_ansi(hit.sec)\n"
-     "               WHEN 'blocks' THEN to_json(hit.sec)::VARCHAR\n"
-     "               WHEN 'pandoc' THEN to_json(duck_blocks_to_pandoc_ast(hit.sec))::VARCHAR\n"
-     "               ELSE error('duck_blocks_sections_like: unsupported output_format ' ||\n"
-     "                          coalesce(output_format, 'NULL') ||\n"
-     "                          '; expected text, ansi, blocks or pandoc')\n"
-     "           END AS content\n"
+     "           hit.sec AS blocks\n"
      "    FROM hit\n"
      "    ORDER BY hit.s"},
+    // 6.5: original sections_like shape (section, start_order, content VARCHAR), rows
+    // unchanged. The parameter is `doc`, not `blocks`, because the inner macro's third
+    // COLUMN is named blocks and a parameter of that name would be substituted into it.
+    {DEFAULT_SCHEMA,
+     "duck_blocks_sections_like_text",
+     {"doc", "query_term", nullptr},
+     {{nullptr, nullptr}},
+     "SELECT section, start_order, duck_blocks_to_text(blocks) AS content\n"
+     "    FROM duck_blocks_sections_like(doc, query_term)"},
     {nullptr, nullptr, {nullptr}, {{nullptr, nullptr}}, nullptr}};
 
 void DocMacros::Register(ExtensionLoader &loader) {
 	// 1. Register C++ scalar function duck_block_ensure_extension
 	// VOLATILE: it LOADs an extension if present, so its result depends on installed
 	// state and it has a side effect. Constant-folding either would be wrong.
+	// Stability set with the SETTER rather than threaded through the constructor's
+	// positional tail. DuckDB v2.0 REMOVED the bind_scalar_function_extended_t
+	// parameter, so the run of nullptrs that reached `stability` on v1.5 lands one
+	// slot earlier there and a nullptr arrives where a LogicalType varargs is
+	// expected. The short constructor plus a setter means the same two lines
+	// compile on both.
 	auto ensure_ext_func = ScalarFunction("duck_block_ensure_extension", {LogicalType::VARCHAR}, LogicalType::BOOLEAN,
-	                                      DbEnsureExtensionFun, nullptr, nullptr, nullptr, nullptr,
-	                                      LogicalType(LogicalTypeId::INVALID), FunctionStability::VOLATILE);
+	                                      DbEnsureExtensionFun);
+	ensure_ext_func.SetStability(FunctionStability::VOLATILE);
 	loader.RegisterFunction(ensure_ext_func);
 
 	// 2. The document-query macros, at LOAD (see above)
 	for (idx_t i = 0; DOC_SCALAR_MACROS[i].name != nullptr; i++) {
-		auto info = DefaultFunctionGenerator::CreateInternalMacroInfo(DOC_SCALAR_MACROS[i]);
+		auto info = CreateScalarMacroInfo(DOC_SCALAR_MACROS[i]);
 		loader.RegisterFunction(*info);
 	}
 	for (idx_t i = 0; DOC_TABLE_MACROS[i].name != nullptr; i++) {

@@ -129,9 +129,7 @@ def main() -> int:
     excuses_nothing = sorted(
         n
         for n in EXEMPT
-        if n in all_consts
-        and all_consts[n]
-        and not any(f'"{all_consts[n]}"' in t for t in sources.values())
+        if n in all_consts and all_consts[n] and not any(f'"{all_consts[n]}"' in t for t in sources.values())
     )
 
     print(f"Checking {len(consts)} attribute/role/list_type constants are used, not shadowed")

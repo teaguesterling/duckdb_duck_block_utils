@@ -79,6 +79,8 @@ def main() -> int:
     # element_type names are the first column of the spec's type tables.
     documented = set()
     in_type_table = False
+    in_block_table = False
+    null_levels = []
     for line in SPEC.read_text().splitlines():
         # The TYPE tables have five columns (Type, Description, level, encoding,
         # attributes). Other tables in this document also lead with a backticked
@@ -97,14 +99,26 @@ def main() -> int:
         # every type table opens `| Type | ...` and no other table in the document does.
         if line.startswith("| Type |"):
             in_type_table = True
+            # Only the block table has a `level` column; it is the third cell.
+            in_block_table = "level" in line
             continue
         if not line.startswith("|"):
             in_type_table = False
+            in_block_table = False
         if not in_type_table:
             continue
         m = re.match(r"\|\s*`([a-z_]+)`\s*\|", line)
         if m:
             documented.add(m.group(1))
+            # The table and the validator are two encodings of the level rule, and
+            # nothing compared them: eight rows said `NULL` for months after
+            # duck_blocks_validate started rejecting a NULL level, so a producer
+            # following the table emitted blocks the validator refused. Found by
+            # panduck on 2026-09-04, whose page_break reader met the validator by
+            # accident and the table not at all.
+            cells = [c.strip() for c in line.split("|")]
+            if in_block_table and len(cells) > 4 and cells[3].upper() == "NULL":
+                null_levels.append(m.group(1))
     # KINDS and ENCODINGS are exclusions too, and they expire the same two ways as any
     # other -- pointed out by duckdb_markdown finding both modes in their own allowlist.
     #
@@ -137,6 +151,13 @@ def main() -> int:
         print("      This strips them before the comparison, so their documentation is never")
         print("      checked -- an exclusion suppressing the evidence that would retire it.")
         print("      `text` is the known case: both an encoding and an inline element_type.")
+        return 1
+
+    if null_levels:
+        print(f"\nFAIL: the block table gives {null_levels} a NULL level.")
+        print("      Every element carries an explicit level and duck_blocks_validate rejects")
+        print("      NULL, so the table is telling producers to emit what the validator refuses.")
+        print("      Write the depth rule in the cell (`depth (top level 1)`).")
         return 1
 
     documented -= KINDS | ENCODINGS

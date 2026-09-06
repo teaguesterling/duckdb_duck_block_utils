@@ -1,4 +1,5 @@
 #include "builders.hpp"
+#include "duckdb_compat.hpp"
 #include "block_types.hpp"
 #include "duckdb/common/types/value.hpp"
 
@@ -16,15 +17,15 @@ static Value CreateAttributesMap(const map<string, string> &attrs) {
 }
 
 // Helper to set all struct fields for a block element
-static void SetBlockFields(vector<unique_ptr<Vector>> &entries, idx_t i, const char *element_type, const Value &content,
+static void SetBlockFields(CompatStructEntries &entries, idx_t i, const char *element_type, const Value &content,
                            const Value &level, const char *encoding, const Value &attributes) {
-	entries[BlockTypes::KIND_IDX]->SetValue(i, Value(BlockTypes::KIND_BLOCK));
-	entries[BlockTypes::ELEMENT_TYPE_IDX]->SetValue(i, Value(element_type));
-	entries[BlockTypes::CONTENT_IDX]->SetValue(i, content);
-	entries[BlockTypes::LEVEL_IDX]->SetValue(i, level);
-	entries[BlockTypes::ENCODING_IDX]->SetValue(i, Value(encoding));
-	entries[BlockTypes::ATTRIBUTES_IDX]->SetValue(i, attributes);
-	entries[BlockTypes::ELEMENT_ORDER_IDX]->SetValue(i, Value(0));
+	CompatStructChild(entries, BlockTypes::KIND_IDX).SetValue(i, Value(BlockTypes::KIND_BLOCK));
+	CompatStructChild(entries, BlockTypes::ELEMENT_TYPE_IDX).SetValue(i, Value(element_type));
+	CompatStructChild(entries, BlockTypes::CONTENT_IDX).SetValue(i, content);
+	CompatStructChild(entries, BlockTypes::LEVEL_IDX).SetValue(i, level);
+	CompatStructChild(entries, BlockTypes::ENCODING_IDX).SetValue(i, Value(encoding));
+	CompatStructChild(entries, BlockTypes::ATTRIBUTES_IDX).SetValue(i, attributes);
+	CompatStructChild(entries, BlockTypes::ELEMENT_ORDER_IDX).SetValue(i, Value(0));
 }
 
 Value BuilderFunctions::CreateBlock(const string &block_type, const string &content, const Value &level,

@@ -2888,7 +2888,7 @@ static string ConvertMetaMapToJson(const Value &meta_map) {
 }
 
 static unique_ptr<FunctionData> PandocAstBind(ClientContext &context, TableFunctionBindInput &input,
-                                              vector<LogicalType> &return_types, vector<string> &names) {
+                                              vector<LogicalType> &return_types, vector<CompatName> &names) {
 	auto result = make_uniq<PandocAstBindData>();
 
 	if (!input.inputs.empty() && !input.inputs[0].IsNull()) {
@@ -2994,11 +2994,19 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	// pandoc_ast_to_blocks(json VARCHAR) -> LIST(duck_block)
 	auto ast_to_blocks_func =
 	    ScalarFunction("pandoc_ast_to_blocks", {LogicalType::VARCHAR}, duck_block_list_type, PandocAstToBlocksFun);
+	// Fallible: every converter below can throw the Pandoc nesting-depth cap
+	// (CheckPandocDepth), and the file-backed ones can throw IOException. DuckDB
+	// v2.0 makes that a DECLARED property -- an undeclared throw becomes
+	// "INTERNAL Error: ... the function is not marked as fallible". SetFallible
+	// exists identically on the pin, so this needs no shim: it is simply inert
+	// there, where nothing consults the flag the way v2.0 does.
+	ast_to_blocks_func.SetFallible();
 	loader.RegisterFunction(ast_to_blocks_func);
 
 	// duck_blocks_to_pandoc_blocks(blocks LIST(duck_block)) -> VARCHAR (JSON array of Pandoc blocks)
 	auto blocks_to_ast_func = ScalarFunction("duck_blocks_to_pandoc_blocks", {duck_block_list_type},
 	                                         LogicalType::VARCHAR, DuckBlocksToPandocBlocksFun);
+	blocks_to_ast_func.SetFallible();
 	loader.RegisterFunction(blocks_to_ast_func);
 
 	// read_pandoc_ast(file_path VARCHAR) -> LIST(duck_block)
@@ -3018,15 +3026,20 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	// A function that reads a file is not consistent: the same argument can yield
 	// different results, which is the definition of the flag. Every other file-reading
 	// scalar here has the same property.
+	// SetStability rather than the constructor's positional tail: DuckDB v2.0
+	// removed the bind_scalar_function_extended_t parameter, so the nullptr run
+	// shifts and a nullptr lands on the LogicalType varargs slot.
 	auto read_pandoc_ast_func =
-	    ScalarFunction("read_pandoc_ast", {LogicalType::VARCHAR}, duck_block_list_type, ReadPandocAstFun, nullptr,
-	                   nullptr, nullptr, nullptr, LogicalType(LogicalTypeId::INVALID), FunctionStability::VOLATILE);
+	    ScalarFunction("read_pandoc_ast", {LogicalType::VARCHAR}, duck_block_list_type, ReadPandocAstFun);
+	read_pandoc_ast_func.SetStability(FunctionStability::VOLATILE);
+	read_pandoc_ast_func.SetFallible();
 	loader.RegisterFunction(read_pandoc_ast_func);
 
 	// duck_blocks_to_pandoc_ast(blocks LIST(duck_block)) -> STRUCT(pandoc-api-version, meta, blocks)
 	// Creates complete Pandoc AST as a struct for proper JSON serialization
 	auto duck_blocks_to_ast_func = ScalarFunction("duck_blocks_to_pandoc_ast", {duck_block_list_type},
 	                                              GetPandocAstType(), DuckBlocksToPandocAstFun);
+	duck_blocks_to_ast_func.SetFallible();
 	loader.RegisterFunction(duck_blocks_to_ast_func);
 
 	// write_pandoc_ast(file_path VARCHAR, blocks LIST(duck_block)) -> BOOLEAN
@@ -3034,9 +3047,10 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	// VOLATILE for the same reason as read_pandoc_ast, pointed the other way: a
 	// constant-folded WRITE can run twice, or be hoisted out of the query it was meant
 	// to run inside. A function whose whole purpose is a side effect is not consistent.
-	auto write_pandoc_ast_func = ScalarFunction(
-	    "write_pandoc_ast", {LogicalType::VARCHAR, duck_block_list_type}, LogicalType::BOOLEAN, WritePandocAstFun,
-	    nullptr, nullptr, nullptr, nullptr, LogicalType(LogicalTypeId::INVALID), FunctionStability::VOLATILE);
+	auto write_pandoc_ast_func = ScalarFunction("write_pandoc_ast", {LogicalType::VARCHAR, duck_block_list_type},
+	                                            LogicalType::BOOLEAN, WritePandocAstFun);
+	write_pandoc_ast_func.SetStability(FunctionStability::VOLATILE);
+	write_pandoc_ast_func.SetFallible();
 	loader.RegisterFunction(write_pandoc_ast_func);
 
 	// pandoc_ast(blocks, meta := {}, api_version := [1,23,1]) -> TABLE(pandoc-api-version, meta, blocks)

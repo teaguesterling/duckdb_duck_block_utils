@@ -28,7 +28,13 @@ This extension complements format-specific document extensions (markdown, HTML, 
 > removed in a later release, once panduck's converter is installable — not before,
 > because deleting them first would leave a window with the converter in neither.
 
-- **Document queries over blocks**: `duck_blocks_toc_rows`, `duck_blocks_get_section`, `duck_blocks_sections_like`, and on the separate page axis `duck_blocks_page_rows`, `duck_blocks_get_pages` — these take `LIST(duck_block)`, not file paths
+- **Document queries over blocks**: `duck_blocks_toc_rows`, `duck_blocks_get_section`, `duck_blocks_sections_like`, and on the separate page axis `duck_blocks_page_rows` (which carries each page's `blocks`), `duck_blocks_get_pages` — these take `LIST(duck_block)`, not file paths
+  - The extractors — `duck_blocks_get_section`, `duck_blocks_get_pages`, `duck_blocks_sections_like`, `duck_blocks_page_rows` — **return `duck_block`s, not text.** The text they used to return is one rename away: `duck_blocks_get_section_text`, `duck_blocks_get_pages_text`, `duck_blocks_sections_like_text`.
+  - The projections — `duck_blocks_headings`, `duck_blocks_toc`, `duck_blocks_code_blocks`, `duck_blocks_links` — **also return `duck_block`s**; the struct projections they used to return are `duck_blocks_headings_structs`, `duck_blocks_toc_structs`, `duck_blocks_code_blocks_structs`, `duck_blocks_links_structs`, byte-for-byte and permanent. `element_order` is preserved unrenumbered through every one of them, so a result joins back to its document.
+    They took an `output_format` that could not work: a macro has one return type, so every
+    branch — `'blocks'` included — had to collapse to `VARCHAR`, and `'blocks'` handed back
+    `to_json(...)::VARCHAR`. Blocks in, blocks out; render with `duck_blocks_to_text`,
+    `duck_blocks_render_ansi`, `duck_blocks_to_md`, or `duck_blocks_to_pandoc_ast`.
 - **Comparing and reviewing documents**: `duck_blocks_diff` (what changed between two versions, as ADDED/REMOVED/MOVED) and `duck_blocks_quality` (document-quality rules that are NOT spec conformance — empty sections, duplicate headings, links with no text)
 
 ## Naming
@@ -98,8 +104,8 @@ Reader dispatch moved to `panduck`. Replacements:
 | `doc_supported_extensions()` | `panduck_supported_paths()` |
 | `doc_select_blocks(path, sel)` | `panduck_select_blocks(path, sel)` |
 | `doc_toc(path)` | `duck_blocks_toc_rows(panduck_read_blocks(path))` |
-| `doc_section(...)` | `duck_blocks_get_section(...)` — **not** `duck_block_section`, which is an existing builder |
-| `doc_search(...)` | `duck_blocks_sections_like(...)` |
+| `doc_section(...)` | `duck_blocks_get_section(...)` — returns `LIST(duck_block)`; **not** `duck_block_section`, which is an existing builder |
+| `doc_search(...)` | `duck_blocks_sections_like(...)` — returns a `blocks` column, not rendered `content` |
 | `doc_render(blocks, 'text')` | `duck_blocks_to_text(blocks)` |
 | `doc_render(blocks, 'ansi')` | `duck_blocks_render_ansi(blocks)` |
 | `doc_render(blocks, 'md')` | `duck_blocks_to_md(blocks)` — `LOAD markdown` |
@@ -130,8 +136,8 @@ LOAD duck_block_utils;
 LOAD markdown;
 LOAD duck_block_utils;
 
--- Extract all headings as a table of contents
-SELECT * FROM duck_blocks_toc(
+-- Extract all headings as a table of contents (row-shaped: level, title, id, indent, element_order)
+SELECT * FROM duck_blocks_toc_rows(
     (SELECT list(b) FROM read_markdown_blocks('README.md') b)
 );
 
@@ -238,10 +244,18 @@ is now the single most costly mistake a producer can make here.
 | Function | Description |
 |----------|-------------|
 | `duck_blocks_to_text(blocks)` | Extract plain text content |
-| `duck_blocks_headings(blocks)` | Extract heading hierarchy |
-| `duck_blocks_toc(blocks)` | Generate table of contents |
-| `duck_blocks_code_blocks(blocks)` | Extract code blocks with metadata |
-| `duck_blocks_links(blocks)` | Extract all links from content |
+| `duck_blocks_headings(blocks)` | The headings as `duck_block`s: flattened title, `attributes['outline']` |
+| `duck_blocks_headings_structs(blocks)` | The heading projection: `level, title, id, element_order` |
+| `duck_blocks_toc(blocks)` | The headings as `duck_block`s plus `attributes['indent']` |
+| `duck_blocks_toc_structs(blocks)` | The TOC projection: `level, title, id, indent, element_order` |
+| `duck_blocks_code_blocks(blocks)` | The `code` blocks, as they are |
+| `duck_blocks_code_blocks_structs(blocks)` | The code projection: `language, content, element_order` |
+| `duck_blocks_links(blocks)` | The URL-carrying elements (links and images), as they are |
+| `duck_blocks_links_structs(blocks)` | The link projection: `href, text, title, element_order` |
+| `duck_blocks_to_match_text(blocks)` | Text flattened with spaces, for `ILIKE`/regex search; `duck_blocks_to_text` is for rendering |
+| `duck_blocks_get_section_text(blocks, pattern)` | Original text form of `duck_blocks_get_section` |
+| `duck_blocks_get_pages_text(blocks, first, last)` | Original text form of `duck_blocks_get_pages` |
+| `duck_blocks_sections_like_text(doc, term)` | Original `(section, start_order, content)` form of `duck_blocks_sections_like` |
 
 ### Validation & Analysis
 
@@ -257,7 +271,6 @@ is now the single most costly mistake a producer can make here.
 
 | Function | Description |
 |----------|-------------|
-| `db_blocks_set_source(blocks, format)` | Set source_format on all blocks |
 | `db_blocks_normalize(blocks)` | Convert to core types only |
 | `db_blocks_map_types(blocks, mapping)` | Remap block types |
 
@@ -340,10 +353,10 @@ These overloads accept a list of children and return a flattened list with paren
 SELECT
     repeat('  ', level - 1) || '- ' || title as toc_line,
     id
-FROM duck_blocks_toc(
+FROM duck_blocks_toc_rows(
     (SELECT list(b) FROM read_markdown_blocks('docs/**/*.md') b)
 )
-ORDER BY doc_order, element_order;
+ORDER BY element_order;
 ```
 
 ### Extract Code Examples by Language
@@ -352,9 +365,11 @@ ORDER BY doc_order, element_order;
 SELECT
     language,
     content as code,
-    file_path
-FROM duck_blocks_code_blocks(
-    (SELECT list(b) FROM read_markdown_blocks('tutorial/*.md', include_filepath := true) b)
+    filename
+FROM (
+    SELECT filename, unnest(duck_blocks_code_blocks_structs(list(b)), recursive := true)
+    FROM read_markdown_blocks('tutorial/*.md', filename := true) b
+    GROUP BY filename
 )
 WHERE language = 'python';
 ```

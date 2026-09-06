@@ -66,7 +66,9 @@ def normalise(row: str) -> tuple:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--duckdb", default=str(REPO / "build/release/duckdb"))
-    ap.add_argument("--load", default=str(REPO / "build/release/extension/duck_block_utils/duck_block_utils.duckdb_extension"))
+    ap.add_argument(
+        "--load", default=str(REPO / "build/release/extension/duck_block_utils/duck_block_utils.duckdb_extension")
+    )
     ap.add_argument("--reader", default="read_pandoc_ast('{path}')")
     ap.add_argument("--input", choices=("ast", "src"), default="ast")
     ap.add_argument("--only", default=None, help="run one fixture by name")

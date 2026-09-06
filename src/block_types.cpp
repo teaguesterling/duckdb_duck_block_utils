@@ -1,4 +1,5 @@
 #include "block_types.hpp"
+#include "duckdb_compat.hpp"
 
 #include <algorithm>
 #include "duckdb/function/cast/default_casts.hpp"
@@ -16,18 +17,18 @@ static Value CreateEmptyAttributesMap() {
 static bool VarcharToDuckBlockCast(Vector &source, Vector &result, idx_t count, CastParameters &parameters) {
 	auto &result_entries = StructVector::GetEntries(result);
 
-	UnaryExecutor::Execute<string_t, string_t>(source, *result_entries[BlockTypes::CONTENT_IDX], count,
-	                                           [&](string_t input) { return input; });
+	UnaryExecutor::Execute<string_t, string_t>(source, CompatStructChild(result_entries, BlockTypes::CONTENT_IDX),
+	                                           count, [&](string_t input) { return input; });
 
 	// Set constant values for the other struct fields
 	auto empty_attrs = CreateEmptyAttributesMap();
 	for (idx_t i = 0; i < count; i++) {
-		result_entries[BlockTypes::KIND_IDX]->SetValue(i, Value(BlockTypes::KIND_INLINE));
-		result_entries[BlockTypes::ELEMENT_TYPE_IDX]->SetValue(i, Value(BlockTypes::INLINE_TEXT));
-		result_entries[BlockTypes::LEVEL_IDX]->SetValue(i, Value(1));
-		result_entries[BlockTypes::ENCODING_IDX]->SetValue(i, Value(BlockTypes::ENCODING_TEXT));
-		result_entries[BlockTypes::ATTRIBUTES_IDX]->SetValue(i, empty_attrs);
-		result_entries[BlockTypes::ELEMENT_ORDER_IDX]->SetValue(i, Value(0));
+		CompatStructChild(result_entries, BlockTypes::KIND_IDX).SetValue(i, Value(BlockTypes::KIND_INLINE));
+		CompatStructChild(result_entries, BlockTypes::ELEMENT_TYPE_IDX).SetValue(i, Value(BlockTypes::INLINE_TEXT));
+		CompatStructChild(result_entries, BlockTypes::LEVEL_IDX).SetValue(i, Value(1));
+		CompatStructChild(result_entries, BlockTypes::ENCODING_IDX).SetValue(i, Value(BlockTypes::ENCODING_TEXT));
+		CompatStructChild(result_entries, BlockTypes::ATTRIBUTES_IDX).SetValue(i, empty_attrs);
+		CompatStructChild(result_entries, BlockTypes::ELEMENT_ORDER_IDX).SetValue(i, Value(0));
 	}
 
 	return true;
@@ -48,6 +49,37 @@ LogicalType BlockTypes::DuckBlockType() {
 
 LogicalType BlockTypes::DuckBlockListType() {
 	return LogicalType::LIST(DuckBlockType());
+}
+
+// The ONE widened shape the spec accepts: canonical, then a trailing `filename`.
+LogicalType BlockTypes::DuckBlockWithFilenameType() {
+	auto children = StructType::GetChildTypes(DuckBlockType());
+	children.push_back(make_pair(BlockTypes::FIELD_FILENAME, LogicalType::VARCHAR));
+	return LogicalType::STRUCT(std::move(children));
+}
+
+// ---------------------------------------------------------------------------
+// Accepting the 8-field shape.
+//
+// DuckDB's named STRUCT-to-STRUCT cast already matches children BY NAME and skips
+// a source child the target lacks, so an explicit `::duck_block[]` on an 8-field
+// list has always worked and dropped `filename`. What refused the IMPLICIT cast was
+// one rule in cast_rules.cpp: a child-count mismatch costs -1. The binder consults
+// REGISTERED casts before that rule, so registering the pair with a cost is enough;
+// the bound cast itself is DuckDB's own default, which does the name matching.
+//
+// Two registrations -- the struct and the list of it -- cover every function that
+// binds LIST(duck_block) or duck_block, and the doc_* macros that route into them,
+// from this one place. Not per-function overloads: panduck measured that two
+// arities make an untyped NULL argument ambiguous ("Could not choose a best
+// candidate function"), which silently removes NULL-in, empty-document-out
+// behaviour from every consumer that has it.
+//
+// The source type is EXACT, and that is the point: `filename` in any other
+// position, any other extra field, or a ninth field stays a loud binder error.
+// ---------------------------------------------------------------------------
+static BoundCastInfo BindDefaultCast(BindCastInput &input, const LogicalType &source, const LogicalType &target) {
+	return DefaultCasts::GetDefaultCastFunction(input, source, target);
 }
 
 LogicalType BlockTypes::DuckBlockExtType() {
@@ -86,7 +118,7 @@ static Value StringListValue(const vector<const char *> &items) {
 
 static void BlockKindsFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	auto kinds = StringListValue({BlockTypes::KIND_BLOCK, BlockTypes::KIND_INLINE, BlockTypes::KIND_VALUE});
-	result.Reference(kinds);
+	CompatReferenceValue(result, kinds, args.size());
 }
 
 // The single list of declared element_type names. Shared rather than duplicated:
@@ -153,7 +185,7 @@ static void BlockEncodingsFun(DataChunk &args, ExpressionState &state, Vector &r
 	for (auto &n : BlockTypes::AllEncodingNames()) {
 		vals.push_back(Value(n));
 	}
-	result.Reference(Value::LIST(LogicalType::VARCHAR, std::move(vals)));
+	CompatReferenceValue(result, Value::LIST(LogicalType::VARCHAR, std::move(vals)), args.size());
 }
 
 static void BlockTypesFun(DataChunk &args, ExpressionState &state, Vector &result) {
@@ -161,12 +193,12 @@ static void BlockTypesFun(DataChunk &args, ExpressionState &state, Vector &resul
 	for (auto &n : BlockTypes::AllTypeNames()) {
 		vals.push_back(Value(n));
 	}
-	result.Reference(Value::LIST(LogicalType::VARCHAR, std::move(vals)));
+	CompatReferenceValue(result, Value::LIST(LogicalType::VARCHAR, std::move(vals)), args.size());
 }
 
 static void SpecVersionFun(DataChunk &args, ExpressionState &state, Vector &result) {
 	Value v(BlockTypes::SPEC_VERSION);
-	result.Reference(v);
+	CompatReferenceValue(result, v, args.size());
 }
 
 // duck_blocks_stamp(blocks) -> blocks with a version marker appended.
@@ -233,6 +265,8 @@ static void BlocksVersionFun(DataChunk &args, ExpressionState &state, Vector &re
 void BlockTypes::Register(ExtensionLoader &loader) {
 	auto duck_block_type = DuckBlockType();
 	loader.RegisterType("duck_block", duck_block_type);
+	// DEPRECATED since 6.4, removed in 6.5. Nothing produces or consumes it; it stays
+	// one release because a user's own CAST(x AS duck_block_ext) is invisible to us.
 	loader.RegisterType("duck_block_ext", DuckBlockExtType());
 
 	auto varchar_list = LogicalType::LIST(LogicalType::VARCHAR);
@@ -249,6 +283,13 @@ void BlockTypes::Register(ExtensionLoader &loader) {
 	// Using implicit_cast_cost = -1 means explicit cast only (not implicit)
 	// This avoids ambiguity in function overload resolution
 	loader.RegisterCastFunction(LogicalType::VARCHAR, duck_block_type, BoundCastInfo(VarcharToDuckBlockCast), -1);
+
+	// The 8-field shape, implicitly. A small positive cost: cheaper than any
+	// to-VARCHAR fallback, dearer than an exact match, and no function here is
+	// overloaded on its block argument, so nothing competes with it.
+	auto with_filename = DuckBlockWithFilenameType();
+	loader.RegisterCastFunction(with_filename, duck_block_type, BindDefaultCast, 10);
+	loader.RegisterCastFunction(LogicalType::LIST(with_filename), DuckBlockListType(), BindDefaultCast, 10);
 }
 
 } // namespace duckdb

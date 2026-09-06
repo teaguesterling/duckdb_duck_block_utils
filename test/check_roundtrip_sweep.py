@@ -73,22 +73,26 @@ CHILD_OVERRIDE = {
 # measured CONTENT where the property is STRUCTURE.
 #
 # So every declared type must be probed here or excused here, with the reason.
-NOT_A_BLOCK = {
-    t: "inline; in block position the exporter correctly wraps it in Para, so a "
-    "round trip to itself is not the property. Covered by the NESTED arm and the "
-    "inline tests."
-    for t in (
-        "bold italic underline strikethrough smallcaps superscript subscript span "
-        "link cite note quoted math text space softbreak linebreak"
-    ).split()
-} | {
-    t: "kind='value'. Document metadata is not body content -- it lands in the "
-    "document's `meta`, never in `blocks`, so a block round trip is meaningless."
-    for t in "blocks inlines map string bool version metadata".split()
-} | {
-    "list_item": "Requires a parent list; standalone it is malformed. Probed with a "
-    "real parent in the content arm, which is the shape that occurs.",
-}
+NOT_A_BLOCK = (
+    {
+        t: "inline; in block position the exporter correctly wraps it in Para, so a "
+        "round trip to itself is not the property. Covered by the NESTED arm and the "
+        "inline tests."
+        for t in (
+            "bold italic underline strikethrough smallcaps superscript subscript span "
+            "link cite note quoted math text space softbreak linebreak"
+        ).split()
+    }
+    | {
+        t: "kind='value'. Document metadata is not body content -- it lands in the "
+        "document's `meta`, never in `blocks`, so a block round trip is meaningless."
+        for t in "blocks inlines map string bool version metadata".split()
+    }
+    | {
+        "list_item": "Requires a parent list; standalone it is malformed. Probed with a "
+        "real parent in the content arm, which is the shape that occurs.",
+    }
+)
 
 # Round trips that do NOT preserve the type, investigated and found inherent.
 # Each entry is (what it becomes, why it cannot be otherwise).
@@ -265,11 +269,15 @@ def main() -> int:
     for ty, (content, enc, attrs, needs_child) in sorted(PROBES.items()):
         child = ""
         if needs_child:
-            child = ", " + (
-                CHILD_OVERRIDE.get(ty)
-                or f"{{'kind':'block','element_type':'paragraph','content':'inner','level':2,"
-                f"'encoding':'text','attributes':MAP{{}},'element_order':1}}"
-            ) + f"::{STRUCT}"
+            child = (
+                ", "
+                + (
+                    CHILD_OVERRIDE.get(ty)
+                    or f"{{'kind':'block','element_type':'paragraph','content':'inner','level':2,"
+                    f"'encoding':'text','attributes':MAP{{}},'element_order':1}}"
+                )
+                + f"::{STRUCT}"
+            )
         sql = (
             f"SELECT coalesce((SELECT b.element_type FROM (SELECT unnest(pandoc_ast_to_blocks("
             f"duck_blocks_to_pandoc_blocks([{{'kind':'block','element_type':'{ty}','content':{content},"
@@ -365,8 +373,7 @@ def main() -> int:
         ("a blockquote", '{"t":"BlockQuote","c":[{"t":"Para","c":[{"t":"Str","c":"lead"}]},%s]}'),
         (
             "a figure",
-            '{"t":"Figure","c":[["",[],[]],[null,[]],'
-            '[{"t":"Para","c":[{"t":"Str","c":"lead"}]},%s]]}',
+            '{"t":"Figure","c":[["",[],[]],[null,[]],' '[{"t":"Para","c":[{"t":"Str","c":"lead"}]},%s]]}',
         ),
         ("a list item", '{"t":"BulletList","c":[[{"t":"Para","c":[{"t":"Str","c":"lead"}]},%s]]}'),
         (
@@ -426,8 +433,9 @@ def main() -> int:
     n_declared = len(declared)
     if (joined, alpha_gone, beta_gone) != (0, 0, 0):
         failed = True
-        print(f"\nFAIL: containers that JOINED their children: {joined}; that dropped one: "
-              f"{alpha_gone + beta_gone}.")
+        print(
+            f"\nFAIL: containers that JOINED their children: {joined}; that dropped one: " f"{alpha_gone + beta_gone}."
+        )
         print("      A container with block children must emit them as blocks. Joining is the")
         print("      worse half: the words survive, so any check asking whether the text is")
         print("      still there passes on the destroyed output.")
