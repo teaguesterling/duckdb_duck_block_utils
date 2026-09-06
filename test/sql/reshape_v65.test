@@ -110,7 +110,7 @@ SELECT typeof(duck_blocks_headings(b)) FROM d;
 STRUCT(kind VARCHAR, element_type VARCHAR, "content" VARCHAR, "level" INTEGER, "encoding" VARCHAR, attributes MAP(VARCHAR, VARCHAR), element_order INTEGER)[]
 
 query I
-SELECT list_transform(duck_blocks_headings(b), x -> x.element_order) FROM d;
+SELECT list_transform(duck_blocks_headings(b), lambda x: x.element_order) FROM d;
 ----
 [0, 17, 41, 44, 45, 46]
 
@@ -130,7 +130,7 @@ SELECT h.content, h.attributes['id'] FROM (SELECT unnest(duck_blocks_headings(b)
 B title	b
 
 query I
-SELECT list_transform(duck_blocks_toc(b), x -> x.attributes['indent']) FROM d;
+SELECT list_transform(duck_blocks_toc(b), lambda x: x.attributes['indent']) FROM d;
 ----
 [0, 2, 1, 1, 2, 0]
 
@@ -151,12 +151,12 @@ image	i.png	43
 # 5. outline: positions in the outline, not the heading's digit; never NULL
 # ---------------------------------------------------------------------------
 query I
-SELECT list_transform(duck_blocks_headings(b), x -> x.attributes['outline']) FROM d;
+SELECT list_transform(duck_blocks_headings(b), lambda x: x.attributes['outline']) FROM d;
 ----
 [1, 1.1, 1.2, 1.3, 1.3.1, 2]
 
 query I
-SELECT list_transform(duck_blocks_toc(b), x -> x.attributes['outline']) FROM d;
+SELECT list_transform(duck_blocks_toc(b), lambda x: x.attributes['outline']) FROM d;
 ----
 [1, 1.1, 1.2, 1.3, 1.3.1, 2]
 
@@ -235,7 +235,7 @@ false
 #    always did. Rewritten as a window over sections ordered by start.
 # ---------------------------------------------------------------------------
 query I
-SELECT list_transform(duck_blocks_get_section(b, 'C'), x -> x.element_order) FROM d;
+SELECT list_transform(duck_blocks_get_section(b, 'C'), lambda x: x.element_order) FROM d;
 ----
 [41, 42, 43]
 
