@@ -7,8 +7,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+# The event name is part of the key on purpose: a manual dispatch (the only way the
+# duckdb-main canary runs) and the push run for the SAME sha used to share a group,
+# so dispatching the canary cancelled the shippable v1.5 build while it was still
+# queued -- the stable matrix then had no verdict at all on that commit, and the
+# cancellations read as failures. Found by the duckeye session, 2026-09-05.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || '' }}-${{ github.base_ref || '' }}-${{ github.ref != 'refs/heads/main' && github.sha || '' }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.head_ref || '' }}-${{ github.base_ref || '' }}-${{ github.ref != 'refs/heads/main' && github.sha || '' }}
   cancel-in-progress: true
 
 jobs:
