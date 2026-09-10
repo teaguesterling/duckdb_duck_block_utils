@@ -187,3 +187,18 @@ WITH d AS (SELECT duck_blocks_assemble([duck_block_heading(1,'T'), duck_block_pa
 SELECT (duck_blocks_to_pandoc_ast(b)).blocks::VARCHAR LIKE '[{"t":"Header"%' AND (duck_blocks_to_pandoc_ast(b)).blocks::VARCHAR LIKE '%"BulletList"%' FROM d;
 ----
 true
+
+# a figure whose caption carries its text in `content` (the content rule's tight form)
+# must export that text in the Figure's Caption; the figure branch used to read only
+# the caption's block children and emitted an empty Caption
+query I
+SELECT (duck_blocks_to_pandoc_ast([blk('figure','',1,0), blk('caption','cap text',2,1)]::duck_block[])).blocks::VARCHAR LIKE '%"Caption"%' OR
+       (duck_blocks_to_pandoc_ast([blk('figure','',1,0), blk('caption','cap text',2,1)]::duck_block[])).blocks::VARCHAR LIKE '%cap text%';
+----
+true
+
+# and so must a lone caption, which repair wraps in its implicit figure
+query I
+SELECT (duck_blocks_to_pandoc_ast([blk('caption','cap text',1,0)]::duck_block[])).blocks::VARCHAR LIKE '%cap text%';
+----
+true
