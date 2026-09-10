@@ -1,0 +1,11 @@
+[
+  {
+    "kind": "block",
+    "element_type": "code",
+    "level": 1,
+    "content": "x = 1",
+    "attributes": {
+      "language": "python"
+    }
+  }
+]

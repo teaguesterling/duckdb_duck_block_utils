@@ -1,0 +1,16 @@
+[
+  {
+    "kind": "block",
+    "element_type": "blockquote",
+    "level": 1,
+    "content": "",
+    "attributes": {}
+  },
+  {
+    "kind": "block",
+    "element_type": "paragraph",
+    "level": 2,
+    "content": "quoted",
+    "attributes": {}
+  }
+]

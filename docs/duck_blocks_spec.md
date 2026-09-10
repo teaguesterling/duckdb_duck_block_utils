@@ -1369,6 +1369,7 @@ implementation of it.
 
 | file | gives you |
 |---|---|
+| `test/conformance/` + `test/check_conformance_corpus.py` | one document per construct in every source format, the sequence the spec implies, and a runner that reads each with every INSTALLED producer and names which producer moved — the cross-repo check nothing in one repo's suite can be |
 | `vendor/duck_block_conformance.sql` | `duck_blocks_are_valid`, `duck_blocks_errors` (with `{element_order, field, message}` detail), `duck_blocks_warnings` (advisory rules), `duck_blocks_undeclared_types`, and the declared kind / type / encoding lists — pure DuckDB SQL |
 | `vendor/duck_block_normalize.hpp` | the content rule as a transform: collapse a lone `plain` into its container, to a fixpoint |
 | `src/include/duck_block_vocabulary.hpp` | the names as C++ constants |

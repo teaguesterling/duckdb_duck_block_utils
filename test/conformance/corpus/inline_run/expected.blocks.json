@@ -1,0 +1,44 @@
+[
+  {
+    "kind": "block",
+    "element_type": "paragraph",
+    "level": 1,
+    "content": "",
+    "attributes": {}
+  },
+  {
+    "kind": "inline",
+    "element_type": "text",
+    "level": 2,
+    "content": "plain ",
+    "attributes": {}
+  },
+  {
+    "kind": "inline",
+    "element_type": "bold",
+    "level": 2,
+    "content": "bold",
+    "attributes": {}
+  },
+  {
+    "kind": "inline",
+    "element_type": "text",
+    "level": 2,
+    "content": " ",
+    "attributes": {}
+  },
+  {
+    "kind": "inline",
+    "element_type": "italic",
+    "level": 2,
+    "content": "em",
+    "attributes": {}
+  },
+  {
+    "kind": "inline",
+    "element_type": "text",
+    "level": 2,
+    "content": " end.",
+    "attributes": {}
+  }
+]
