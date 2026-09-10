@@ -1,6 +1,6 @@
 # Enforcement scope (issue #29): fragments, list-level validation, one shape for all producers, a conformance corpus
 
-**Status: DRAFT for Teague's section-by-section approval.** Rulings received 2026-09-10,
+**Status: APPROVED by Teague 2026-09-10 (all four sections) and IMPLEMENTED on `feat/spec-6.6-enforcement-scope` the same day; see the plan in `docs/superpowers/plans/2026-09-10-spec-6.6-enforcement-scope.md`.** Originally: Rulings received 2026-09-10,
 first-hand: (1) fragments are valid, and the spec should define optional implicit default
 parents per type so a fixer can wrap mechanically; (2) list-level validation, with a fixer
 that coerces to valid when deterministic; (3) the one-shape rule re-scoped to all producers,
