@@ -252,6 +252,7 @@ is now the single most costly mistake a producer can make here.
 | `duck_blocks_code_blocks_structs(blocks)` | The code projection: `language, content, element_order` |
 | `duck_blocks_links(blocks)` | The URL-carrying elements (links and images), as they are |
 | `duck_blocks_links_structs(blocks)` | The link projection: `href, text, title, element_order` |
+| `duck_blocks_repair(blocks)` | Wrap orphan fragments in their implicit parent, fix levels, renumber from 0; the fixer for list-level validation |
 | `duck_blocks_to_match_text(blocks)` | Text flattened with spaces, for `ILIKE`/regex search; `duck_blocks_to_text` is for rendering |
 | `duck_blocks_get_section_text(blocks, pattern)` | Original text form of `duck_blocks_get_section` |
 | `duck_blocks_get_pages_text(blocks, first, last)` | Original text form of `duck_blocks_get_pages` |

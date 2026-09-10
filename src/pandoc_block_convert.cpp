@@ -1,4 +1,5 @@
 #include "pandoc_block_convert.hpp"
+#include "repair.hpp"
 #include "normalize.hpp"
 
 #include <set>
@@ -2066,7 +2067,14 @@ static yyjson_mut_val *ConvertFigureToPandocVal(yyjson_mut_doc *doc, const vecto
 	return fig_obj;
 }
 
-static string BuildBlocksJson(const vector<Value> &blocks_list) {
+static string BuildBlocksJson(const vector<Value> &blocks_in) {
+	// Fragments are legal input (spec: "Fragments are legal input"). An orphan inline
+	// run or list_item run used to fall through the KIND_BLOCK / TYPE_LIST_ITEM skips
+	// below and the document came out as [] while duck_blocks_validate called it valid
+	// -- issue #29 example 3. Repair wraps it in its implicit parent first; on a whole
+	// document repair is a no-op, so nothing else changes.
+	vector<Value> blocks_list = blocks_in;
+	RepairFunctions::RepairBlocks(blocks_list);
 	yyjson_mut_doc *doc = yyjson_mut_doc_new(nullptr);
 	yyjson_mut_val *blocks_arr = yyjson_mut_arr(doc);
 	yyjson_mut_doc_set_root(doc, blocks_arr);

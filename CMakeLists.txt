@@ -25,6 +25,7 @@ set(EXTENSION_SOURCES
     src/extraction.cpp
     src/validation.cpp
     src/normalize.cpp
+    src/repair.cpp
     src/pandoc_block_convert.cpp
     src/pragma_aliases.cpp
     src/render_macros.cpp
