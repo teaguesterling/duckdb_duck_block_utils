@@ -168,7 +168,12 @@ The implicit parents are declared once, in the vocabulary header, as
 
 A run of consecutive orphans at one level gets ONE wrapper, at the level above them;
 `duck_blocks_repair` does exactly this, and `duck_blocks_to_pandoc_ast` applies it before
-exporting. The wrapper for an inline run is `plain`, not `paragraph`: `plain` is the
+exporting. **An implicit parent is synthetic: it carries no attributes.** A `list` it
+invents is a bullet list with no start number; the real `list` had `list_type` and
+maybe `start`. So a consumer that KNOWS the real ancestors — a selector that walked to
+its matches through them — MUST keep emitting them rather than rely on the wrapper;
+repair leaves a real ancestor alone, so the two compose. The wrapper removes the data
+LOSS; it does not replace structure a caller has (duckeye, 2026-09-10). The wrapper for an inline run is `plain`, not `paragraph`: `plain` is the
 vocabulary's own "text run that is not a paragraph" and exports as Pandoc's `Plain`, which
 is what Pandoc itself does with bare inlines.
 

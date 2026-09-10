@@ -49,6 +49,12 @@ from their vendored header.
 
 ---
 
+**Not a replacement for real ancestors (duckeye, after review):** an implicit parent
+carries no attributes, so a selector that keeps the real `list` (with `list_type`,
+`start`) around its matches must go on doing so; repair is a no-op on it. Possible
+follow-up, not taken: a hint form of the wrapper that takes the real parent when a
+caller has one, so a consumer can delete its own wrapping honestly.
+
 ## B. List-level validation, and a fixer
 
 **Rules over the list**, added to `duck_blocks_validate` (which already carries one list-level
