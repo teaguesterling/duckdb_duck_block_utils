@@ -206,15 +206,26 @@ struct DuckBlockVocabulary {
 	// Equality goes red on every release including ones that cannot affect you,
 	// and a check that cries wolf gets muted:
 	//
-	//     major(duck_block_spec_version()) == 2   AND   minor(...) >= <what you need>
+	//     major(duck_block_spec_version()) == 1   AND   minor(...) >= <what you need>
 	//
 	// (Asked by panduck, who noticed the guidance said "compare against
 	// SPEC_VERSION" without saying compare HOW, and whose readers are untouched by
 	// 2.0 apart from lists.)
 	//
 	// HONEST HISTORY, because the numbers only mean something if they were applied
-	// consistently and one of these was not:
+	// consistently and one of these was not.
 	//
+	// TWO NUMBER LINES. Every entry below up to 6.6 is on this repo's INTERNAL line,
+	// retired on 2026-09-10 (last entry). The internal line had its own 1.1 and 1.2,
+	// which are NOT the public 1.2 that SPEC_VERSION now carries: internal 1.2 lacked
+	// explicit levels, `plain`, one shape per element_type and the native table
+	// schema; public 1.2 has all of them. A check written against internal 1.x
+	// (`major == 1 AND minor >= 2`) is satisfied by public 1.2 and is therefore not
+	// discriminating; no consumer in the fleet carries one (checked 2026-09-10:
+	// every vendored copy was on 6.5), which is why the number was reused rather
+	// than skipped. (Zim-Dev's finding, 2026-09-10.)
+	//
+	//   -- internal line --
 	//   1.1 -> 1.2  list and blockquote became structural. BREAKING -- it broke
 	//               duckdb_markdown's writer in three places. It should have been
 	//               2.0 and the minor bump was wrong. A consumer pinning "major 1"
@@ -380,7 +391,7 @@ struct DuckBlockVocabulary {
 	//               A consumer on 6.5 is unaffected. A producer that vendored `plain` and
 	//               never emitted it has been non-conformant since 4.0; this note names it.
 	//
-	//   6.6 -> 1.2  RENUMBERED, NO SHAPE CHANGE. Teague, 2026-09-10: "I don't want to
+	//   internal 6.6 -> public 1.2  RENUMBERED, NO SHAPE CHANGE. Teague, 2026-09-10: "I don't want to
 	//               keep numbering up into the 6.6s; this should be at most 1.2; stop
 	//               with the internal numbering." The 6.x line was this repo's internal
 	//               count of spec revisions, one per ruling, and it had climbed to a
