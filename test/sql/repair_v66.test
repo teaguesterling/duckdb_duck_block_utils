@@ -1,0 +1,97 @@
+# name: test/sql/repair_v66.test
+# description: spec 6.6 -- implicit parents, list-level validation, duck_blocks_repair, fragments in the exporter
+# group: [sql]
+
+require duck_block_utils
+
+# ---------------------------------------------------------------------------
+# 1. the implicit-parent table, from the vocabulary header
+# ---------------------------------------------------------------------------
+query I
+SELECT duck_block_implicit_parent('list_item', 'block');
+----
+list
+
+query I
+SELECT duck_block_implicit_parent('caption', 'block');
+----
+figure
+
+query I
+SELECT duck_block_implicit_parent('text', 'inline');
+----
+plain
+
+query I
+SELECT duck_block_implicit_parent('bold', 'inline');
+----
+plain
+
+query I
+SELECT duck_block_implicit_parent('paragraph', 'block') IS NULL;
+----
+true
+
+query I
+SELECT duck_block_implicit_parent('metadata', 'value') IS NULL;
+----
+true
+
+# ---------------------------------------------------------------------------
+# 2. validation over the list (field = 'list')
+# ---------------------------------------------------------------------------
+statement ok
+CREATE MACRO blk(t, c, l, o) AS struct_pack(kind := 'block', element_type := t, content := c, level := l,
+    encoding := 'text', attributes := MAP{}::MAP(VARCHAR, VARCHAR), element_order := o);
+
+statement ok
+CREATE MACRO inl(t, c, l, o) AS struct_pack(kind := 'inline', element_type := t, content := c, level := l,
+    encoding := 'text', attributes := MAP{}::MAP(VARCHAR, VARCHAR), element_order := o);
+
+# L1: starts at 1
+query I
+SELECT list_transform(duck_blocks_validate([blk('paragraph','a',1,1), blk('paragraph','b',1,2)]::duck_block[]).errors,
+                      lambda e: e.field || ': ' || e.message);
+----
+['list: element_order starts at 1; must start at 0']
+
+# L1: gap
+query I
+SELECT list_transform(duck_blocks_validate([blk('paragraph','a',1,0), blk('paragraph','b',1,2)]::duck_block[]).errors,
+                      lambda e: e.field || ': ' || e.message);
+----
+['list: element_order gap after 0']
+
+# L2: shallowest element at 2
+query I
+SELECT list_transform(duck_blocks_validate([blk('paragraph','a',2,0), inl('text','a',3,1)]::duck_block[]).errors,
+                      lambda e: e.field || ': ' || e.message);
+----
+['list: shallowest element is at level 2; top level is 1']
+
+# L4: orphan list_item
+query I
+SELECT list_transform(duck_blocks_validate([blk('list_item','a',1,0)]::duck_block[]).errors,
+                      lambda e: e.field || ': ' || e.message);
+----
+['list: list_item at 0 has no list ancestor']
+
+# L4: caption without figure/table
+query I
+SELECT list_transform(duck_blocks_validate([blk('caption','c',1,0)]::duck_block[]).errors,
+                      lambda e: e.field || ': ' || e.message);
+----
+['list: caption at 0 has no figure ancestor']
+
+# L5: inline with no block or value above it
+query I
+SELECT list_transform(duck_blocks_validate([inl('text','a',1,0), inl('bold','b',1,1)]::duck_block[]).errors,
+                      lambda e: e.field || ': ' || e.message);
+----
+['list: inline at 0 has no block or value parent', 'list: inline at 1 has no block or value parent']
+
+# a well-formed document reports nothing at the list level
+query I
+SELECT duck_blocks_validate([blk('list','',1,0), blk('list_item','a',2,1), inl('text','a',3,2), blk('figure','',1,3), blk('caption','c',2,4)]::duck_block[]).valid;
+----
+true

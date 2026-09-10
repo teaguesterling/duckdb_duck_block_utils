@@ -752,6 +752,21 @@ duck_blocks_stats(blocks LIST(duck_block)) → LIST(STRUCT(element_type, count, 
 
 ## Type Functions
 
+### duck_block_implicit_parent
+
+The wrapper a fragment of this element gets when it has no required ancestor, from the
+vocabulary header's `ImplicitParentOf`. `list_item` → `list`, `caption` → `figure`, any
+`inline` → `plain`; NULL for everything else, which is legal at the top level. Read by
+`duck_blocks_repair` and by `duck_blocks_to_pandoc_ast`, and vendored by sibling
+extensions with the header, so the three cannot disagree.
+
+```sql
+duck_block_implicit_parent(element_type VARCHAR, kind VARCHAR) → VARCHAR
+```
+
+---
+
+
 Standard functions for type construction, validation, and field access.
 
 See [Type Functions](type_functions.md) for complete documentation.

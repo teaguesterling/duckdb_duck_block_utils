@@ -358,8 +358,30 @@ struct DuckBlockVocabulary {
 	//               wanting text renames to the _text sibling. Failure to migrate is a
 	//               binder error, never a wrong answer.
 	//
+	//   6.5 -> 6.6  ADDITIVE for consumers; producers gain two obligations, named here.
+	//               Issue #29 (duckeye): every validation rule was a predicate on ONE
+	//               element and the one-shape rule bound only this repo, while the
+	//               divergences consumers hit are properties of a LIST and run between
+	//               repos. Four things:
+	//               * Fragments are legal input. ImplicitParentOf() below declares the
+	//                 wrapper a fragment gets (list_item -> list, caption -> figure,
+	//                 inline -> plain). duck_blocks_to_pandoc_ast used to return [] for an
+	//                 orphan inline run that duck_blocks_validate called valid.
+	//               * List-level validation (field = 'list'): element_order dense from 0,
+	//                 shallowest level 1, no level jump, required ancestors present.
+	//               * duck_blocks_repair(blocks): the deterministic fixes for those rules,
+	//                 idempotent, never touching an existing element's content, attributes
+	//                 or element_type. Composes with duck_blocks_normalize.
+	//               * ONE shape per element_type binds EVERY producer. First instance: a
+	//                 tight list item carries content (Pandoc Plain); a loose one has a
+	//                 paragraph child (Para). markdown emitted loose for both (markdown#60)
+	//                 and starts element_order at 1 (markdown#59); both are producer bugs
+	//                 under this note, not new rules.
+	//               A consumer on 6.5 is unaffected. A producer that vendored `plain` and
+	//               never emitted it has been non-conformant since 4.0; this note names it.
+	//
 	// The rule above is what will be followed from here.
-	static constexpr const char *SPEC_VERSION = "6.5";
+	static constexpr const char *SPEC_VERSION = "6.6";
 
 	// ========================================================================
 	// Block type names
@@ -413,6 +435,41 @@ struct DuckBlockVocabulary {
 	// rather than figure-specific: Pandoc's Table also carries a Caption, and can
 	// adopt this later without another vocabulary change.
 	static constexpr const char *TYPE_CAPTION = "caption";
+
+	// ========================================================================
+	// Implicit parents (spec: "Fragments are legal input")
+	//
+	// A fragment -- the items of one list, the inline run of one paragraph --
+	// is legal input everywhere. When an element that REQUIRES an ancestor has
+	// none, this is the wrapper it gets, declared once so duck_blocks_repair,
+	// the exporter and a sibling's vendored copy agree. Empty string = none.
+	// Constexpr and std-free so the header stays <cstdint>-only.
+	// ========================================================================
+	// Single-return recursion, not a loop: the extension compiles as C++11, where a
+	// constexpr body must be one return statement. (The standalone header probe
+	// compiles with a newer standard and cannot catch a C++14-only body.)
+	static constexpr bool SameName(const char *a, const char *b) {
+		return *a == *b && (*a == '\0' || SameName(a + 1, b + 1));
+	}
+
+	static constexpr const char *ImplicitParentOf(const char *element_type, const char *kind) {
+		return SameName(kind, KIND_INLINE)                                            ? TYPE_PLAIN
+		       : SameName(kind, KIND_BLOCK) && SameName(element_type, TYPE_LIST_ITEM) ? TYPE_LIST
+		       : SameName(kind, KIND_BLOCK) && SameName(element_type, TYPE_CAPTION)   ? TYPE_FIGURE
+		                                                                              : "";
+	}
+
+	// Does an ancestor of block type `ancestor_type` satisfy this element's
+	// requirement? Only meaningful when ImplicitParentOf() is non-empty. An inline
+	// needs any non-inline (block or value) above it, which callers check by kind.
+	static constexpr bool RequiresAncestor(const char *element_type, const char *kind, const char *ancestor_type) {
+		return SameName(kind, KIND_INLINE) ? true
+		       : SameName(element_type, TYPE_LIST_ITEM)
+		           ? (SameName(ancestor_type, TYPE_LIST) || SameName(ancestor_type, TYPE_DEFLIST))
+		       : SameName(element_type, TYPE_CAPTION)
+		           ? (SameName(ancestor_type, TYPE_FIGURE) || SameName(ancestor_type, TYPE_TABLE))
+		           : false;
+	}
 	// A structurally-valid element whose type is not in the standard vocabulary.
 	// Distinct from TYPE_RAW, which is literal content in a *named* format; this is a
 	// structured element we cannot name. Format-neutral on purpose: any reader

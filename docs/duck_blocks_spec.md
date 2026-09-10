@@ -123,9 +123,54 @@ together.
 
 **Consumers must filter on `kind`, not index blindly.** A block list may carry
 `value` elements (document metadata, a version marker) after its content, so
-`blocks[1]` is not guaranteed to be the first content block. Walking with an
-**allowlist** — `kind = 'block'` — survives a future kind; a blocklist such as
-"skip inline, treat the rest as a block" does not.
+`blocks[1]` is not guaranteed to be the first content block. Walk with an
+**allowlist**, which survives a future kind; a blocklist such as "skip inline, treat
+the rest as a block" does not. And name the question the filter answers, because the
+two obvious filters answer different ones:
+
+| you want | filter | and NOT |
+|---|---|---|
+| block-level structure (headings, sections, pages) | `kind = 'block'` | `kind = 'block'` as a content filter: it drops every `inline`, where most prose lives |
+| all of the document's content, inlines included | `kind IN ('block', 'inline')` | `kind <> 'value'`, which is a blocklist and admits a future kind |
+| the document's metadata | `kind = 'value'` | |
+
+The first row is the one that bit: a text-extraction filter copied as `kind = 'block'`
+silently dropped every inline element and the corpus looked fine (Tiiny session,
+2026-09-10, via the zim session). **Why the allowlist and not the blocklist, beyond a
+future kind:** both fail silently, in opposite directions, and the directions are not
+equally expensive. An allowlist that misses a kind drops content and costs recall; a
+blocklist that admits a kind lets metadata into the text and, for anything embedded,
+indexed or cited, costs a rebuild. Measured by that consumer: a viewport meta tag and a
+licence footer embedded as prose across about a fifth of a corpus. The filter has to
+fail safe on its own; a test that says so afterwards runs after the build. Same
+mechanism as the producer-side sentence this document once carried about `kind`, one
+interface over: one copyable line shaping a consumer.
+
+### Fragments are legal input
+
+Any `LIST(duck_block)` that passes validation is a legal input to every consumer function,
+whether or not it is a whole document. A selector produces fragments by design: the inline
+run of one paragraph, the items of one list, one section. A function that receives a
+fragment MUST either handle it or wrap it into its **implicit parent**; it MUST NOT drop
+content. `duck_blocks_validate` reporting valid and a writer returning nothing for the same
+input was the contradiction this rule removes (found by duckeye, 2026-09-10).
+
+The implicit parents are declared once, in the vocabulary header, as
+`DuckBlockVocabulary::ImplicitParentOf(element_type, kind)` and exposed as
+`duck_block_implicit_parent(element_type, kind)`:
+
+| element (kind) | requires an ancestor of | implicit parent if absent |
+|---|---|---|
+| `list_item` (block) | `list` or `deflist` | `list`, `attributes['list_type'] = 'bullet'` |
+| `caption` (block) | `figure` or `table` | `figure` |
+| any `inline` element | a block or a `value` element | `plain` |
+| anything else | nothing | none: legal at the top level |
+
+A run of consecutive orphans at one level gets ONE wrapper, at the level above them;
+`duck_blocks_repair` does exactly this, and `duck_blocks_to_pandoc_ast` applies it before
+exporting. The wrapper for an inline run is `plain`, not `paragraph`: `plain` is the
+vocabulary's own "text run that is not a paragraph" and exports as Pandoc's `Plain`, which
+is what Pandoc itself does with bare inlines.
 
 Introspect the live vocabulary rather than mirroring this table:
 
@@ -871,6 +916,18 @@ is **not** a schema, and it is not sufficient to decode against.
 
 ### ONE shape per element_type
 
+**This rule binds every producer of duck_blocks, in any extension**, not producers in
+this repository. A consumer reading `list_item.content` must get one meaning whatever
+produced the blocks; duckeye dispatches entries of one ZIM archive to three different
+readers, so a per-producer shape is a within-one-file divergence. The first instance the
+rule settles is the tight list item: a `list_item` carrying `content` is a TIGHT item
+(Pandoc `Plain`); a `list_item` with a child `paragraph` is a LOOSE item (Pandoc `Para`).
+Both are legal because they mean different things; a reader that emits the loose shape
+for a tight source has lost information, and the vocabulary added `plain` precisely so
+that no reader has to. Measured on 2026-09-10: the markdown reader emitted the loose shape
+for both `- a\n- b` and `- a\n\n- b` (markdown#60); panduck's docx reader emits the tight
+shape for a tight item.
+
 **Every producer in this repo emits the same shape for a given BLOCK
 `element_type`.** Before 2.0 it emitted three for `list` alone, and a consumer's
 decoder silently depended on which producer made the block. That is the defect
@@ -1205,6 +1262,28 @@ A duck_block is **canonical** if:
 6. For leaf types: content contains the actual content
 7. Whitespace types (`space`, `softbreak`, `linebreak`): content is empty
 
+### Validation over a list
+
+The rules above are predicates on one element. These are predicates on the LIST, reported
+by `duck_blocks_validate` with `field = 'list'`, and each has a deterministic repair that
+`duck_blocks_repair` applies:
+
+| rule | error message | repair |
+|---|---|---|
+| L1 `element_order` is dense from 0 in list order | `element_order starts at N; must start at 0` / `element_order gap after N` | renumber in list order |
+| L2 the shallowest element is at level 1 | `shallowest element is at level N; top level is 1` | subtract N-1 from every level |
+| L3 a level never jumps by more than one from the previous element | `level jumps from N to M; ...` | subtract the excess from the jumped element and everything under it |
+| L4 an element that requires an ancestor has one | `list_item at N has no list ancestor` (likewise `caption`) | wrap the run in its implicit parent |
+| L5 an inline element has a block or `value` above it (a value's inline children belong to it) | `inline at N has no block or value parent` | wrap the run in `plain` |
+
+`duck_blocks_repair` runs L4, L5, L2, L3, L1 in that order — structure first, numbering
+last, because wrapping inserts elements that need numbers — and is idempotent. It never
+changes an existing element's `content`, `attributes` or `element_type` and never removes
+one; that is what makes every repair deterministic. A per-element error (an unknown kind,
+an empty element_type, an unknown encoding) is not repaired and is still reported after
+repair. `duck_blocks_normalize` (the content rule) and `duck_blocks_repair` compose:
+`duck_blocks_repair(duck_blocks_normalize(b))`.
+
 ## Validation Macro
 
 Extensions can use these macros to validate duck_blocks without depending on
@@ -1349,6 +1428,8 @@ Extensions that consume duck_blocks:
 - MUST handle both content-field and nested-children representations
 - SHOULD validate input before processing
 - MUST preserve unrecognized attributes
+- MUST accept a fragment (see "Fragments are legal input") and MUST NOT drop its content
+- SHOULD run `duck_blocks_repair` on input of unknown provenance before structural work
 
 ## Changelog
 
