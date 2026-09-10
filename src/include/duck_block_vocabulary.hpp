@@ -380,8 +380,31 @@ struct DuckBlockVocabulary {
 	//               A consumer on 6.5 is unaffected. A producer that vendored `plain` and
 	//               never emitted it has been non-conformant since 4.0; this note names it.
 	//
+	//   6.6 -> 1.2  RENUMBERED, NO SHAPE CHANGE. Teague, 2026-09-10: "I don't want to
+	//               keep numbering up into the 6.6s; this should be at most 1.2; stop
+	//               with the internal numbering." The 6.x line was this repo's internal
+	//               count of spec revisions, one per ruling, and it had climbed to a
+	//               number that says "sixth major redesign" about a vocabulary whose
+	//               public name has been duck_blocks 1.1 throughout. The public name
+	//               is now the number: 1.2 is 6.6 with a different label. Nothing
+	//               renamed, removed, or reshaped between them.
+	//
+	//               RECORDED, NOT QUIET, for the same reason the mis-numbered 1.1 -> 1.2
+	//               above is recorded: every consumer compares major equality plus a
+	//               minor floor (panduck's check implements exactly that rule), so a
+	//               major going DOWN from 6 to 1 reads as a breaking change to a rule
+	//               that is working correctly. SPEC_VERSION_SUPERSEDES below names the
+	//               last number of the retired line so a check can accept either side
+	//               of the renumbering; a consumer re-vendoring this header updates its
+	//               major-equality constant from 6 to 1 once and is done. The next
+	//               breaking change is 2.0; the next additive one is 1.3.
+	//
 	// The rule above is what will be followed from here.
-	static constexpr const char *SPEC_VERSION = "6.6";
+	static constexpr const char *SPEC_VERSION = "1.2";
+	// The last number of the internal 6.x line that 1.2 replaces. A consumer check
+	// that reads MAJOR from SPEC_VERSION treats this line's major as equivalent to
+	// the current one for the one release it takes to re-vendor. Removed at 2.0.
+	static constexpr const char *SPEC_VERSION_SUPERSEDES = "6.6";
 
 	// ========================================================================
 	// Block type names
