@@ -1,0 +1,16 @@
+spec_version: "1.2"
+producers:
+  markdown:
+    install: "INSTALL markdown FROM community; LOAD markdown;"
+    read: "SELECT unnest(parse_markdown_to_duck_blocks((SELECT content FROM read_text('{path}')))) AS b"
+    formats: [md]
+  webbed:
+    install: "INSTALL webbed FROM community; LOAD webbed;"
+    read: "SELECT unnest(html_to_duck_blocks((SELECT content FROM read_text('{path}')))) AS b"
+    formats: [html]
+  panduck:
+    install: "INSTALL panduck FROM community; LOAD panduck;"
+    read: "SELECT unnest(panduck_read_blocks('{path}')) AS b"
+    formats: [md, html, docx]
+# construct -> {producer: installed version when expected was (re)written}; filled by --write-expected
+written_against: {}

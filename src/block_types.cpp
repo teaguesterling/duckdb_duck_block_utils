@@ -5,6 +5,7 @@
 #include "duckdb/function/cast/default_casts.hpp"
 #include "duckdb/common/operator/string_cast.hpp"
 #include "duckdb/common/vector_operations/unary_executor.hpp"
+#include "duckdb/common/vector_operations/binary_executor.hpp"
 
 namespace duckdb {
 
@@ -262,6 +263,21 @@ static void BlocksVersionFun(DataChunk &args, ExpressionState &state, Vector &re
 	}
 }
 
+// duck_block_implicit_parent(element_type, kind) -> the wrapper a fragment of that
+// element gets, or NULL. Reads the header table so SQL, C++ and vendored copies agree.
+static void ImplicitParentFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	BinaryExecutor::ExecuteWithNulls<string_t, string_t, string_t>(
+	    args.data[0], args.data[1], result, args.size(),
+	    [&](string_t type, string_t kind, ValidityMask &mask, idx_t idx) {
+		    auto parent = BlockTypes::ImplicitParentOf(type.GetString().c_str(), kind.GetString().c_str());
+		    if (parent[0] == '\0') {
+			    mask.SetInvalid(idx);
+			    return string_t();
+		    }
+		    return StringVector::AddString(result, parent);
+	    });
+}
+
 void BlockTypes::Register(ExtensionLoader &loader) {
 	auto duck_block_type = DuckBlockType();
 	loader.RegisterType("duck_block", duck_block_type);
@@ -274,6 +290,8 @@ void BlockTypes::Register(ExtensionLoader &loader) {
 	loader.RegisterFunction(ScalarFunction("duck_block_type_names", {}, varchar_list, BlockTypesFun));
 	loader.RegisterFunction(ScalarFunction("duck_block_encoding_names", {}, varchar_list, BlockEncodingsFun));
 	loader.RegisterFunction(ScalarFunction("duck_block_spec_version", {}, LogicalType::VARCHAR, SpecVersionFun));
+	loader.RegisterFunction(ScalarFunction("duck_block_implicit_parent", {LogicalType::VARCHAR, LogicalType::VARCHAR},
+	                                       LogicalType::VARCHAR, ImplicitParentFun));
 	loader.RegisterFunction(
 	    ScalarFunction("duck_blocks_stamp", {DuckBlockListType()}, DuckBlockListType(), BlocksStampFun));
 	loader.RegisterFunction(

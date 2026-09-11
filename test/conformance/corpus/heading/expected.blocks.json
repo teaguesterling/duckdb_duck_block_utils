@@ -1,0 +1,18 @@
+[
+  {
+    "kind": "block",
+    "element_type": "heading",
+    "level": 1,
+    "content": "Title",
+    "attributes": {
+      "heading_level": "1"
+    }
+  },
+  {
+    "kind": "block",
+    "element_type": "paragraph",
+    "level": 1,
+    "content": "Body.",
+    "attributes": {}
+  }
+]

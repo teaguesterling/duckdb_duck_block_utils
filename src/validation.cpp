@@ -207,6 +207,107 @@ void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &
 		}
 
 		child_list_t<Value> result_values;
+		// ---- Rules over the LIST (spec: "Validation over a list"), field = 'list'.
+		// Every rule above is a predicate on one element; these are properties of the
+		// sequence, which is where the cross-producer divergences live (issue #29):
+		// markdown started element_order at 1 and every element passed "non-negative".
+		auto list_error = [&](int32_t order, const string &message) {
+			child_list_t<Value> ev;
+			ev.push_back(make_pair("element_order", Value(order)));
+			ev.push_back(make_pair("field", Value("list")));
+			ev.push_back(make_pair("message", Value(message)));
+			errors.push_back(Value::STRUCT(std::move(ev)));
+		};
+		{
+			// L1: dense from 0 in list order.
+			int32_t expected = 0;
+			bool first = true;
+			for (auto &block : blocks_list) {
+				if (block.IsNull()) {
+					continue;
+				}
+				auto order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, -1);
+				if (first) {
+					first = false;
+					if (order != 0) {
+						list_error(order, "element_order starts at " + std::to_string(order) + "; must start at 0");
+					}
+				} else if (order != expected) {
+					list_error(order, "element_order gap after " + std::to_string(expected - 1));
+				}
+				expected = order + 1;
+			}
+			// L2: shallowest element at level 1.
+			int32_t min_level = 0;
+			int32_t min_order = 0;
+			bool seen_level = false;
+			for (auto &block : blocks_list) {
+				if (block.IsNull()) {
+					continue;
+				}
+				auto lvl = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
+				if (!seen_level || lvl < min_level) {
+					seen_level = true;
+					min_level = lvl;
+					min_order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
+				}
+			}
+			if (min_level > 1) {
+				list_error(min_order,
+				           "shallowest element is at level " + std::to_string(min_level) + "; top level is 1");
+			}
+			// L4 + L5: required ancestors, via a stack of (level, kind, type) that is
+			// popped back to strictly shallower entries at each element.
+			struct Frame {
+				int32_t level;
+				string kind;
+				string type;
+			};
+			vector<Frame> stack;
+			for (auto &block : blocks_list) {
+				if (block.IsNull()) {
+					continue;
+				}
+				auto lvl = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
+				auto kind = GetElementStringField(block, BlockTypes::KIND_IDX);
+				auto type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
+				auto order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
+				while (!stack.empty() && stack.back().level >= lvl) {
+					stack.pop_back();
+				}
+				const char *parent = BlockTypes::ImplicitParentOf(type.c_str(), kind.c_str());
+				if (parent[0] != '\0') {
+					bool satisfied = false;
+					for (auto &f : stack) {
+						if (kind == BlockTypes::KIND_INLINE) {
+							// An inline needs a non-inline above it: a block, or a `value`
+							// element, whose inline children belong to that value (spec,
+							// "the inlines under a value belong to that value").
+							if (f.kind != BlockTypes::KIND_INLINE) {
+								satisfied = true;
+								break;
+							}
+							continue;
+						}
+						if (f.kind == BlockTypes::KIND_BLOCK &&
+						    BlockTypes::RequiresAncestor(type.c_str(), kind.c_str(), f.type.c_str())) {
+							satisfied = true;
+							break;
+						}
+					}
+					if (!satisfied) {
+						if (kind == BlockTypes::KIND_INLINE) {
+							list_error(order, "inline at " + std::to_string(order) + " has no block or value parent");
+						} else {
+							list_error(order,
+							           type + " at " + std::to_string(order) + " has no " + parent + " ancestor");
+						}
+					}
+				}
+				stack.push_back({lvl, kind, type});
+			}
+		}
+
 		result_values.push_back(make_pair("valid", Value(errors.empty())));
 		result_values.push_back(make_pair("errors", Value::LIST(error_struct_type, std::move(errors))));
 		result.SetValue(i, Value::STRUCT(std::move(result_values)));

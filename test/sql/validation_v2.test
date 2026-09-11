@@ -546,16 +546,25 @@ SELECT len(duck_blocks_lint(duck_blocks_normalize([
 # So the surviving claim is asserted here rather than left as prose.
 # ============================================================================
 
-# Every container accepts its own content: valid, and no lint objects. A validator
-# that rejected this would contradict the document four extensions implement from.
+# Every container accepts its own content: no per-element error, and no lint objects. A
+# validator that rejected this would contradict the document four extensions implement
+# from. The LIST-level rules (field = 'list') are a separate axis: a lone list_item or
+# caption is a fragment missing its ancestor and reports exactly that, which is why the
+# assertion excludes field = 'list' rather than asserting .valid.
 query II
 SELECT bool_and(v), sum(w) FROM (
-  SELECT duck_blocks_validate([{'kind':'block','element_type':t,'content':'CARRIED','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block]).valid AS v,
+  SELECT len(list_filter(duck_blocks_validate([{'kind':'block','element_type':t,'content':'CARRIED','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block]).errors, lambda e: e.field <> 'list')) = 0 AS v,
          len(duck_blocks_lint([{'kind':'block','element_type':t,'content':'CARRIED','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block])) AS w
   FROM (SELECT unnest(['blockquote','list_item','div','section','figure','caption']) AS t)
 );
 ----
 true	0
+
+# ...and the two that require an ancestor say so at the list level, nothing else
+query I
+SELECT list_transform(duck_blocks_validate([{'kind':'block','element_type':'list_item','content':'CARRIED','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block]).errors, lambda e: e.field || ': ' || e.message);
+----
+['list: list_item at 0 has no list ancestor']
 
 # ...and `list` is the documented exception, for a reason that follows from the
 # rule rather than qualifying it: a list's children are list_items, never text, so

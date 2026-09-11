@@ -18,7 +18,7 @@ SELECT 'block' AS kind, 'heading' AS element_type, 'Title' AS "content", 1 AS "l
 query I
 SELECT duck_block_spec_version();
 ----
-6.5
+1.2
 
 # --- the list(b) idiom, the shape every consumer in the field uses
 query I

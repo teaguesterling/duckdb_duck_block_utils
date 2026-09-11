@@ -518,6 +518,28 @@ SELECT duck_blocks_merge(
 
 ---
 
+### duck_blocks_repair
+
+The deterministic fixes for the list-level validation rules: wraps orphan runs in their
+implicit parent (`list_item` → `list`, `caption` → `figure`, an inline run → `plain`),
+rebases levels so the shallowest is 1, collapses level jumps, and renumbers
+`element_order` from 0. Structure first, numbering last. Idempotent. Never changes an
+existing element's `content`, `attributes` or `element_type` and never removes one; a
+per-element error (unknown kind, empty element_type, unknown encoding) is left for
+`duck_blocks_validate` to report. Composes with the content rule:
+`duck_blocks_repair(duck_blocks_normalize(b))`. `duck_blocks_to_pandoc_ast` applies it
+before exporting, so a fragment exports instead of vanishing.
+
+```sql
+duck_blocks_repair(blocks LIST(duck_block)) → LIST(duck_block)
+```
+
+**Trusts neither input.** Unlike `reorder` (trusts `element_order`) and `merge` (trusts
+the list), repair trusts the SPEC: the sequence is kept, and every field the list rules
+govern is rewritten to satisfy them.
+
+---
+
 ### duck_blocks_reorder
 
 Renumbers elements sequentially starting from 0.
@@ -751,6 +773,21 @@ duck_blocks_stats(blocks LIST(duck_block)) → LIST(STRUCT(element_type, count, 
 ---
 
 ## Type Functions
+
+### duck_block_implicit_parent
+
+The wrapper a fragment of this element gets when it has no required ancestor, from the
+vocabulary header's `ImplicitParentOf`. `list_item` → `list`, `caption` → `figure`, any
+`inline` → `plain`; NULL for everything else, which is legal at the top level. Read by
+`duck_blocks_repair` and by `duck_blocks_to_pandoc_ast`, and vendored by sibling
+extensions with the header, so the three cannot disagree.
+
+```sql
+duck_block_implicit_parent(element_type VARCHAR, kind VARCHAR) → VARCHAR
+```
+
+---
+
 
 Standard functions for type construction, validation, and field access.
 

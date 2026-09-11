@@ -54,6 +54,7 @@ check:
 	         test/check_docs_cover_functions.py \
 	         test/check_constants_are_used.py \
 	         test/check_consumer_alignment.py \
+	         test/check_conformance_corpus.py \
 	         test/fixtures/metadata/check_metadata_fixtures.py; do \
 	  python3 $$c || { fail=1; echo "  ^^ $$c FAILED (continuing; the rest still run)"; }; \
 	done; \

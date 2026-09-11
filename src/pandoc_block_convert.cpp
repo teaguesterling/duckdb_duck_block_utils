@@ -1,4 +1,5 @@
 #include "pandoc_block_convert.hpp"
+#include "repair.hpp"
 #include "normalize.hpp"
 
 #include <set>
@@ -1769,6 +1770,30 @@ static void ConvertContainerChildrenToPandocVal(yyjson_mut_doc *doc, const vecto
 		if (switch_type && switch_arr && child_kind == BlockTypes::KIND_BLOCK && child_type == switch_type &&
 		    child_level == parent_level + 1) {
 			child_blocks_arr = switch_arr;
+			// The switching block (a figure's caption) may carry its own text in
+			// `content` -- the content rule's tight form, and what every producer emits
+			// for `<figcaption>text</figcaption>`. It is a container, so the same rule
+			// as the parent's own content above applies: write a lone Plain. Without
+			// this the Figure exported with an EMPTY caption for exactly that shape,
+			// found by the round-trip sweep the day fragments started wrapping into
+			// their implicit figure.
+			auto switch_content = GetElementStringField(child, BlockTypes::CONTENT_IDX);
+			if (!switch_content.empty()) {
+				yyjson_mut_val *plain_obj = yyjson_mut_obj(doc);
+				yyjson_mut_obj_add_str(doc, plain_obj, "t", "Plain");
+				idx_t inl_end = 0;
+				yyjson_mut_val *inl_arr = PandocInlineConvert::ConvertDbInlinesToPandocVal(
+				    doc, blocks_list, j + 1, child_level + 1, inl_end, depth + 1);
+				if (!inl_arr || yyjson_mut_arr_size(inl_arr) == 0) {
+					inl_arr = yyjson_mut_arr(doc);
+					yyjson_mut_val *str_obj = yyjson_mut_obj(doc);
+					yyjson_mut_obj_add_str(doc, str_obj, "t", "Str");
+					yyjson_mut_obj_add_strncpy(doc, str_obj, "c", switch_content.data(), switch_content.size());
+					yyjson_mut_arr_add_val(inl_arr, str_obj);
+				}
+				yyjson_mut_obj_add_val(doc, plain_obj, "c", inl_arr);
+				yyjson_mut_arr_add_val(child_blocks_arr, plain_obj);
+			}
 			j++;
 			continue;
 		}
@@ -2066,7 +2091,14 @@ static yyjson_mut_val *ConvertFigureToPandocVal(yyjson_mut_doc *doc, const vecto
 	return fig_obj;
 }
 
-static string BuildBlocksJson(const vector<Value> &blocks_list) {
+static string BuildBlocksJson(const vector<Value> &blocks_in) {
+	// Fragments are legal input (spec: "Fragments are legal input"). An orphan inline
+	// run or list_item run used to fall through the KIND_BLOCK / TYPE_LIST_ITEM skips
+	// below and the document came out as [] while duck_blocks_validate called it valid
+	// -- issue #29 example 3. Repair wraps it in its implicit parent first; on a whole
+	// document repair is a no-op, so nothing else changes.
+	vector<Value> blocks_list = blocks_in;
+	RepairFunctions::RepairBlocks(blocks_list);
 	yyjson_mut_doc *doc = yyjson_mut_doc_new(nullptr);
 	yyjson_mut_val *blocks_arr = yyjson_mut_arr(doc);
 	yyjson_mut_doc_set_root(doc, blocks_arr);

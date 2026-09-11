@@ -157,11 +157,15 @@ SELECT duck_blocks_to_pandoc_blocks(NULL) IS NULL;
 ----
 true
 
-# Test inline elements are skipped in block output
+# A bare inline is a FRAGMENT, and fragments are legal input (spec: "Fragments are
+# legal input", issue #29). It exports wrapped in its implicit parent, `plain`, as
+# Pandoc's Plain -- which is what pandoc itself does with bare inlines. Until 6.6 this
+# asserted `[]`: the content silently vanished while duck_blocks_validate called the
+# input valid, which is the contradiction the rule removed.
 query I
 SELECT duck_blocks_to_pandoc_blocks(duck_block_text('inline'));
 ----
-[]
+[{"t":"Plain","c":[{"t":"Str","c":"inline"}]}]
 
 # ============================================================================
 # Round-trip Tests

@@ -1,0 +1,25 @@
+[
+  {
+    "kind": "block",
+    "element_type": "list",
+    "level": 1,
+    "content": "",
+    "attributes": {
+      "list_type": "bullet"
+    }
+  },
+  {
+    "kind": "block",
+    "element_type": "list_item",
+    "level": 2,
+    "content": "alpha",
+    "attributes": {}
+  },
+  {
+    "kind": "block",
+    "element_type": "list_item",
+    "level": 2,
+    "content": "beta",
+    "attributes": {}
+  }
+]

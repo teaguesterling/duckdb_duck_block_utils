@@ -116,10 +116,11 @@ INHERENT = {
         "deprecation.",
     ),
     "caption": (
-        "paragraph",
-        "Only a STANDALONE caption, which is malformed anyway -- a caption belongs to "
-        "the container before it. Inside a figure it round-trips: figure > plain > "
-        "caption > plain. The sweep's synthetic probe is unrepresentative here.",
+        "figure",
+        "A STANDALONE caption is a fragment, and fragments are legal input: the exporter "
+        "wraps it in its implicit parent, `figure` (spec, \"Fragments are legal input\"), "
+        "so it reads back as figure > caption. Inside a figure it round-trips. The "
+        "sweep's synthetic probe reads the wrapper, not a loss.",
     ),
 }
 

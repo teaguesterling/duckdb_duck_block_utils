@@ -1,0 +1,32 @@
+[
+  {
+    "kind": "block",
+    "element_type": "paragraph",
+    "level": 1,
+    "content": "",
+    "attributes": {}
+  },
+  {
+    "kind": "inline",
+    "element_type": "text",
+    "level": 2,
+    "content": "an ",
+    "attributes": {}
+  },
+  {
+    "kind": "inline",
+    "element_type": "image",
+    "level": 2,
+    "content": "alt text",
+    "attributes": {
+      "src": "i.png"
+    }
+  },
+  {
+    "kind": "inline",
+    "element_type": "text",
+    "level": 2,
+    "content": " here",
+    "attributes": {}
+  }
+]

@@ -149,13 +149,29 @@ def main() -> int:
         extra = sorted(set(got) - set(canon))
         changed = sorted(k for k in set(canon) & set(got) if canon[k] != got[k])
 
+        # A RENUMBERING is not a value change. When the canonical header names a
+        # superseded line (SPEC_VERSION_SUPERSEDES), a consumer whose SPEC_VERSION is
+        # on that line is behind the renumbering, not carrying a different value:
+        # the shape is identical on both sides. Report it in those words, because a
+        # major-equality check reads 6 -> 1 as breaking, which is the opposite of
+        # what happened.
+        superseded = canon.get("SPEC_VERSION_SUPERSEDES")
+        on_old_line = bool(superseded and v and v.split(".")[0] == superseded.split(".")[0])
+        if on_old_line:
+            changed = [k for k in changed if k != "SPEC_VERSION"]
+            missing = [k for k in missing if k != "SPEC_VERSION_SUPERSEDES"]
+
         if not (missing or extra or changed) and v == canon_v:
             print(f"  OK   {name} [{ref}] -- {len(got)} constants, SPEC_VERSION {v}")
             continue
 
         drifted.append(name)
         print(f"\n  DRIFT {name} -- SPEC_VERSION {v}, {len(got)} constants")
-        if v != canon_v:
+        if on_old_line:
+            print(f"        version {v} is on the retired internal line; canonical is {canon_v}, the SAME shape")
+            print(f"        renumbered (header: 6.6 -> 1.2, no change). Re-vendor and set your")
+            print(f"        major-equality constant to {canon_v.split('.')[0]} once; nothing else moves.")
+        elif v != canon_v:
             print(f"        version {v} against canonical {canon_v}")
         if changed:
             print(f"        VALUE CHANGED ({len(changed)}) -- compiles clean on both sides,")

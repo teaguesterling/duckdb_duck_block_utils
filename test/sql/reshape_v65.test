@@ -39,7 +39,7 @@ CREATE TABLE pages AS SELECT [
 query I
 SELECT duck_block_spec_version();
 ----
-6.5
+1.2
 
 # ---------------------------------------------------------------------------
 # 2. _structs siblings: today's projections, byte-for-byte (the ergonomic form)

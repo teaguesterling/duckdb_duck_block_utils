@@ -1,0 +1,32 @@
+[
+  {
+    "kind": "block",
+    "element_type": "paragraph",
+    "level": 1,
+    "content": "",
+    "attributes": {}
+  },
+  {
+    "kind": "inline",
+    "element_type": "text",
+    "level": 2,
+    "content": "see ",
+    "attributes": {}
+  },
+  {
+    "kind": "inline",
+    "element_type": "link",
+    "level": 2,
+    "content": "here",
+    "attributes": {
+      "href": "https://example.com"
+    }
+  },
+  {
+    "kind": "inline",
+    "element_type": "text",
+    "level": 2,
+    "content": " now",
+    "attributes": {}
+  }
+]
