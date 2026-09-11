@@ -5,7 +5,6 @@
 #include "duckdb/function/cast/default_casts.hpp"
 #include "duckdb/common/operator/string_cast.hpp"
 #include "duckdb/common/vector_operations/unary_executor.hpp"
-#include "duckdb/common/vector_operations/binary_executor.hpp"
 
 namespace duckdb {
 
@@ -265,17 +264,19 @@ static void BlocksVersionFun(DataChunk &args, ExpressionState &state, Vector &re
 
 // duck_block_implicit_parent(element_type, kind) -> the wrapper a fragment of that
 // element gets, or NULL. Reads the header table so SQL, C++ and vendored copies agree.
+// A Value loop rather than BinaryExecutor: ExecuteWithNulls exists in v1.5 and is gone
+// on DuckDB main (the 2.0 line), and this is a two-string lookup, not a hot path.
 static void ImplicitParentFun(DataChunk &args, ExpressionState &state, Vector &result) {
-	BinaryExecutor::ExecuteWithNulls<string_t, string_t, string_t>(
-	    args.data[0], args.data[1], result, args.size(),
-	    [&](string_t type, string_t kind, ValidityMask &mask, idx_t idx) {
-		    auto parent = BlockTypes::ImplicitParentOf(type.GetString().c_str(), kind.GetString().c_str());
-		    if (parent[0] == '\0') {
-			    mask.SetInvalid(idx);
-			    return string_t();
-		    }
-		    return StringVector::AddString(result, parent);
-	    });
+	for (idx_t i = 0; i < args.size(); i++) {
+		auto type = args.data[0].GetValue(i);
+		auto kind = args.data[1].GetValue(i);
+		if (type.IsNull() || kind.IsNull()) {
+			result.SetValue(i, Value(LogicalType::VARCHAR));
+			continue;
+		}
+		auto parent = BlockTypes::ImplicitParentOf(type.GetValue<string>().c_str(), kind.GetValue<string>().c_str());
+		result.SetValue(i, parent[0] == '\0' ? Value(LogicalType::VARCHAR) : Value(parent));
+	}
 }
 
 void BlockTypes::Register(ExtensionLoader &loader) {
