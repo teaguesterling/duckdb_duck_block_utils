@@ -37,6 +37,24 @@ SELECT duck_block_implicit_parent('metadata', 'value') IS NULL;
 ----
 true
 
+# NULL inputs, in a NON-constant vector. `f(NULL)` alone is constant-folded to NULL
+# before the function runs and passes on any implementation; only a NULL row among
+# real rows exercises the function's own null handling. (markdown's trap, 2026-09-11.)
+# The row for paragraph is a NULL the function PRODUCES on a valid input; that is
+# why the implementation cannot be a plain null-propagating executor.
+query II
+SELECT t, duck_block_implicit_parent(t, 'block') FROM (VALUES ('list_item'), (NULL), ('paragraph')) v(t) ORDER BY t NULLS FIRST;
+----
+NULL	NULL
+list_item	list
+paragraph	NULL
+
+query II
+SELECT k, duck_block_implicit_parent('text', k) FROM (VALUES ('inline'), (NULL)) v(k) ORDER BY k NULLS FIRST;
+----
+NULL	NULL
+inline	plain
+
 # ---------------------------------------------------------------------------
 # 2. validation over the list (field = 'list')
 # ---------------------------------------------------------------------------
