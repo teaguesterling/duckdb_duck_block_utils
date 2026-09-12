@@ -133,6 +133,15 @@ two obvious filters answer different ones:
 | block-level structure (headings, sections, pages) | `kind = 'block'` | `kind = 'block'` as a content filter: it drops every `inline`, where most prose lives |
 | all of the document's content, inlines included | `kind IN ('block', 'inline')` | `kind <> 'value'`, which is a blocklist and admits a future kind |
 | the document's metadata | `kind = 'value'` | |
+| the document's BODY: what a text renderer, indexer or embedder should see | `duck_block_is_body(kind, element_type)`, i.e. `kind IN ('block', 'inline') AND element_type <> 'metadata'` | `kind IN ('block', 'inline')` alone: it admits the verbatim `metadata` blob, which is content-shaped but not body |
+
+The fourth row is the one two conformant producers diverged on: a markdown
+file's frontmatter is a `kind='block'` blob by the two-homes rule below, so a body filter
+written as a kind filter rendered it as prose above the first heading, while the same
+metadata from a `.docx` (`kind='value'`) stayed out. Neither producer was wrong; the
+rule was unstated. `duck_blocks_to_text` applies it; the header carries it as
+`IsBody(kind, element_type)` so a vendored copy applies the same one. `raw` IS body,
+document content in its source format, and merely has no text rendering.
 
 The first row is the one that bit: a text-extraction filter copied as `kind = 'block'`
 silently dropped every inline element and the corpus looked fine (Tiiny session,
@@ -551,6 +560,11 @@ values, so nothing will object if you do.
 |---|---|---|
 | discrete FIELDS — title, author, date | `kind='value'`, this section | docx `core.xml`, EPUB Dublin Core, odt `meta.xml`, RTF `\info`, LaTeX `\title`, HTML `<head>`, Pandoc `Meta` |
 | a verbatim BLOB you must not reinterpret | `kind='block'`, `element_type='metadata'`, `encoding='yaml'` | a markdown file's YAML frontmatter, kept as written |
+
+**NEITHER HOME IS BODY.** The blob has a position and a level, which is why it is
+`kind='block'`; it is still metadata, and `duck_block_is_body` says false for it exactly
+as for the `kind='value'` tree. A consumer rendering, indexing or embedding text filters
+with that predicate, not with `kind`.
 
 **METADATA KEEPS ITS SOURCE POSITION. Front matter stays at the front.** Teague's
 ruling, 2026-09-02, and it replaces two earlier ones of mine the same day -- first that

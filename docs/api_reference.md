@@ -786,6 +786,19 @@ extensions with the header, so the three cannot disagree.
 duck_block_implicit_parent(element_type VARCHAR, kind VARCHAR) → VARCHAR
 ```
 
+### duck_block_is_body
+
+Is this element part of the document's body: what a text renderer, an indexer or an
+embedder should see? From the vocabulary header's `IsBody`: `kind IN ('block', 'inline')
+AND element_type <> 'metadata'`. Not a kind filter: the verbatim `metadata` blob
+(frontmatter, tailmatter, a `.yaml` read whole) is `kind='block'` because it has a
+position, and is no more body than the `kind='value'` tree. `duck_blocks_to_text` applies
+it. `raw` is body and merely has no text rendering. NULL in, NULL out.
+
+```sql
+duck_block_is_body(kind VARCHAR, element_type VARCHAR) → BOOLEAN
+```
+
 ---
 
 
