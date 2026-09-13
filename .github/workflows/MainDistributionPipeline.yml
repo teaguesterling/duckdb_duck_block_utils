@@ -106,6 +106,20 @@ jobs:
           [ "$want" = "$have" ] || { echo "::error::duckdb submodule pin ${have} is not the ${DUCKDB_VERSION} tag ${want}; run: git -C duckdb fetch --tags && git -C duckdb checkout ${DUCKDB_VERSION}"; exit 1; }
           n=$(grep -c "duckdb_version: ${DUCKDB_VERSION}$" .github/workflows/MainDistributionPipeline.yml)
           [ "$n" -ge 1 ] || { echo "::error::no build job in this workflow ships duckdb_version: ${DUCKDB_VERSION}; this job's constant has drifted"; exit 1; }
+          # The AUTHORITY is the registry's own default, not this job's constant: a
+          # constant checked only against itself passes for a year after the registry
+          # moves (panduck's point, 2026-09-13). Resolve main to a sha first so the raw
+          # fetch is not served from the branch cache; a fetch failure is a NOTE, never
+          # a verdict, so an outage cannot redden a PR whose pin has not changed.
+          sha=$(curl -sf https://api.github.com/repos/duckdb/community-extensions/commits/main | grep -m1 -o '"sha": *"[0-9a-f]*"' | grep -o '[0-9a-f]\{40\}' || true)
+          registry=$(curl -sf "https://raw.githubusercontent.com/duckdb/community-extensions/${sha:-main}/.github/workflows/build.yml" | grep -m1 -o "inputs.duckdb_version || 'v[0-9][0-9.]*'" | grep -o "'v[0-9][0-9.]*'" | tr -d "'" || true)
+          if [ -z "$registry" ]; then
+            echo "NOTE: could not read the registry's default duckdb_version (network); pin checked against the local constant only"
+          elif [ "$registry" != "$DUCKDB_VERSION" ]; then
+            echo "::error::the community registry builds at ${registry} (build.yml default at ${sha:-main}) but this repo ships and pins ${DUCKDB_VERSION}; the served artifact and the local build differ"; exit 1
+          else
+            echo "registry default duckdb_version ${registry} at ${sha:-main} agrees"
+          fi
           echo "OK: pin equals ${DUCKDB_VERSION}, and ${n} build job(s) ship it"
 
   vocabulary-header:
