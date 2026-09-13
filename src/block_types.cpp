@@ -279,6 +279,22 @@ static void ImplicitParentFun(DataChunk &args, ExpressionState &state, Vector &r
 	}
 }
 
+// duck_block_is_body(kind, element_type) -> is this element part of the document's
+// body? Reads the header predicate so SQL, C++ and vendored copies agree. NULL in,
+// NULL out; a Value loop for the same reason ImplicitParentFun is one.
+static void IsBodyFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	for (idx_t i = 0; i < args.size(); i++) {
+		auto kind = args.data[0].GetValue(i);
+		auto type = args.data[1].GetValue(i);
+		if (kind.IsNull() || type.IsNull()) {
+			result.SetValue(i, Value(LogicalType::BOOLEAN));
+			continue;
+		}
+		result.SetValue(
+		    i, Value::BOOLEAN(BlockTypes::IsBody(kind.GetValue<string>().c_str(), type.GetValue<string>().c_str())));
+	}
+}
+
 void BlockTypes::Register(ExtensionLoader &loader) {
 	auto duck_block_type = DuckBlockType();
 	loader.RegisterType("duck_block", duck_block_type);
@@ -293,6 +309,8 @@ void BlockTypes::Register(ExtensionLoader &loader) {
 	loader.RegisterFunction(ScalarFunction("duck_block_spec_version", {}, LogicalType::VARCHAR, SpecVersionFun));
 	loader.RegisterFunction(ScalarFunction("duck_block_implicit_parent", {LogicalType::VARCHAR, LogicalType::VARCHAR},
 	                                       LogicalType::VARCHAR, ImplicitParentFun));
+	loader.RegisterFunction(ScalarFunction("duck_block_is_body", {LogicalType::VARCHAR, LogicalType::VARCHAR},
+	                                       LogicalType::BOOLEAN, IsBodyFun));
 	loader.RegisterFunction(
 	    ScalarFunction("duck_blocks_stamp", {DuckBlockListType()}, DuckBlockListType(), BlocksStampFun));
 	loader.RegisterFunction(

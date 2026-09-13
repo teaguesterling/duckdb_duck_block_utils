@@ -238,9 +238,13 @@ static string BlocksToText(const vector<Value> &blocks_list, const string &separ
 		auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
 
 		// Skip blocks that don't have meaningful text content. Their inline
-		// children (if any) are consumed and discarded along with them.
+		// children (if any) are consumed and discarded along with them. `metadata` is
+		// the verbatim blob (frontmatter, tailmatter): kind='block' because it has a
+		// position, but not body -- spec 1.3, BlockTypes::IsBody. Rendering it printed
+		// a markdown file's frontmatter as prose above its first heading.
 		auto text = BlockText(blocks_list, i);
-		if (element_type == BlockTypes::TYPE_HR || element_type == BlockTypes::TYPE_RAW) {
+		if (element_type == BlockTypes::TYPE_HR || element_type == BlockTypes::TYPE_RAW ||
+		    element_type == BlockTypes::TYPE_METADATA) {
 			continue;
 		}
 

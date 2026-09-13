@@ -1,4 +1,4 @@
-spec_version: "1.2"
+spec_version: "1.3"
 producers:
   markdown:
     install: "INSTALL markdown FROM community; LOAD markdown;"
