@@ -21,6 +21,14 @@ jobs:
   # that carries ref_next against `v2.0-cyanoptera` (build_next.yml), so a PR is not
   # green here until it builds and tests there too. This was the canary until
   # 2026-09-13; Teague's dual-line ruling removed its gate.
+  #
+  # MATRIX WIDTH: the reusable workflow's reduced_ci_mode defaults to `auto`, which
+  # builds three arches on pull requests (linux_amd64, windows_amd64, wasm_eh) and
+  # the full matrix on pushes to main and on dispatch (markdown, measured
+  # 2026-09-13). Kept on purpose: releases are cut from main after the push run, so
+  # an arm64/macOS 2.0 break still surfaces before any descriptor PR. To build the
+  # full matrix on PRs too, add `reduced_ci_mode: disabled` below; exclude_archs
+  # can only narrow a matrix, never widen one.
   duckdb-next-build:
     name: Build extension binaries (duckdb next, v2.0 line)
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@main
