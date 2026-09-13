@@ -1,0 +1,33 @@
+# name: test/sql/fallible_v2.test
+# description: class 13 -- throwing scalar functions are declared fallible; the type prefix is what discriminates
+# group: [sql]
+
+require duck_block_utils
+
+# On DuckDB v2.0 an undeclared throw is rewritten as
+#   INTERNAL Error: Scalar function "x" threw an execution error, but the function is not marked as fallible ... Error: <raw message>
+# which still CONTAINS the raw message, so a bare-substring `statement error` passes on
+# both the correct and the mis-declared form. Expecting the exception's TYPE PREFIX
+# immediately before the message distinguishes them: the internal form never has it.
+# On v1.5.5 the contract is consulted but not enforced, so these pass either way there;
+# the duckdb-next-build leg is where they earn their keep.
+
+statement error
+SELECT write_pandoc_ast('/nonexistent-dir/x.json', [duck_block_heading('H', 1)]);
+----
+IO Error: Could not open file for writing
+
+statement error
+SELECT read_pandoc_ast('/nonexistent-dir/none.json');
+----
+IO Error: Could not open file
+
+# CheckPandocDepth is constructible: nested-Div Pandoc JSON past the 128 cap reaches it
+# through pandoc_ast_to_blocks (same construction test/sql/pandoc_recursion_cap.test uses
+# to prove the cap is clean, not a crash). Included here for the type-prefix
+# discrimination this file is about -- not to re-test the cap's correctness, which that
+# file already covers.
+statement error
+SELECT pandoc_ast_to_blocks(repeat('{"t":"Div","c":[["",[],[]],[', 140) || '{"t":"Para","c":[{"t":"Str","c":"deep"}]}' || repeat(']]}', 140));
+----
+Invalid Input Error: Pandoc AST conversion exceeded the maximum nesting depth
