@@ -171,7 +171,15 @@ jobs:
           # check being wrong about the file's content -> also a FAILURE.
           summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
           base="https://raw.githubusercontent.com/duckdb/community-extensions"
-          sha=$(curl -sf -H "Authorization: Bearer ${GITHUB_TOKEN:-}" https://api.github.com/repos/duckdb/community-extensions/commits/main | grep -m1 -o '"sha": *"[0-9a-f]*"' | grep -o '[0-9a-f]\{40\}' || true)
+          # An Authorization: Bearer header with an EMPTY token is not "no header": GitHub
+          # answers 401 to it, worse than sending no header at all (confirmed empirically).
+          # An unauthenticated local run (no GITHUB_TOKEN, which the docs tell maintainers
+          # to run) would then always miss sha resolution and fall back to the `main` REF
+          # NAME, comparing against whatever the branch URL's cache happens to be serving --
+          # the exact staleness this sha-resolution step exists to avoid. So the header is
+          # added only when a token is actually present; CI always has one.
+          auth=(); [ -n "${GITHUB_TOKEN:-}" ] && auth=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+          sha=$(curl -sf "${auth[@]}" https://api.github.com/repos/duckdb/community-extensions/commits/main | grep -m1 -o '"sha": *"[0-9a-f]*"' | grep -o '[0-9a-f]\{40\}' || true)
           f1=$(mktemp); f2=$(mktemp)
           # curl itself writes 000 to -w's %{http_code} when no HTTP response was
           # received at all (DNS failure, connection refused, timeout); `|| echo 000`
