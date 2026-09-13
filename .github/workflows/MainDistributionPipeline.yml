@@ -32,11 +32,13 @@ jobs:
   # jobs. Drive it with:
   #   gh workflow run MainDistributionPipeline.yml --ref <branch>
   duckdb-next-build:
-    name: Build extension binaries (duckdb main canary)
+    name: Build extension binaries (duckdb 2.0 canary)
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@main
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     with:
-      duckdb_version: main
+      # The 2.0 RELEASE branch, not `main`: one canary line for the whole fleet
+      # (Teague's rule, 2026-09-13), and the branch 2.0.0 will be cut from.
+      duckdb_version: v2.0-cyanoptera
       ci_tools_version: main
       extension_name: duck_block_utils
 
@@ -75,6 +77,37 @@ jobs:
   # Deliberately checks out WITHOUT submodules: needing none is precisely the
   # claim under test, so the job would be weaker if it had them available.
   # STRICT=1 so a missing compiler fails rather than skipping green.
+  # THE PIN EQUALS THE SHIPPED TAG. Fleet rule (Teague, 2026-09-13): the duckdb
+  # submodule is pinned at exactly the commit of the tag the stable build ships
+  # against, which is also the version the community registry builds every
+  # extension with. Otherwise local builds and each repo's own CI artifacts carry a
+  # different DuckDB than the served one, and extensions built in different repos
+  # cannot co-load locally (the ABI is exact-version). Measured 2026-09-13: five
+  # sibling repos were on a July dev commit, one on a v1.5.6-dev commit, one on
+  # DuckDB main. Nothing but a check keeps this true. The second assertion keeps
+  # this job's constant from drifting away from the `duckdb_version:` the build
+  # jobs above actually use.
+  duckdb-pin:
+    name: DuckDB submodule pin equals the shipped tag
+    runs-on: ubuntu-latest
+    env:
+      DUCKDB_VERSION: v1.5.5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare the submodule pin with the tag's commit
+        run: |
+          set -eu
+          want=$(git ls-remote --tags https://github.com/duckdb/duckdb "refs/tags/${DUCKDB_VERSION}^{}" | cut -f1)
+          [ -n "$want" ] || want=$(git ls-remote --tags https://github.com/duckdb/duckdb "refs/tags/${DUCKDB_VERSION}" | cut -f1)
+          have=$(git ls-tree HEAD duckdb | awk '{print $3}')
+          echo "shipped tag ${DUCKDB_VERSION} -> ${want}"
+          echo "submodule pin          -> ${have}"
+          [ -n "$want" ] || { echo "::error::could not resolve tag ${DUCKDB_VERSION} upstream"; exit 1; }
+          [ "$want" = "$have" ] || { echo "::error::duckdb submodule pin ${have} is not the ${DUCKDB_VERSION} tag ${want}; run: git -C duckdb fetch --tags && git -C duckdb checkout ${DUCKDB_VERSION}"; exit 1; }
+          n=$(grep -c "duckdb_version: ${DUCKDB_VERSION}$" .github/workflows/MainDistributionPipeline.yml)
+          [ "$n" -ge 1 ] || { echo "::error::no build job in this workflow ships duckdb_version: ${DUCKDB_VERSION}; this job's constant has drifted"; exit 1; }
+          echo "OK: pin equals ${DUCKDB_VERSION}, and ${n} build job(s) ship it"
+
   vocabulary-header:
     name: Vocabulary header is freestanding
     runs-on: ubuntu-latest
