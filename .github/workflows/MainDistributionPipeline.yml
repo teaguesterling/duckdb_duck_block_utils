@@ -113,6 +113,25 @@ jobs:
           [ "$n" -ge 1 ] || { echo "::error::no build job in this workflow ships duckdb_version: ${DUCKDB_VERSION}; this job's constant has drifted"; exit 1; }
           m=$(grep -c "duckdb_version: ${DUCKDB_NEXT}$" .github/workflows/MainDistributionPipeline.yml || true)
           [ "$m" -ge 1 ] || { echo "::error::no build job in this workflow builds the next line duckdb_version: ${DUCKDB_NEXT}"; exit 1; }
+          # NO OTHER DuckDB PATCH VERSION may drift from the shipped ${DUCKDB_VERSION}
+          # anywhere else in this file: sibling workflows (yaml, mcp) embed a version
+          # in artifact NAMES and CLI download URLs (e.g. `yaml-v1.5.4-extension-wasm_*`,
+          # `releases/download/v1.5.4/duckdb_cli`) that the `duckdb_version:` greps above
+          # cannot see, so a bump left them stale and this job went green over a red
+          # build. Comment lines (first non-space char `#`) are exempt. Branch/tag names
+          # like `v2.0-cyanoptera` and `v1.5-variegata` have no third numeric component
+          # and so never match this pattern.
+          bad=0
+          while IFS=: read -r lineno line; do
+            printf '%s\n' "$line" | grep -qE '^[[:space:]]*#' && continue
+            for v in $(printf '%s\n' "$line" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' || true); do
+              if [ "$v" != "$DUCKDB_VERSION" ]; then
+                echo "::error::line ${lineno}: ${line} — a DuckDB version literal that is not the shipped ${DUCKDB_VERSION}: derive it from the shipped version or bump it"
+                bad=1
+              fi
+            done
+          done < <(grep -nE 'v[0-9]+\.[0-9]+\.[0-9]+' .github/workflows/MainDistributionPipeline.yml || true)
+          [ "$bad" -eq 0 ] || exit 1
           # THE AUTHORITY is the registry's own files, not this job's constants: a
           # constant checked only against itself passes for a year after the registry
           # moves (panduck, 2026-09-13). Resolve main to a sha first so the raw fetches
