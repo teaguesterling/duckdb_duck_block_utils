@@ -860,7 +860,13 @@ void PandocInlineConvert::Register(ExtensionLoader &loader) {
 	// marked as fallible". It is a RUNTIME contract, so it compiles clean either way
 	// and only shows up as a failing error-path test -- and only on a build with
 	// assertions on, which is why one CI arch can be green and another red on the
-	// same commit. No-op on v1.5.
+	// same commit. The flag is not new to v2.0: it already exists on the v1.5 pin
+	// (BaseScalarFunction::SetFallible(), function.hpp) and feeds FunctionErrors into
+	// Expression::CanThrow(), which the v1.5 planner already reads in several places
+	// (expression_heuristics, pushdown_outer_join, pushdown_projection, pushdown_get,
+	// adaptive_filter, execute_function) to gate conjunct reordering and filter
+	// pushdown. v2.0 adds ENFORCEMENT of that existing contract; it does not
+	// introduce the contract itself.
 	auto register_fallible = [&loader](ScalarFunction fun) {
 		fun.SetFallible();
 		loader.RegisterFunction(fun);
