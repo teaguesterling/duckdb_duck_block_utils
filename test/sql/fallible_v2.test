@@ -10,7 +10,8 @@ require duck_block_utils
 # both the correct and the mis-declared form. Expecting the exception's TYPE PREFIX
 # immediately before the message distinguishes them: the internal form never has it.
 # On v1.5.5 the contract is consulted but not enforced, so these pass either way there;
-# the duckdb-next-build leg is where they earn their keep.
+# they are expected to discriminate on 2.0, but the mis-declared form has not yet been
+# observed failing this test.
 #
 # write_pandoc_ast / read_pandoc_ast are deprecated in favour of panduck's own readers;
 # these two cases move there with them.
@@ -26,5 +27,5 @@ SELECT read_pandoc_ast('/nonexistent-dir/none.json');
 IO Error: Could not open file
 
 # CheckPandocDepth's type-prefix discrimination ("Invalid Input Error: ...") is already
-# asserted at test/sql/pandoc_recursion_cap.test:27-32 (same construction, same expected
+# asserted at test/sql/pandoc_recursion_cap.test:28-32 (same construction, same expected
 # string); not repeated here.
