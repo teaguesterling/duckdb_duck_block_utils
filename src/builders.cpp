@@ -344,9 +344,11 @@ void BuilderFunctions::DbMetadataFun(DataChunk &args, ExpressionState &state, Ve
 		// shipped a public builder whose output fails the format's own validator.
 		//
 		// It then documented that: the spec's type table gave `metadata` a level of 0,
-		// accurately describing this line. So duckdb_markdown, which emits frontmatter
-		// at level 0, did not copy a documentation typo -- they conformed to real
-		// shipped behaviour, correctly, and were non-conforming as a result.
+		// accurately describing this line. So duckdb_markdown, which on 2026-09-01
+		// emitted frontmatter at level 0, had not copied a documentation typo -- it
+		// conformed to real shipped behaviour, correctly, and was non-conforming as a
+		// result. markdown emits `metadata` at level 1 since duckdb_markdown 26acf30;
+		// this is a record of how the defect propagated, not of their current output.
 		SetBlockFields(entries, i, BlockTypes::TYPE_METADATA, content_vec.GetValue(i), Value(1),
 		               BlockTypes::ENCODING_YAML, CreateAttributesMap({}));
 	}
