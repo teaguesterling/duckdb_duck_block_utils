@@ -332,16 +332,20 @@ struct ChunkWithChildCardinality {
 struct ChunkWithoutChildCardinality {
 	void SetCardinality(idx_t);
 };
-static_assert(CompatHasSetChildCardinality<ChunkWithChildCardinality>::value, "must detect SetChildCardinality (v2.0 shape)");
-static_assert(!CompatHasSetChildCardinality<ChunkWithoutChildCardinality>::value, "must not fire without it (v1.5 shape)");
+static_assert(CompatHasSetChildCardinality<ChunkWithChildCardinality>::value,
+              "must detect SetChildCardinality (v2.0 shape)");
+static_assert(!CompatHasSetChildCardinality<ChunkWithoutChildCardinality>::value,
+              "must not fire without it (v1.5 shape)");
 struct VectorWithValueOnlyReference {
 	void Reference(const Value &);
 };
 struct VectorWithCountedReference {
 	void Reference(const Value &, int);
 };
-static_assert(CompatHasReferenceValueOnly<VectorWithValueOnlyReference>::value, "must detect Reference(const Value &) (v1.5 shape)");
-static_assert(!CompatHasReferenceValueOnly<VectorWithCountedReference>::value, "must not fire when only the counted form exists (v2.0 shape)");
+static_assert(CompatHasReferenceValueOnly<VectorWithValueOnlyReference>::value,
+              "must detect Reference(const Value &) (v1.5 shape)");
+static_assert(!CompatHasReferenceValueOnly<VectorWithCountedReference>::value,
+              "must not fire when only the counted form exists (v2.0 shape)");
 } // namespace compat_detail
 
 } // namespace duckdb
