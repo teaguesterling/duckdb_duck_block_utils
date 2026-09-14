@@ -43,5 +43,11 @@ the panduck-shaped fixture projected to exactly the body rows with `element_orde
 
 ## Consumers
 
-panduck's walk (panduck#69) becomes `duck_blocks_body(list(b))`. Siblings re-vendor 1.4 and
-set the IsBody caveat comment to a pointer at `duck_blocks_body`.
+A consumer that ships its own body-filtering functions keeps its own walk: panduck's
+`doc_section` / `doc_search_sections` are native and must work with panduck alone, so calling
+`duck_blocks_body` from them would add a runtime dependency on duck_block_utils >= 1.4 and
+break every install without it (panduck's correction, 2026-09-14). The comparator for two
+encodings of one rule is a GATED parity test, run only where duck_block_utils >= 1.4 is
+installed, asserting the consumer's filtered rows equal `duck_blocks_body`'s output on shared
+fixtures. Siblings re-vendor 1.4 and set the IsBody caveat comment to "necessary, not
+sufficient; see duck_blocks_body", adding where they carry the walk natively and why.
