@@ -59,7 +59,11 @@ VERSION = r'SPEC_VERSION = "([^"]*)"'
 # forms the fleet has used: "Vendored at upstream commit: <sha> (SPEC_VERSION x.y)"
 # (markdown, panduck, webbed; trailing text allowed) and the older
 # "VENDORED from duckdb_duck_block_utils@<sha>" (sitting_duck before #122).
-PROVENANCE = r"(?i)vendored (?:at upstream commit:?|from duckdb_duck_block_utils@)\s*([0-9a-f]{7,40})(?:\s*\(SPEC_VERSION\s+([0-9.]+)\))?"
+PROVENANCE = (
+    r"(?i)vendored (?:at upstream commit:?|from duckdb_duck_block_utils@)\s*([0-9a-f]{7,40})"
+    r"(?:\s*\(SPEC_VERSION\s+([0-9.]+)\))?"
+)
+STAMP_WORDS = re.compile(r"(?i)vendored (?:at upstream commit|from duckdb_duck_block_utils)")
 
 
 def constants(text):
@@ -77,19 +81,34 @@ def provenance(text):
     return (m.group(1), m.group(2)) if m else (None, None)
 
 
-def header_at(sha):
-    """This repo's header at `sha`, or None if the sha is not in this checkout's history.
+def body(text):
+    """The header from its first `// ====` rule onward: what every vendored copy shares
+    once its own preamble (a stamp line, or webbed's 20-line provenance block) is dropped."""
+    m = re.search(r"^// =+\s*$", text, re.M)
+    return text[m.start():] if m else text
 
-    Read from the OWNER's history, which is the point of doing this here as well as
-    in a consumer's own check: a consumer without markdown's provenance check (sitting_duck
+
+def header_at(sha):
+    """This repo's header at `sha`, or None if the sha is not a commit in this checkout.
+
+    Read from the OWNER's history, which is the point of doing this here as well as in a
+    consumer's own check: a consumer without markdown's provenance check (sitting_duck
     dropped its stamp in two consecutive syncs, #122 and #126, with the body byte-identical
     to upstream, so no constant comparison could see it) is still caught by the repo that
-    owns the format. A squash can leave a cited sha outside main's history; that is reported
-    as such, not as drift.
+    owns the format. Resolved strictly first (`rev-parse --verify <sha>^{commit}`), so an
+    ambiguous or unknown short sha fails cleanly and offline; a squash can leave a cited
+    sha outside main's history, and that is reported as such, not as drift.
     """
     try:
+        rp = subprocess.run(
+            ["git", "-C", str(REPO), "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}"],
+            capture_output=True,
+            text=True,
+        )
+        if rp.returncode:
+            return None
         out = subprocess.run(
-            ["git", "-C", str(REPO), "show", f"{sha}:src/include/duck_block_vocabulary.hpp"],
+            ["git", "-C", str(REPO), "show", f"{rp.stdout.strip()}:src/include/duck_block_vocabulary.hpp"],
             capture_output=True,
             text=True,
         )
@@ -98,11 +117,18 @@ def header_at(sha):
         return None
 
 
-def provenance_problems(text, got, v):
-    """The stamp's four refused cases, owner-side: absent; sha unknown here; claimed
-    version differs from the file; header at the sha differs from the copy (STALE STAMP)."""
+def provenance_problems(text, got, v, superseded):
+    """The stamp's refused cases, owner-side: absent; malformed; claimed version differs
+    from the file (the renumbering hatch excepted); sha unknown here; header at the sha
+    differs from the copy (STALE STAMP -- compared as TEXT from the body onward, because a
+    comment-only edit is exactly what a name-and-value comparison cannot see)."""
     sha, claimed = provenance(text)
     if sha is None:
+        if STAMP_WORDS.search(text):
+            return [
+                "provenance stamp is present but malformed (a half-edited re-vendor?);"
+                " expected '// Vendored at upstream commit: <sha> (SPEC_VERSION <x.y>)'"
+            ]
         return [
             "no provenance stamp -- the copy must carry"
             " '// Vendored at upstream commit: <sha> (SPEC_VERSION <x.y>)'"
@@ -111,17 +137,23 @@ def provenance_problems(text, got, v):
         ]
     problems = []
     if claimed and v and claimed != v:
-        problems.append(f"stamp claims SPEC_VERSION {claimed}, the file declares {v}: stamp not updated with the copy")
+        # A stamp written on the retired internal line (6.x) against a file on the
+        # public line is the renumbering, not a mismatch -- SPEC_VERSION_SUPERSEDES.
+        renumbered = bool(superseded and claimed.split(".")[0] == superseded.split(".")[0])
+        if not renumbered:
+            problems.append(
+                f"stamp claims SPEC_VERSION {claimed}, the file declares {v}: stamp not updated with the copy"
+            )
     at = header_at(sha)
     if at is None:
-        problems.append(f"stamp names {sha}, which this checkout's history does not have (a squash? fetch first)")
+        problems.append(f"stamp names {sha}, which is not a commit in this checkout (a squash? fetch first)")
         return problems
-    theirs, ours_v = constants(at), spec_version(at)
-    diff = sorted(k for k in set(theirs) | set(got) if theirs.get(k) != got.get(k))
-    if diff or ours_v != v:
+    if body(at) != body(text):
+        theirs = constants(at)
+        diff = sorted(k for k in set(theirs) | set(got) if theirs.get(k) != got.get(k))
+        what = f"constants differ: {', '.join(diff[:6])}" if diff else "constants agree; comments or prose differ"
         problems.append(
-            f"STALE STAMP: the header at {sha} does not match this copy"
-            f" ({', '.join(diff[:6]) or 'SPEC_VERSION ' + str(ours_v) + ' vs ' + str(v)}):"
+            f"STALE STAMP: the header at {sha} does not match this copy ({what}):"
             " the copy was edited after vendoring, or the stamp names the wrong commit"
         )
     return problems
@@ -223,7 +255,7 @@ def main() -> int:
             changed = [k for k in changed if k != "SPEC_VERSION"]
             missing = [k for k in missing if k != "SPEC_VERSION_SUPERSEDES"]
 
-        prov = provenance_problems(text, got, v)
+        prov = provenance_problems(text, got, v, canon.get("SPEC_VERSION_SUPERSEDES"))
         if not (missing or extra or changed or prov) and v == canon_v:
             sha, _ = provenance(text)
             print(f"  OK   {name} [{ref}] -- {len(got)} constants, SPEC_VERSION {v}, vendored at {sha}")
