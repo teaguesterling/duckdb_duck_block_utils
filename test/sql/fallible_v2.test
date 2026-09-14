@@ -17,8 +17,13 @@ require duck_block_utils
 #   IO Error: Could not open file for writing: /nonexistent-dir/x.json
 # The two IO cases below therefore pin the message and prefix but CANNOT discriminate the
 # fallible declaration. The discriminating case is an InvalidInputException, the depth cap
-# in test/sql/pandoc_recursion_cap.test:28-32 (Invalid Input Error: ...), whose mis-declared
-# form is being observed on a third throwaway run. On v1.5.5 the flag is consulted by the
+# in test/sql/pandoc_recursion_cap.test:28-32 (Invalid Input Error: ...). OBSERVED 2026-09-14
+# (throwaway/class13-observe, dispatch run 34860157025): with pandoc_ast_to_blocks'
+# SetFallible() removed, the 2.0 leg failed that case with
+#   INTERNAL Error: Scalar function ""pandoc_ast_to_blocks"" threw an execution error, but the
+#   function is not marked as fallible - the function must call SetFallible(). Error: Pandoc
+#   AST conversion exceeded the maximum nesting depth of 128
+# which the "Invalid Input Error: " prefix expectation rejects. The guard discriminates. On v1.5.5 the flag is consulted by the
 # planner (CanThrow) and not enforced, so every case passes either way there.
 #
 # write_pandoc_ast / read_pandoc_ast are deprecated in favour of panduck's own readers;
