@@ -34,7 +34,6 @@
 // long-form rationale + upgrade checklist for other extensions.
 
 #if __has_include("duckdb/common/vector/list_vector.hpp")
-#define DUCKDB_HAS_NEW_VECTOR_HEADERS 1
 // The per-vector-accessor classes moved out of duckdb/common/types/vector.hpp
 // into one header each. duckdb.hpp no longer pulls them in transitively, so a
 // translation unit that says StructVector::GetEntries now gets
@@ -71,45 +70,57 @@
 
 namespace duckdb {
 
-// --- Output chunk finalization -------------------------------------------------
+// --- Output chunk finalization (change class 18) ------------------------------
+// v2.0 gives every Vector its own size; DataChunk::SetCardinality updates only the
+// chunk count, and SetChildCardinality sizes the children too. Probed on the MEMBER
+// that changed, not on list_vector.hpp's presence: they shipped together once,
+// which is not a reason to make one imply the other. Templates, because tag
+// dispatch only defers the unselected branch when it is a template.
+template <class T, class = void>
+struct CompatHasSetChildCardinality : std::false_type {};
+template <class T>
+struct CompatHasSetChildCardinality<T, decltype(void(std::declval<T &>().SetChildCardinality(idx_t(0))))>
+    : std::true_type {};
 
-#ifdef DUCKDB_HAS_NEW_VECTOR_HEADERS
-
-// DuckDB main mandates per-vector Size() tracking; DataChunk::SetCardinality only
-// updates chunk.count. SetChildCardinality additionally calls FlatVector::SetSize
-// on every column so query operators reading vec.Size() see the right value.
-// Without this, VariadicExecutor (and similar) reports:
-//   "Mismatch in input vector sizes ... expected 0 rows but got N"
-inline void CompatSetOutputCardinality(DataChunk &chunk, idx_t count) {
+template <class CHUNK>
+inline void CompatSetOutputCardinalityImpl(CHUNK &chunk, idx_t count, std::true_type) {
 	chunk.SetChildCardinality(count);
 }
-
-#else // Old API (v1.4.x / v1.5.x)
-
-inline void CompatSetOutputCardinality(DataChunk &chunk, idx_t count) {
+template <class CHUNK>
+inline void CompatSetOutputCardinalityImpl(CHUNK &chunk, idx_t count, std::false_type) {
 	chunk.SetCardinality(count);
 }
-
-#endif
-
-// --- Vector::Reference(Value) --------------------------------------------------
-// v1.5: void Reference(const Value &value)                  -- count implicit
-// v2.0: void Reference(const Value &value, count_t count)   -- count mandatory
-//
-// The 1-argument form is GONE on v2.0, not deprecated; a vector now has to know
-// how many rows it spans. Both forms build a constant vector referencing the one
-// value, so the count to pass is the number of rows the result covers -- in a
-// scalar function, args.size().
-#ifdef DUCKDB_HAS_COUNT_T
-inline void CompatReferenceValue(Vector &vec, const Value &value, idx_t count) {
-	vec.Reference(value, count_t(count));
+inline void CompatSetOutputCardinality(DataChunk &chunk, idx_t count) {
+	CompatSetOutputCardinalityImpl(chunk, count, CompatHasSetChildCardinality<DataChunk>());
 }
-#else
-inline void CompatReferenceValue(Vector &vec, const Value &value, idx_t count) {
+
+// --- Vector::Reference(Value) (change class 10) --------------------------------
+// v1.5: Reference(const Value &)            v2.0: Reference(const Value &, count_t)
+// The one-argument form is GONE on v2.0. Probe for THAT form, the thing that
+// changed. count_t itself cannot be named on v1.5 (it does not exist, and a
+// non-dependent absent name is a hard error even in an untaken template branch),
+// so the two-argument branch stays behind the size.hpp include guard, which is
+// the one question __has_include answers reliably: does this type exist.
+template <class T, class = void>
+struct CompatHasReferenceValueOnly : std::false_type {};
+template <class T>
+struct CompatHasReferenceValueOnly<T, decltype(void(std::declval<T &>().Reference(std::declval<const Value &>())))>
+    : std::true_type {};
+
+template <class VEC>
+inline void CompatReferenceValueImpl(VEC &vec, const Value &value, idx_t count, std::true_type) {
 	(void)count;
 	vec.Reference(value);
 }
+#ifdef DUCKDB_HAS_COUNT_T
+template <class VEC>
+inline void CompatReferenceValueImpl(VEC &vec, const Value &value, idx_t count, std::false_type) {
+	vec.Reference(value, count_t(count));
+}
 #endif
+inline void CompatReferenceValue(Vector &vec, const Value &value, idx_t count) {
+	CompatReferenceValueImpl(vec, value, count, CompatHasReferenceValueOnly<Vector>());
+}
 
 // --- StructVector children ------------------------------------------------------
 // v1.5: StructVector::GetEntries(vec) -> vector<unique_ptr<Vector>> &
@@ -309,5 +320,32 @@ template <class VALUE, class FV = FlatVector>
 inline VALUE *CompatFlatDataMutable(Vector &vec) {
 	return CompatFlatDataMutableImpl<VALUE, FV>(vec, CompatHasFlatGetDataMutable<FV>());
 }
+
+// BOTH ANSWERS PINNED. A detector tested only on the line we build against is
+// half-checked: it would pass identically if it always returned the answer v1.5
+// wants. These cost nothing at run time and fail the build the day a probe stops
+// discriminating (form borrowed from duckdb_markdown c86abc0).
+namespace compat_detail {
+struct ChunkWithChildCardinality {
+	void SetChildCardinality(idx_t);
+};
+struct ChunkWithoutChildCardinality {
+	void SetCardinality(idx_t);
+};
+static_assert(CompatHasSetChildCardinality<ChunkWithChildCardinality>::value,
+              "must detect SetChildCardinality (v2.0 shape)");
+static_assert(!CompatHasSetChildCardinality<ChunkWithoutChildCardinality>::value,
+              "must not fire without it (v1.5 shape)");
+struct VectorWithValueOnlyReference {
+	void Reference(const Value &);
+};
+struct VectorWithCountedReference {
+	void Reference(const Value &, int);
+};
+static_assert(CompatHasReferenceValueOnly<VectorWithValueOnlyReference>::value,
+              "must detect Reference(const Value &) (v1.5 shape)");
+static_assert(!CompatHasReferenceValueOnly<VectorWithCountedReference>::value,
+              "must not fire when only the counted form exists (v2.0 shape)");
+} // namespace compat_detail
 
 } // namespace duckdb

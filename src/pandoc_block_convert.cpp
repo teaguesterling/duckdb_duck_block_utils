@@ -3030,8 +3030,12 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	// (CheckPandocDepth), and the file-backed ones can throw IOException. DuckDB
 	// v2.0 makes that a DECLARED property -- an undeclared throw becomes
 	// "INTERNAL Error: ... the function is not marked as fallible". SetFallible
-	// exists identically on the pin, so this needs no shim: it is simply inert
-	// there, where nothing consults the flag the way v2.0 does.
+	// exists identically on the pin, so this needs no shim: the flag is already
+	// consulted there too -- v1.5's planner reads FunctionErrors via
+	// Expression::CanThrow() (expression_heuristics, pushdown_outer_join,
+	// pushdown_projection, pushdown_get, adaptive_filter, execute_function) to
+	// gate conjunct reordering and filter pushdown. v2.0 adds ENFORCEMENT of
+	// that existing contract; it does not introduce the contract itself.
 	ast_to_blocks_func.SetFallible();
 	loader.RegisterFunction(ast_to_blocks_func);
 

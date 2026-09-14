@@ -613,9 +613,12 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 			// the linter said nothing, so the 43 declared type names were decorative from
 			// a validation standpoint and any typo or private invention passed silently.
 			//
-			// Found by duckdb_markdown, who emit `frontmatter` where the vocabulary
-			// declares `metadata` and observed that nothing objects -- "your 'what can
-			// this check not see' applied to the thing that just checked me."
+			// Found by duckdb_markdown (2026-09-01), which at the time emitted
+			// `frontmatter` where the vocabulary declares `metadata` and observed that
+			// nothing objected -- "your 'what can this check not see' applied to the
+			// thing that just checked me." markdown moved to `metadata` +
+			// role='frontmatter' the same day (duckdb_markdown 26acf30); this is a
+			// record of who found the gap, not a claim about their current output.
 			//
 			// A LINT, NOT AN ERROR, and the distinction is load-bearing: a consumer built
 			// against an older vocabulary must still be able to read data written by a
