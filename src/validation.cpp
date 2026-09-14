@@ -264,6 +264,13 @@ void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &
 				string type;
 			};
 			vector<Frame> stack;
+			// L6 (1.4): a value tree's leaves sit STRICTLY deeper than their root. An
+			// inline emitted at a value row's own level reads as that row's sibling, so
+			// the subtree walk in duck_blocks_body ends before it and the metadata text
+			// leaks into body. Checked as "an inline immediately following a value row at
+			// the same level", the shape a producer that forgot to indent the leaves emits.
+			bool prev_is_value = false;
+			int32_t prev_level = 0, prev_order = 0;
 			for (auto &block : blocks_list) {
 				if (block.IsNull()) {
 					continue;
@@ -272,6 +279,14 @@ void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &
 				auto kind = GetElementStringField(block, BlockTypes::KIND_IDX);
 				auto type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
 				auto order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
+				if (prev_is_value && kind == BlockTypes::KIND_INLINE && lvl == prev_level) {
+					list_error(order, "inline at " + std::to_string(order) + " follows value root at " +
+					                      std::to_string(prev_order) +
+					                      " at the same level; a value tree's leaves must be deeper than their root");
+				}
+				prev_is_value = kind == BlockTypes::KIND_VALUE;
+				prev_level = lvl;
+				prev_order = order;
 				while (!stack.empty() && stack.back().level >= lvl) {
 					stack.pop_back();
 				}

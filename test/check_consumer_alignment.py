@@ -61,7 +61,7 @@ VERSION = r'SPEC_VERSION = "([^"]*)"'
 # "VENDORED from duckdb_duck_block_utils@<sha>" (sitting_duck before #122).
 PROVENANCE = (
     r"(?i)vendored (?:at upstream commit:?|from duckdb_duck_block_utils@)\s*([0-9a-f]{7,40})"
-    r"(?:\s*\(SPEC_VERSION\s+([0-9.]+)\))?"
+    r"(?:[^\n(]*\([^)\n]*?SPEC_VERSION\s+([0-9.]+)\))?"
 )
 STAMP_WORDS = re.compile(r"(?i)vendored (?:at upstream commit|from duckdb_duck_block_utils)")
 

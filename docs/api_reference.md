@@ -799,6 +799,21 @@ it. `raw` is body and merely has no text rendering. NULL in, NULL out.
 duck_block_is_body(kind VARCHAR, element_type VARCHAR) → BOOLEAN
 ```
 
+Necessary, not sufficient: it cannot see an ancestor, and the text of a `kind='value'`
+metadata tree is `kind='inline'` children. Filter a list with `duck_blocks_body`.
+
+### duck_blocks_body
+
+The document's body as a list: every row for which `duck_block_is_body` holds AND no
+ancestor by level is a `value` or `metadata` row. A value or metadata row roots a subtree;
+it and every following row at a greater level are dropped, and the subtree ends at the first
+row at or above the root's level. A projection: `element_order` is not renumbered.
+`duck_blocks_to_text(blocks) = duck_blocks_to_text(duck_blocks_body(blocks))`. NULL in, NULL out.
+
+```sql
+duck_blocks_body(blocks LIST(duck_block)) → LIST(duck_block)
+```
+
 ---
 
 

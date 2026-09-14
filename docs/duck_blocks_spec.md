@@ -133,7 +133,7 @@ two obvious filters answer different ones:
 | block-level structure (headings, sections, pages) | `kind = 'block'` | `kind = 'block'` as a content filter: it drops every `inline`, where most prose lives |
 | all of the document's content, inlines included | `kind IN ('block', 'inline')` | `kind <> 'value'`, which is a blocklist and admits a future kind |
 | the document's metadata | `kind = 'value'` | |
-| the document's BODY: what a text renderer, indexer or embedder should see | `duck_block_is_body(kind, element_type)`, i.e. `kind IN ('block', 'inline') AND element_type <> 'metadata'` | `kind IN ('block', 'inline')` alone: it admits the verbatim `metadata` blob, which is content-shaped but not body |
+| the document's BODY: what a text renderer, indexer or embedder should see | `duck_blocks_body(blocks)` over the list; per row, `duck_block_is_body(kind, element_type)` is necessary but not sufficient (it cannot see a `value` ancestor) | `kind IN ('block', 'inline')` alone: it admits the verbatim `metadata` blob; the per-row predicate alone: it admits the text under a `value` row |
 
 The fourth row is the one two conformant producers diverged on: a markdown
 file's frontmatter is a `kind='block'` blob by the two-homes rule below, so a body filter
@@ -561,10 +561,32 @@ values, so nothing will object if you do.
 | discrete FIELDS — title, author, date | `kind='value'`, this section | docx `core.xml`, EPUB Dublin Core, odt `meta.xml`, RTF `\info`, LaTeX `\title`, HTML `<head>`, Pandoc `Meta` |
 | a verbatim BLOB you must not reinterpret | `kind='block'`, `element_type='metadata'`, `encoding='yaml'` | a markdown file's YAML frontmatter, kept as written |
 
-**NEITHER HOME IS BODY.** The blob has a position and a level, which is why it is
-`kind='block'`; it is still metadata, and `duck_block_is_body` says false for it exactly
-as for the `kind='value'` tree. A consumer rendering, indexing or embedding text filters
-with that predicate, not with `kind`.
+**NEITHER HOME IS BODY, AND BODY IS A SUBTREE PROPERTY.** The blob has a position and a
+level, which is why it is `kind='block'`; it is still metadata, and `duck_block_is_body`
+says false for it exactly as for the `kind='value'` tree. But the value tree's TEXT lives in
+`kind='inline'` children of the value row (Pandoc's MetaInlines: docx, odt, org, epub, rtf,
+tex all emit it so), and a per-row predicate cannot see an ancestor, so it says true for
+"Test Author" under `{key=author}`. The definition:
+
+    a row is body  iff  kind IN ('block', 'inline')
+                        AND element_type <> 'metadata'
+                        AND no ancestor by level is a `value` or `metadata` row
+
+`duck_block_is_body(kind, element_type)` is the NECESSARY per-row half; `duck_blocks_body(blocks)`
+applies the whole rule to a list: a value or metadata row roots a subtree, it and every
+following row at a greater level are dropped, and the subtree ends at the first row whose
+level is at or above the root's. A childless value row (a `.html` `<title>`) and a lone
+frontmatter blob are dropped whole. It is a projection and does not renumber `element_order`.
+`duck_blocks_to_text` already walks the tree and agrees with it. A consumer that filters rows
+itself must carry the same walk; a segmenter that keeps a value row in the section that
+precedes it, or an embedder filtering rows with the per-row predicate alone, returns
+metadata as body (panduck's `doc_section` and `doc_search_sections` did, on every native
+reader, before they carried the walk).
+
+**THE VALUE-TREE LEVEL CONTRACT.** A value tree's descendants sit STRICTLY deeper than their
+root. A leaf emitted at the root's own level reads as its sibling, ends the subtree early,
+and leaks. Validation checks the shape a producer that forgot to indent emits, an inline
+immediately following a value row at the same level (rule L6, `field = 'list'`).
 
 **METADATA KEEPS ITS SOURCE POSITION. Front matter stays at the front.** Teague's
 ruling, 2026-09-02, and it replaces two earlier ones of mine the same day -- first that
