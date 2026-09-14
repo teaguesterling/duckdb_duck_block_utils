@@ -43,6 +43,7 @@ CONSUMERS = {
     "duckdb_markdown": "src/include/duck_block_vocabulary.hpp",
     "duckdb_panduck": "src/include/duck_block_vocabulary.hpp",
     "duckdb_webbed": "src/include/duck_block_vocabulary.hpp",
+    "sitting_duck": "third_party/duck_block_utils/duck_block_vocabulary.hpp",
 }
 # Sibling checkouts live beside this repo. Overridable so the check can be VERIFIED
 # against a synthetic consumer -- perturbing a real peer's working tree to test my own
@@ -54,6 +55,11 @@ SEARCH_ROOTS = (
 
 CONST = r'static constexpr const char \*([A-Z_]+) = "([^"]*)";'
 VERSION = r'SPEC_VERSION = "([^"]*)"'
+# The provenance stamp the header's own re-vendoring guidance asks for, in the two
+# forms the fleet has used: "Vendored at upstream commit: <sha> (SPEC_VERSION x.y)"
+# (markdown, panduck, webbed; trailing text allowed) and the older
+# "VENDORED from duckdb_duck_block_utils@<sha>" (sitting_duck before #122).
+PROVENANCE = r"(?i)vendored (?:at upstream commit:?|from duckdb_duck_block_utils@)\s*([0-9a-f]{7,40})(?:\s*\(SPEC_VERSION\s+([0-9.]+)\))?"
 
 
 def constants(text):
@@ -63,6 +69,62 @@ def constants(text):
 def spec_version(text):
     m = re.search(VERSION, text)
     return m.group(1) if m else None
+
+
+def provenance(text):
+    """(sha, claimed_version) from the vendored copy's stamp, or (None, None)."""
+    m = re.search(PROVENANCE, text)
+    return (m.group(1), m.group(2)) if m else (None, None)
+
+
+def header_at(sha):
+    """This repo's header at `sha`, or None if the sha is not in this checkout's history.
+
+    Read from the OWNER's history, which is the point of doing this here as well as
+    in a consumer's own check: a consumer without markdown's provenance check (sitting_duck
+    dropped its stamp in two consecutive syncs, #122 and #126, with the body byte-identical
+    to upstream, so no constant comparison could see it) is still caught by the repo that
+    owns the format. A squash can leave a cited sha outside main's history; that is reported
+    as such, not as drift.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "show", f"{sha}:src/include/duck_block_vocabulary.hpp"],
+            capture_output=True,
+            text=True,
+        )
+        return out.stdout if out.returncode == 0 else None
+    except OSError:
+        return None
+
+
+def provenance_problems(text, got, v):
+    """The stamp's four refused cases, owner-side: absent; sha unknown here; claimed
+    version differs from the file; header at the sha differs from the copy (STALE STAMP)."""
+    sha, claimed = provenance(text)
+    if sha is None:
+        return [
+            "no provenance stamp -- the copy must carry"
+            " '// Vendored at upstream commit: <sha> (SPEC_VERSION <x.y>)'"
+            " (step 1 of the header's own re-vendoring guidance); a re-vendor that"
+            " drops it is how sitting_duck #122 and #126 shipped bare copies"
+        ]
+    problems = []
+    if claimed and v and claimed != v:
+        problems.append(f"stamp claims SPEC_VERSION {claimed}, the file declares {v}: stamp not updated with the copy")
+    at = header_at(sha)
+    if at is None:
+        problems.append(f"stamp names {sha}, which this checkout's history does not have (a squash? fetch first)")
+        return problems
+    theirs, ours_v = constants(at), spec_version(at)
+    diff = sorted(k for k in set(theirs) | set(got) if theirs.get(k) != got.get(k))
+    if diff or ours_v != v:
+        problems.append(
+            f"STALE STAMP: the header at {sha} does not match this copy"
+            f" ({', '.join(diff[:6]) or 'SPEC_VERSION ' + str(ours_v) + ' vs ' + str(v)}):"
+            " the copy was edited after vendoring, or the stamp names the wrong commit"
+        )
+    return problems
 
 
 def find(name, rel):
@@ -161,12 +223,16 @@ def main() -> int:
             changed = [k for k in changed if k != "SPEC_VERSION"]
             missing = [k for k in missing if k != "SPEC_VERSION_SUPERSEDES"]
 
-        if not (missing or extra or changed) and v == canon_v:
-            print(f"  OK   {name} [{ref}] -- {len(got)} constants, SPEC_VERSION {v}")
+        prov = provenance_problems(text, got, v)
+        if not (missing or extra or changed or prov) and v == canon_v:
+            sha, _ = provenance(text)
+            print(f"  OK   {name} [{ref}] -- {len(got)} constants, SPEC_VERSION {v}, vendored at {sha}")
             continue
 
         drifted.append(name)
         print(f"\n  DRIFT {name} -- SPEC_VERSION {v}, {len(got)} constants")
+        for pr in prov:
+            print(f"        PROVENANCE: {pr}")
         if on_old_line:
             print(f"        version {v} is on the retired internal line; canonical is {canon_v}, the SAME shape")
             print(f"        renumbered (header: 6.6 -> 1.2, no change). Re-vendor and set your")
