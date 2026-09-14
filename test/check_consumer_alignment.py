@@ -86,7 +86,7 @@ def body(text):
     preamble (a stamp line, or webbed's 20-line provenance block, which has a `// ====`
     rule of its own -- anchoring on the first rule read webbed's copy as stale) is dropped."""
     m = re.search(r"^// The duck_block vocabulary -- PUBLISHED INTERFACE\.\s*$", text, re.M)
-    return text[m.start():] if m else text
+    return text[m.start() :] if m else text
 
 
 def header_at(sha):
