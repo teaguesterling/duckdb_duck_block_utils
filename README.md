@@ -44,7 +44,7 @@ Every function is prefixed by what it operates on:
 | prefix | means | examples |
 |---|---|---|
 | `duck_block_*` | one element — accessing **or** constructing it | `duck_block_content`, `duck_block_paragraph`, `duck_block_bold` |
-| `duck_blocks_*` | a collection | `duck_blocks_to_text`, `duck_blocks_toc`, `duck_blocks_validate` |
+| `duck_blocks_*` | a collection | `duck_blocks_to_text`, `duck_blocks_body`, `duck_blocks_toc`, `duck_blocks_validate` |
 | `pandoc_*` | Pandoc AST conversion | `pandoc_ast_to_blocks` |
 
 These were `db_*` until v1.1. `db_` reads as *database* everywhere else in SQL, and
@@ -244,6 +244,7 @@ is now the single most costly mistake a producer can make here.
 | Function | Description |
 |----------|-------------|
 | `duck_blocks_to_text(blocks)` | Extract plain text content |
+| `duck_blocks_body(blocks)` | The body rows only: no `value` or `metadata` subtree (a projection, `element_order` kept) |
 | `duck_blocks_headings(blocks)` | The headings as `duck_block`s: flattened title, `attributes['outline']` |
 | `duck_blocks_headings_structs(blocks)` | The heading projection: `level, title, id, element_order` |
 | `duck_blocks_toc(blocks)` | The headings as `duck_block`s plus `attributes['indent']` |

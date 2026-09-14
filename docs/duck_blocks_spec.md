@@ -139,9 +139,11 @@ The fourth row is the one two conformant producers diverged on: a markdown
 file's frontmatter is a `kind='block'` blob by the two-homes rule below, so a body filter
 written as a kind filter rendered it as prose above the first heading, while the same
 metadata from a `.docx` (`kind='value'`) stayed out. Neither producer was wrong; the
-rule was unstated. `duck_blocks_to_text` applies it; the header carries it as
-`IsBody(kind, element_type)` so a vendored copy applies the same one. `raw` IS body,
-document content in its source format, and merely has no text rendering.
+rule was unstated. `duck_blocks_to_text` applies it by walking the tree; `duck_blocks_body`
+applies it to a list; the header carries the per-row half as `IsBody(kind, element_type)`,
+which a vendored copy applies as the NECESSARY test and pairs with the subtree walk (see
+"body is a subtree property" below). `raw` IS body, document content in its source format,
+and merely has no text rendering.
 
 The first row is the one that bit: a text-extraction filter copied as `kind = 'block'`
 silently dropped every inline element and the corpus looked fine (Tiiny session,
@@ -585,8 +587,12 @@ reader, before they carried the walk).
 
 **THE VALUE-TREE LEVEL CONTRACT.** A value tree's descendants sit STRICTLY deeper than their
 root. A leaf emitted at the root's own level reads as its sibling, ends the subtree early,
-and leaks. Validation checks the shape a producer that forgot to indent emits, an inline
-immediately following a value row at the same level (rule L6, `field = 'list'`).
+and leaks. Validation checks the shape a producer that forgot to indent emits: while a
+value subtree is open, the row that closes it (the first at or above the root's level) is an
+inline at exactly the root's level (rule L6, `field = 'list'`). What validation cannot see:
+an unindented MetaBlocks child is a `block` at the root's level, byte-identical to the normal
+end of a value subtree, so only inline leaves are checkable; a green `validate` does not prove
+a producer indented its block children.
 
 **METADATA KEEPS ITS SOURCE POSITION. Front matter stays at the front.** Teague's
 ruling, 2026-09-02, and it replaces two earlier ones of mine the same day -- first that

@@ -71,11 +71,38 @@ SELECT duck_blocks_to_text(bl) = duck_blocks_to_text(duck_blocks_body(bl)) FROM 
 ----
 true
 
-# a metadata string never reaches match text either way
-query I
-SELECT contains(duck_blocks_to_match_text(duck_blocks_body(bl)), 'Test Author') FROM fx;
+# the 1.3 leak, through a consumer-facing extractor: the UNFILTERED list's match text
+# carries the metadata string (to_match_text is a text renderer and walks the tree, so it
+# does not; a row filter did). Pinned so the fixture is known to contain the leak it tests.
+query II
+SELECT contains(duck_blocks_to_match_text(bl), 'Test Author'),
+       'Test Author' IN (SELECT b.content FROM (SELECT unnest(bl) AS b FROM fx) WHERE duck_block_is_body(b.kind, b.element_type)) FROM fx;
 ----
-false
+false	true
+
+# a value root in the MIDDLE of the body, nested at L2 under a paragraph: the subtree ends at
+# the first row at or above the root's level, and the paragraph's later inline is kept
+query I
+SELECT list_transform(duck_blocks_body([
+  {'kind':'block','element_type':'paragraph','content':'','level':1,'encoding':'text','attributes':MAP{}::MAP(VARCHAR,VARCHAR),'element_order':0}::duck_block,
+  {'kind':'inline','element_type':'text','content':'one','level':2,'encoding':'text','attributes':MAP{}::MAP(VARCHAR,VARCHAR),'element_order':1}::duck_block,
+  {'kind':'value','element_type':'inlines','content':'','level':2,'encoding':'text','attributes':MAP{'key':'note'}::MAP(VARCHAR,VARCHAR),'element_order':2}::duck_block,
+  {'kind':'inline','element_type':'text','content':'meta','level':3,'encoding':'text','attributes':MAP{}::MAP(VARCHAR,VARCHAR),'element_order':3}::duck_block,
+  {'kind':'inline','element_type':'text','content':'two','level':2,'encoding':'text','attributes':MAP{}::MAP(VARCHAR,VARCHAR),'element_order':4}::duck_block
+]), lambda b: b.content);
+----
+['', one, two]
+
+# a metadata BLOCK with a deeper child: body drops the child too, and to_text agrees
+# (the identity is a property of the tree walk, not of the fixture)
+query II
+SELECT duck_blocks_body(x) = []::duck_block[], duck_blocks_to_text(x) = ''
+FROM (SELECT [
+  {'kind':'block','element_type':'metadata','content':'draft: true','level':1,'encoding':'yaml','attributes':MAP{'role':'tailmatter'}::MAP(VARCHAR,VARCHAR),'element_order':0}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'deeper','level':2,'encoding':'text','attributes':MAP{}::MAP(VARCHAR,VARCHAR),'element_order':1}::duck_block
+] AS x);
+----
+true	true
 
 # nested value tree: a map at L1 with a list at L2 and leaves at L3 is dropped whole,
 # and the block that follows at L1 survives
@@ -89,11 +116,20 @@ SELECT list_transform(duck_blocks_body([
 ----
 [kept]
 
-# NULL in, NULL out; empty in, empty out
-query II
-SELECT duck_blocks_body(NULL) IS NULL, duck_blocks_body([]::duck_block[]);
+# NULL in, NULL out, over a NON-constant vector (a constant NULL is folded away before
+# the function runs and would pass against any implementation); a NULL ELEMENT inside a
+# list is skipped; empty in, empty out
+query III
+SELECT t.n, duck_blocks_body(t.l) IS NULL, list_transform(duck_blocks_body(t.l), lambda b: b.content)
+FROM (VALUES
+  (1, [duck_block_heading('H', 1), NULL::duck_block, duck_block_heading('K', 1)]),
+  (2, NULL::duck_block[]),
+  (3, []::duck_block[])) t(n, l)
+ORDER BY t.n;
 ----
-true	[]
+1	false	[H, K]
+2	true	NULL
+3	false	[]
 
 # ---------------------------------------------------------------------------
 # The level contract (L6): a value tree's descendants sit STRICTLY deeper than their
@@ -109,6 +145,39 @@ SELECT list_filter(duck_blocks_validate([
 ]).errors, lambda e: e.field = 'list')[1].message;
 ----
 inline at 3 follows value root at 2 at the same level; a value tree's leaves must be deeper than their root
+
+# an inline beside a NESTED value row is a legal sibling: both sit deeper than the map
+# that roots the subtree, so L6 must not fire (and duck_blocks_body drops both)
+query I
+SELECT duck_blocks_validate([
+  {'kind':'value','element_type':'map','content':'','level':1,'encoding':'text','attributes':MAP{'key':'meta'}::MAP(VARCHAR,VARCHAR),'element_order':0}::duck_block,
+  {'kind':'value','element_type':'string','content':'x','level':2,'encoding':'text','attributes':MAP{'key':'a'}::MAP(VARCHAR,VARCHAR),'element_order':1}::duck_block,
+  {'kind':'inline','element_type':'text','content':'y','level':2,'encoding':'text','attributes':MAP{}::MAP(VARCHAR,VARCHAR),'element_order':2}::duck_block
+]).valid;
+----
+true
+
+# a SECOND unindented leaf after an indented one still fires: the subtree closes at the
+# row that comes back to the root's level, and that row is an inline
+query I
+SELECT list_filter(duck_blocks_validate([
+  {'kind':'block','element_type':'paragraph','content':'','level':1,'encoding':'text','attributes':MAP{}::MAP(VARCHAR,VARCHAR),'element_order':0}::duck_block,
+  {'kind':'value','element_type':'inlines','content':'','level':2,'encoding':'text','attributes':MAP{'key':'author'}::MAP(VARCHAR,VARCHAR),'element_order':1}::duck_block,
+  {'kind':'inline','element_type':'text','content':'Author','level':3,'encoding':'text','attributes':MAP{}::MAP(VARCHAR,VARCHAR),'element_order':2}::duck_block,
+  {'kind':'inline','element_type':'text','content':'Leaked','level':2,'encoding':'text','attributes':MAP{}::MAP(VARCHAR,VARCHAR),'element_order':3}::duck_block
+]).errors, lambda e: e.field = 'list')[1].message;
+----
+inline at 3 follows value root at 1 at the same level; a value tree's leaves must be deeper than their root
+
+# a BLOCK at the root's level after a value subtree is the normal end of the subtree
+query I
+SELECT duck_blocks_validate([
+  {'kind':'value','element_type':'inlines','content':'','level':1,'encoding':'text','attributes':MAP{'key':'title'}::MAP(VARCHAR,VARCHAR),'element_order':0}::duck_block,
+  {'kind':'inline','element_type':'text','content':'T','level':2,'encoding':'text','attributes':MAP{}::MAP(VARCHAR,VARCHAR),'element_order':1}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'body','level':1,'encoding':'text','attributes':MAP{}::MAP(VARCHAR,VARCHAR),'element_order':2}::duck_block
+]).valid;
+----
+true
 
 # and the same shape with the leaf one level deeper is valid
 query I

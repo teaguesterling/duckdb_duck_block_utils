@@ -42,11 +42,16 @@ void BodyFunctions::DbBlocksBodyFun(DataChunk &args, ExpressionState &state, Vec
 			}
 			const auto kind = Field(el, BlockTypes::KIND_IDX);
 			const auto type = Field(el, BlockTypes::ELEMENT_TYPE_IDX);
-			if (!BlockTypes::IsBody(kind.c_str(), type.c_str())) {
-				// A value or metadata row roots a subtree; anything deeper is its own.
+			// A value or metadata row roots a subtree; anything deeper is its own. Named
+			// explicitly rather than as !IsBody: a future kind must not silently become
+			// a subtree root that swallows what nests under it.
+			if (kind == BlockTypes::KIND_VALUE || type == BlockTypes::TYPE_METADATA) {
 				in_subtree = true;
 				root_level = level;
 				continue;
+			}
+			if (!BlockTypes::IsBody(kind.c_str(), type.c_str())) {
+				continue; // not body on its own account, and not a subtree root
 			}
 			out.push_back(el);
 		}
