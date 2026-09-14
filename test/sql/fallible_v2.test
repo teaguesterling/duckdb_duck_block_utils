@@ -4,14 +4,22 @@
 
 require duck_block_utils
 
-# On DuckDB v2.0 an undeclared throw is rewritten as
+# On DuckDB v2.0 an undeclared throw of an EXECUTION-ERROR type is rewritten as
 #   INTERNAL Error: Scalar function "x" threw an execution error, but the function is not marked as fallible ... Error: <raw message>
 # which still CONTAINS the raw message, so a bare-substring `statement error` passes on
-# both the correct and the mis-declared form. Expecting the exception's TYPE PREFIX
-# immediately before the message distinguishes them: the internal form never has it.
-# On v1.5.5 the contract is consulted but not enforced, so these pass either way there;
-# they are expected to discriminate on 2.0, but the mis-declared form has not yet been
-# observed failing this test.
+# both the correct and the mis-declared form; expecting the exception's TYPE PREFIX
+# immediately before the message is what distinguishes them.
+#
+# MEASURED on v2.0-cyanoptera (2026-09-13, throwaway/class13-observe): the rewrite is
+# gated by Exception::IsExecutionError(type) in ThrowNonFallibleFunctionError
+# (src/function/scalar_function.cpp), and IOException is NOT an execution error, so with
+# write_pandoc_ast's SetFallible() removed the 2.0 leg still printed exactly
+#   IO Error: Could not open file for writing: /nonexistent-dir/x.json
+# The two IO cases below therefore pin the message and prefix but CANNOT discriminate the
+# fallible declaration. The discriminating case is an InvalidInputException, the depth cap
+# in test/sql/pandoc_recursion_cap.test:28-32 (Invalid Input Error: ...), whose mis-declared
+# form is being observed on a third throwaway run. On v1.5.5 the flag is consulted by the
+# planner (CanThrow) and not enforced, so every case passes either way there.
 #
 # write_pandoc_ast / read_pandoc_ast are deprecated in favour of panduck's own readers;
 # these two cases move there with them.
