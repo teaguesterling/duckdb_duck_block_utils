@@ -81,7 +81,7 @@ projects_with_links AS (
                 CASE WHEN docs IS NOT NULL
                     THEN format(getvariable('link_docs'), docs, docs_badge_url)
                 END
-            ], x -> x IS NOT NULL),
+            ], lambda x: x IS NOT NULL),
             E'\n'
         ) AS links_block
     FROM projects_with_urls
