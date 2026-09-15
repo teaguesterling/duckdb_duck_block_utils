@@ -113,12 +113,14 @@ def header_at(sha):
         )
         if rp.returncode:
             return None
+        # BYTES, not text=True: universal newlines would turn CRLF into LF before the
+        # comparison and make "byte-exact below the title line" false on real files
+        # (panduck measured a CRLF copy passing, 2026-09-15).
         out = subprocess.run(
             ["git", "-C", str(REPO), "show", f"{rp.stdout.strip()}:src/include/duck_block_vocabulary.hpp"],
             capture_output=True,
-            text=True,
         )
-        return out.stdout if out.returncode == 0 else None
+        return out.stdout.decode("utf-8", errors="replace") if out.returncode == 0 else None
     except OSError:
         return None
 
@@ -234,6 +236,7 @@ def main() -> int:
     print(f"Checking consumer alignment against {len(canon)} constants, SPEC_VERSION {canon_v}")
 
     drifted = []
+    behind_names = []
     checked = 0
     for name, rel in sorted(CONSUMERS.items()):
         path = find(name, rel)
@@ -248,7 +251,7 @@ def main() -> int:
                 print(f"  SKIP {name} -- no checkout here (absence is not alignment)")
             continue
         checked += 1
-        text = path.read_text()
+        text = path.read_bytes().decode("utf-8", errors="replace")  # bytes: keep CR, see header_at
         got = constants(text)
         v = spec_version(text)
 
@@ -269,6 +272,44 @@ def main() -> int:
             missing = [k for k in missing if k != "SPEC_VERSION_SUPERSEDES"]
 
         prov = provenance_problems(text, got, v, canon.get("SPEC_VERSION_SUPERSEDES"))
+
+        # MAJOR EQUALITY AND A MINOR FLOOR, the contract the header states. A consumer on
+        # the same major and an OLDER minor that differs only by constants added upstream
+        # is BEHIND, not drifted: it compiles, it reads every struct field correctly, and it
+        # re-vendors when it needs something new. Exact equality turned every additive
+        # minor into a fleet-wide red that sessions read as an instruction to re-vendor
+        # (Teague's ruling, 2026-09-15: "reduce the churn going forward"). SPEC_VERSION and
+        # PREDICATE_REVISION legitimately differ on a behind copy; any OTHER changed value,
+        # an extra name, a minor AHEAD, or a provenance problem still fails.
+        def ver(x):
+            try:
+                a, b = (x or "").split(".")[:2]
+                return int(a), int(b)
+            except ValueError:
+                return None
+
+        cv, gv = ver(canon_v), ver(v)
+        # "Behind" includes the SAME minor when the only difference is constants canonical has
+        # and the copy lacks. Spec releases are batched (Teague, 2026-09-15): constants land on
+        # main before SPEC_VERSION moves, so an up-to-date 1.4 copy compared against main that
+        # already carries an unreleased constant must not go red. A copy that CLAIMS a minor
+        # but lacks a constant that minor released is still caught: its provenance stamp names
+        # a sha whose header does not match it (STALE STAMP).
+        behind = bool(
+            not on_old_line and cv and gv and gv[0] == cv[0] and gv[1] <= cv[1] and (missing or gv[1] < cv[1])
+        )
+        if behind:
+            changed = [k for k in changed if k not in ("SPEC_VERSION", "PREDICATE_REVISION")]
+            if not (extra or changed or prov):
+                sha, _ = provenance(text)
+                print(
+                    f"  BEHIND {name} [{ref}] -- SPEC_VERSION {v} vs {canon_v}, {len(got)} constants,"
+                    f" vendored at {sha}; missing {len(missing)} additive constant(s)"
+                    f"{': ' + ', '.join(missing) if missing else ''}. Passes: same major, minor floor."
+                )
+                behind_names.append(name)
+                continue
+
         if not (missing or extra or changed or prov) and v == canon_v:
             sha, _ = provenance(text)
             print(f"  OK   {name} [{ref}] -- {len(got)} constants, SPEC_VERSION {v}, vendored at {sha}")
@@ -283,7 +324,12 @@ def main() -> int:
             print(f"        renumbered (header: 6.6 -> 1.2, no change). Re-vendor and set your")
             print(f"        major-equality constant to {canon_v.split('.')[0]} once; nothing else moves.")
         elif v != canon_v:
-            print(f"        version {v} against canonical {canon_v}")
+            if cv and gv and gv[0] == cv[0] and gv[1] > cv[1]:
+                print(f"        version {v} is AHEAD of canonical {canon_v}: a copy newer than its owner")
+            elif cv and gv and gv[0] != cv[0]:
+                print(f"        MAJOR {gv[0]} against canonical {cv[0]}: a breaking change this copy has not taken")
+            else:
+                print(f"        version {v} against canonical {canon_v}")
         if changed:
             print(f"        VALUE CHANGED ({len(changed)}) -- compiles clean on both sides,")
             print("        every test passes, and their writer silently stops matching:")
@@ -368,6 +414,12 @@ def main() -> int:
         print("      This repo owns the format; a consumer disagreeing with it is the")
         print("      failure the vocabulary exists to prevent, not their local problem.")
         return 1
+    if behind_names:
+        print(
+            f"OK: {checked} consumer checkout(s) pass; {len(behind_names)} BEHIND on an older minor"
+            f" ({', '.join(behind_names)}), which is allowed: re-vendor when a newer constant is needed."
+        )
+        return 0
     print(f"OK: all {checked} consumer checkouts agree by name and value.")
     return 0
 
