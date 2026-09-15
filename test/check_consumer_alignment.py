@@ -240,10 +240,14 @@ def main() -> int:
     checked = 0
     for name, rel in sorted(CONSUMERS.items()):
         path = find(name, rel)
-        root = REPO.parent / name
-        ref = repo_ref(root) if root.exists() else None
+        # The checkout the header was FOUND in, not REPO.parent: with DUCK_BLOCK_CONSUMER_ROOT
+        # set, REPO.parent / name is a different working tree, so the label named the sibling
+        # checkout while the constants came from the override (a generated fixture labelled
+        # main@12547c8; a fresh clone labelled None). Same lookup as the shadow scan below.
+        root = next((r / name for r in SEARCH_ROOTS if (r / name).exists()), None)
+        ref = repo_ref(root) if root else None
         if path is None:
-            where = branches_with(root, pathlib.Path(rel).name) if root.exists() else []
+            where = branches_with(root, pathlib.Path(rel).name) if root else []
             if where:
                 print(f"  SKIP {name} [{ref}] -- vendored header not on this branch;" f" it is on {', '.join(where)}")
                 print("       Checked out elsewhere is not drift. Re-run with that branch checked out.")
