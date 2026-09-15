@@ -373,7 +373,16 @@ def main() -> int:
         for hdr in sorted(root.rglob("*.hpp")):
             if hdr.resolve() == vendored or "/duckdb/" in str(hdr):
                 continue
-            local = dict(re.findall(CONST, hdr.read_text(errors="ignore")))
+            # A COPY of the vendored header is not a shadow, and neither is anything inside a
+            # nested git worktree or submodule: sitting_duck keeps worktrees under trees/, and
+            # the scan walked into one and counted a whole second vendored header as 95
+            # "redeclarations" (2026-09-15). A shadow is a declaration in the consumer's OWN
+            # code that competes with the vendored copy.
+            if hdr.name == vendored.name:
+                continue
+            if any((d / ".git").exists() for d in hdr.relative_to(root).parents if str(d) != "." for d in [root / d]):
+                continue
+            local = constants(hdr.read_text(errors="ignore"))
             for k in sorted(set(local) & set(canon)):
                 shadows.append((hdr.relative_to(root), k, local[k], canon[k]))
         if shadows:
