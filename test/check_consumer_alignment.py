@@ -113,12 +113,14 @@ def header_at(sha):
         )
         if rp.returncode:
             return None
+        # BYTES, not text=True: universal newlines would turn CRLF into LF before the
+        # comparison and make "byte-exact below the title line" false on real files
+        # (panduck measured a CRLF copy passing, 2026-09-15).
         out = subprocess.run(
             ["git", "-C", str(REPO), "show", f"{rp.stdout.strip()}:src/include/duck_block_vocabulary.hpp"],
             capture_output=True,
-            text=True,
         )
-        return out.stdout if out.returncode == 0 else None
+        return out.stdout.decode("utf-8", errors="replace") if out.returncode == 0 else None
     except OSError:
         return None
 
@@ -249,7 +251,7 @@ def main() -> int:
                 print(f"  SKIP {name} -- no checkout here (absence is not alignment)")
             continue
         checked += 1
-        text = path.read_text()
+        text = path.read_bytes().decode("utf-8", errors="replace")  # bytes: keep CR, see header_at
         got = constants(text)
         v = spec_version(text)
 
