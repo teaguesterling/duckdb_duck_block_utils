@@ -287,7 +287,15 @@ def main() -> int:
                 return None
 
         cv, gv = ver(canon_v), ver(v)
-        behind = bool(not on_old_line and cv and gv and gv[0] == cv[0] and gv[1] < cv[1])
+        # "Behind" includes the SAME minor when the only difference is constants canonical has
+        # and the copy lacks. Spec releases are batched (Teague, 2026-09-15): constants land on
+        # main before SPEC_VERSION moves, so an up-to-date 1.4 copy compared against main that
+        # already carries an unreleased constant must not go red. A copy that CLAIMS a minor
+        # but lacks a constant that minor released is still caught: its provenance stamp names
+        # a sha whose header does not match it (STALE STAMP).
+        behind = bool(
+            not on_old_line and cv and gv and gv[0] == cv[0] and gv[1] <= cv[1] and (missing or gv[1] < cv[1])
+        )
         if behind:
             changed = [k for k in changed if k not in ("SPEC_VERSION", "PREDICATE_REVISION")]
             if not (extra or changed or prov):
