@@ -337,7 +337,7 @@ def main() -> int:
         for hdr in sorted(root.rglob("*.hpp")):
             if hdr.resolve() == vendored or "/duckdb/" in str(hdr):
                 continue
-            local = dict(re.findall(CONST, hdr.read_text(errors="ignore")))
+            local = constants(hdr.read_text(errors="ignore"))
             for k in sorted(set(local) & set(canon)):
                 shadows.append((hdr.relative_to(root), k, local[k], canon[k]))
         if shadows:
