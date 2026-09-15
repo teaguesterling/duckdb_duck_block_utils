@@ -53,7 +53,12 @@ SEARCH_ROOTS = (
     [Path(os.environ["DUCK_BLOCK_CONSUMER_ROOT"])] if os.environ.get("DUCK_BLOCK_CONSUMER_ROOT") else [REPO.parent]
 )
 
-CONST = r'static constexpr const char \*([A-Z_]+) = "([^"]*)";'
+# String AND integer constants. The integers are the struct field offsets (KIND_IDX ..
+# FILENAME_IDX): a consumer whose copy has a stale offset reads the wrong struct field while
+# every string constant matches, which is the silent value change this check exists for.
+# markdown noticed its parser counted 96 on the same header where this one counted 88
+# (2026-09-15); the 8 missing names were exactly the offsets.
+CONST = r'static constexpr (?:const char \*|u?int(?:8|16|32|64)_t |idx_t )([A-Z_]+) = (?:"([^"]*)"|([0-9]+));'
 VERSION = r'SPEC_VERSION = "([^"]*)"'
 # The provenance stamp the header's own re-vendoring guidance asks for, in the two
 # forms the fleet has used: "Vendored at upstream commit: <sha> (SPEC_VERSION x.y)"
@@ -67,7 +72,7 @@ STAMP_WORDS = re.compile(r"(?i)vendored (?:at upstream commit|from duckdb_duck_b
 
 
 def constants(text):
-    return dict(re.findall(CONST, text))
+    return {name: (sval if ival == "" else ival) for name, sval, ival in re.findall(CONST, text)}
 
 
 def spec_version(text):
@@ -332,7 +337,16 @@ def main() -> int:
         for hdr in sorted(root.rglob("*.hpp")):
             if hdr.resolve() == vendored or "/duckdb/" in str(hdr):
                 continue
-            local = dict(re.findall(CONST, hdr.read_text(errors="ignore")))
+            # A COPY of the vendored header is not a shadow, and neither is anything inside a
+            # nested git worktree or submodule: sitting_duck keeps worktrees under trees/, and
+            # the scan walked into one and counted a whole second vendored header as 95
+            # "redeclarations" (2026-09-15). A shadow is a declaration in the consumer's OWN
+            # code that competes with the vendored copy.
+            if hdr.name == vendored.name:
+                continue
+            if any((d / ".git").exists() for d in hdr.relative_to(root).parents if str(d) != "." for d in [root / d]):
+                continue
+            local = constants(hdr.read_text(errors="ignore"))
             for k in sorted(set(local) & set(canon)):
                 shadows.append((hdr.relative_to(root), k, local[k], canon[k]))
         if shadows:
