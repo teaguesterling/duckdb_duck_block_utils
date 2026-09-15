@@ -209,7 +209,13 @@ static string BlocksToText(const vector<Value> &blocks_list, const string &separ
 		// The value element's CHILDREN have to go with it. MetaInlines carries
 		// kind='inline' children, which would otherwise be picked up above as a
 		// stray inline run -- so skipping the marker alone still leaked the title.
-		if (kind != BlockTypes::KIND_BLOCK) {
+		// The `metadata` blob (frontmatter, tailmatter, a .yaml read whole) takes the
+		// same level-scoped skip (1.4): body is a subtree property, and a metadata
+		// row's descendants, if a producer ever emits any, are no more body than a
+		// value row's. Skipping only the row itself would render them, and
+		// duck_blocks_body would not: the two must agree.
+		if (kind != BlockTypes::KIND_BLOCK ||
+		    GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX) == BlockTypes::TYPE_METADATA) {
 			// LEVEL-SCOPED skip: consume this element and everything nested deeper
 			// than it. The container rule from the spec -- children follow at
 			// level+1, the container ends at the first element back at its own
@@ -238,13 +244,10 @@ static string BlocksToText(const vector<Value> &blocks_list, const string &separ
 		auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
 
 		// Skip blocks that don't have meaningful text content. Their inline
-		// children (if any) are consumed and discarded along with them. `metadata` is
-		// the verbatim blob (frontmatter, tailmatter): kind='block' because it has a
-		// position, but not body -- spec 1.3, BlockTypes::IsBody. Rendering it printed
-		// a markdown file's frontmatter as prose above its first heading.
+		// children (if any) are consumed and discarded along with them. (`metadata`
+		// took the level-scoped skip above.)
 		auto text = BlockText(blocks_list, i);
-		if (element_type == BlockTypes::TYPE_HR || element_type == BlockTypes::TYPE_RAW ||
-		    element_type == BlockTypes::TYPE_METADATA) {
+		if (element_type == BlockTypes::TYPE_HR || element_type == BlockTypes::TYPE_RAW) {
 			continue;
 		}
 

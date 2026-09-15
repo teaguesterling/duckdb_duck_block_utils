@@ -133,15 +133,17 @@ two obvious filters answer different ones:
 | block-level structure (headings, sections, pages) | `kind = 'block'` | `kind = 'block'` as a content filter: it drops every `inline`, where most prose lives |
 | all of the document's content, inlines included | `kind IN ('block', 'inline')` | `kind <> 'value'`, which is a blocklist and admits a future kind |
 | the document's metadata | `kind = 'value'` | |
-| the document's BODY: what a text renderer, indexer or embedder should see | `duck_block_is_body(kind, element_type)`, i.e. `kind IN ('block', 'inline') AND element_type <> 'metadata'` | `kind IN ('block', 'inline')` alone: it admits the verbatim `metadata` blob, which is content-shaped but not body |
+| the document's BODY: what a text renderer, indexer or embedder should see | `duck_blocks_body(blocks)` over the list; per row, `duck_block_is_body(kind, element_type)` is necessary but not sufficient (it cannot see a `value` ancestor) | `kind IN ('block', 'inline')` alone: it admits the verbatim `metadata` blob; the per-row predicate alone: it admits the text under a `value` row |
 
 The fourth row is the one two conformant producers diverged on: a markdown
 file's frontmatter is a `kind='block'` blob by the two-homes rule below, so a body filter
 written as a kind filter rendered it as prose above the first heading, while the same
 metadata from a `.docx` (`kind='value'`) stayed out. Neither producer was wrong; the
-rule was unstated. `duck_blocks_to_text` applies it; the header carries it as
-`IsBody(kind, element_type)` so a vendored copy applies the same one. `raw` IS body,
-document content in its source format, and merely has no text rendering.
+rule was unstated. `duck_blocks_to_text` applies it by walking the tree; `duck_blocks_body`
+applies it to a list; the header carries the per-row half as `IsBody(kind, element_type)`,
+which a vendored copy applies as the NECESSARY test and pairs with the subtree walk (see
+"body is a subtree property" below). `raw` IS body, document content in its source format,
+and merely has no text rendering.
 
 The first row is the one that bit: a text-extraction filter copied as `kind = 'block'`
 silently dropped every inline element and the corpus looked fine (Tiiny session,
@@ -561,10 +563,36 @@ values, so nothing will object if you do.
 | discrete FIELDS — title, author, date | `kind='value'`, this section | docx `core.xml`, EPUB Dublin Core, odt `meta.xml`, RTF `\info`, LaTeX `\title`, HTML `<head>`, Pandoc `Meta` |
 | a verbatim BLOB you must not reinterpret | `kind='block'`, `element_type='metadata'`, `encoding='yaml'` | a markdown file's YAML frontmatter, kept as written |
 
-**NEITHER HOME IS BODY.** The blob has a position and a level, which is why it is
-`kind='block'`; it is still metadata, and `duck_block_is_body` says false for it exactly
-as for the `kind='value'` tree. A consumer rendering, indexing or embedding text filters
-with that predicate, not with `kind`.
+**NEITHER HOME IS BODY, AND BODY IS A SUBTREE PROPERTY.** The blob has a position and a
+level, which is why it is `kind='block'`; it is still metadata, and `duck_block_is_body`
+says false for it exactly as for the `kind='value'` tree. But the value tree's TEXT lives in
+`kind='inline'` children of the value row (Pandoc's MetaInlines: docx, odt, org, epub, rtf,
+tex all emit it so), and a per-row predicate cannot see an ancestor, so it says true for
+"Test Author" under `{key=author}`. The definition:
+
+    a row is body  iff  kind IN ('block', 'inline')
+                        AND element_type <> 'metadata'
+                        AND no ancestor by level is a `value` or `metadata` row
+
+`duck_block_is_body(kind, element_type)` is the NECESSARY per-row half; `duck_blocks_body(blocks)`
+applies the whole rule to a list: a value or metadata row roots a subtree, it and every
+following row at a greater level are dropped, and the subtree ends at the first row whose
+level is at or above the root's. A childless value row (a `.html` `<title>`) and a lone
+frontmatter blob are dropped whole. It is a projection and does not renumber `element_order`.
+`duck_blocks_to_text` already walks the tree and agrees with it. A consumer that filters rows
+itself must carry the same walk; a segmenter that keeps a value row in the section that
+precedes it, or an embedder filtering rows with the per-row predicate alone, returns
+metadata as body (panduck's `doc_section` and `doc_search_sections` did, on every native
+reader, before they carried the walk).
+
+**THE VALUE-TREE LEVEL CONTRACT.** A value tree's descendants sit STRICTLY deeper than their
+root. A leaf emitted at the root's own level reads as its sibling, ends the subtree early,
+and leaks. Validation checks the shape a producer that forgot to indent emits: while a
+value subtree is open, the row that closes it (the first at or above the root's level) is an
+inline at exactly the root's level (rule L6, `field = 'list'`). What validation cannot see:
+an unindented MetaBlocks child is a `block` at the root's level, byte-identical to the normal
+end of a value subtree, so only inline leaves are checkable; a green `validate` does not prove
+a producer indented its block children.
 
 **METADATA KEEPS ITS SOURCE POSITION. Front matter stays at the front.** Teague's
 ruling, 2026-09-02, and it replaces two earlier ones of mine the same day -- first that

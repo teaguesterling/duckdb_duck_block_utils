@@ -620,6 +620,21 @@ SELECT db_blocks_transform(
 
 ## Content Extraction Functions
 
+### duck_blocks_body
+
+The document's body as a list: every row for which `duck_block_is_body` holds AND no
+ancestor by level is a `value` or `metadata` row. A value or metadata row roots a subtree;
+it and every following row at a greater level are dropped, and the subtree ends at the first
+row at or above the root's level. A projection: `element_order` is not renumbered. The text
+renderers walk the same tree, so `duck_blocks_to_text(blocks)` equals
+`duck_blocks_to_text(duck_blocks_body(blocks))`. NULL in, NULL out; a NULL element is skipped.
+
+```sql
+duck_blocks_body(blocks LIST(duck_block)) → LIST(duck_block)
+```
+
+---
+
 ### duck_blocks_to_text / duck_blocks_to_match_text
 
 Extract plain text content from elements. Two jobs, two names: **rendering** joins
@@ -792,8 +807,10 @@ Is this element part of the document's body: what a text renderer, an indexer or
 embedder should see? From the vocabulary header's `IsBody`: `kind IN ('block', 'inline')
 AND element_type <> 'metadata'`. Not a kind filter: the verbatim `metadata` blob
 (frontmatter, tailmatter, a `.yaml` read whole) is `kind='block'` because it has a
-position, and is no more body than the `kind='value'` tree. `duck_blocks_to_text` applies
-it. `raw` is body and merely has no text rendering. NULL in, NULL out.
+position, and is no more body than the `kind='value'` tree. `raw` is body and merely has
+no text rendering. NULL in, NULL out. Necessary, not sufficient: it cannot see an ancestor,
+and the text of a `kind='value'` metadata tree is `kind='inline'` children, for which it
+answers true. Filter a list with `duck_blocks_body`, which applies the subtree rule.
 
 ```sql
 duck_block_is_body(kind VARCHAR, element_type VARCHAR) → BOOLEAN

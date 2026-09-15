@@ -12,6 +12,7 @@
 #include "validation.hpp"
 #include "normalize.hpp"
 #include "repair.hpp"
+#include "body.hpp"
 #include "pandoc_block_convert.hpp"
 #include "pragma_aliases.hpp"
 #include "render_macros.hpp"
@@ -50,6 +51,7 @@ static void LoadInternal(ExtensionLoader &loader) {
 	NormalizeFunctions::Register(loader);
 	// 6.6: the deterministic fixes for the list-level rules (spec: "Validation over a list")
 	RepairFunctions::Register(loader);
+	BodyFunctions::Register(loader);
 
 	// Phase 6: Pandoc AST Block Functions
 	PandocBlockConvert::Register(loader);

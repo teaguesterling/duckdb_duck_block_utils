@@ -264,6 +264,18 @@ void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &
 				string type;
 			};
 			vector<Frame> stack;
+			// L6 (1.4): a value tree's leaves sit STRICTLY deeper than their root. An
+			// inline emitted at a value ROOT's own level reads as that root's sibling, so
+			// the subtree walk in duck_blocks_body ends before it and the metadata text
+			// leaks into body. Tracked as duck_blocks_body walks it: a value row opens a
+			// subtree only when none is open, rows deeper than the root are inside it (a
+			// nested value row there is not a new root, and an inline beside it is legal),
+			// and the first row at or above the root's level closes it -- if that row is
+			// an inline at exactly the root's level, it is the unindented leaf. Only
+			// inline leaves are checkable: an unindented MetaBlocks child is a block at
+			// the root's level, byte-identical to the normal end of a value subtree.
+			bool value_open = false;
+			int32_t value_root_level = 0, value_root_order = 0;
 			for (auto &block : blocks_list) {
 				if (block.IsNull()) {
 					continue;
@@ -272,6 +284,20 @@ void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &
 				auto kind = GetElementStringField(block, BlockTypes::KIND_IDX);
 				auto type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
 				auto order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
+				if (value_open && lvl <= value_root_level) {
+					value_open = false;
+					if (kind == BlockTypes::KIND_INLINE && lvl == value_root_level) {
+						list_error(order,
+						           "inline at " + std::to_string(order) + " follows value root at " +
+						               std::to_string(value_root_order) +
+						               " at the same level; a value tree's leaves must be deeper than their root");
+					}
+				}
+				if (!value_open && kind == BlockTypes::KIND_VALUE) {
+					value_open = true;
+					value_root_level = lvl;
+					value_root_order = order;
+				}
 				while (!stack.empty() && stack.back().level >= lvl) {
 					stack.pop_back();
 				}

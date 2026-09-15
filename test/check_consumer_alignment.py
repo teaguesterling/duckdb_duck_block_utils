@@ -61,7 +61,7 @@ VERSION = r'SPEC_VERSION = "([^"]*)"'
 # "VENDORED from duckdb_duck_block_utils@<sha>" (sitting_duck before #122).
 PROVENANCE = (
     r"(?i)vendored (?:at upstream commit:?|from duckdb_duck_block_utils@)\s*([0-9a-f]{7,40})"
-    r"(?:\s*\(SPEC_VERSION\s+([0-9.]+)\))?"
+    r"(?:[^\n(]*\([^)\n]*?SPEC_VERSION\s+([0-9.]+)\))?"
 )
 STAMP_WORDS = re.compile(r"(?i)vendored (?:at upstream commit|from duckdb_duck_block_utils)")
 
@@ -137,6 +137,13 @@ def provenance_problems(text, got, v, superseded):
             " drops it is how sitting_duck #122 and #126 shipped bare copies"
         ]
     problems = []
+    if claimed is None and re.search(r"SPEC_VERSION", text.split("\n")[text[: text.find(sha)].count("\n")]):
+        # The stamp line mentions SPEC_VERSION but not in a parenthesised group this
+        # parser reads (e.g. "(2026-09-14) (SPEC_VERSION 1.4)"): say so rather than
+        # silently skipping the version comparison.
+        problems.append(
+            f"stamp names {sha} and mentions SPEC_VERSION, but the claimed version is unreadable to this check"
+        )
     if claimed and v and claimed != v:
         # A stamp written on the retired internal line (6.x) against a file on the
         # public line is the renumbering, not a mismatch -- SPEC_VERSION_SUPERSEDES.
