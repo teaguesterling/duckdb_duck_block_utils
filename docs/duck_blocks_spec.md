@@ -812,6 +812,20 @@ document with metadata and an empty body. Asked by the panduck session, who note
 "nothing objects" was reasoning they had twice had to retract that day — correctly, so
 this is stated rather than left to be inferred from silence.
 
+**The document is the unit, not the file.** A `document@0` root stands for exactly one
+document — one rooted list — and how a *source file* maps to documents is a read-layer
+decision the core rule does not make. A reader may emit one document per file (sitting_duck
+reads each source file as a single document), split one file into several (a YAML stream
+separated by `---`, a concatenated mailbox, a notebook of cells), or gather several files
+into one. The validator only ever sees a single document — one relation, at most one root —
+so several documents out of one file are several such documents, each its own rooted list,
+never several roots in one list; the "at most one root, first position" rule is unchanged.
+A reader that must tell same-file documents apart carries that in provenance — an ordinal,
+or a byte offset on the root's attributes — which the core does not mandate, because
+different sources demarcate differently. For a reader that maps one file to one document
+the `document@0` row is also, for free, a **file-level row**: one row per file to hang
+file-scoped facts on, with no separate table.
+
 ### Version marker
 
 `version` records which duck_block spec a persisted or exchanged list was written
