@@ -103,6 +103,22 @@ SELECT duck_blocks_inlines_to_pandoc(deep_bolds(140));
 ----
 Invalid Input Error: Pandoc AST conversion exceeded the maximum nesting depth
 
+# duck_blocks_to_pandoc_ast calls SetFallible (pandoc_block_convert.cpp) and reaches the same
+# CheckPandocDepth throw, but until now no case pinned its error CLASS, so on the v2.0 line a lost
+# SetFallible() would have gone unnoticed here: the INTERNAL rewrite quotes the raw message, and
+# only the "Invalid Input Error: " prefix rejects the mis-declared form (see fallible_v2.test).
+# Found 2026-09-16 after markdown reported the same shape in webbed #156. Reachability measured on
+# the served build 95a84e6: deep_divs(100) renders (3102 chars of .blocks), deep_divs(140) throws.
+query I
+SELECT length((duck_blocks_to_pandoc_ast(deep_divs(100))).blocks::VARCHAR) > 0;
+----
+true
+
+statement error
+SELECT duck_blocks_to_pandoc_ast(deep_divs(140));
+----
+Invalid Input Error: Pandoc AST conversion exceeded the maximum nesting depth
+
 # ============================================================================
 # Safe integer parsing: malformed / out-of-range values must not abort
 # ============================================================================
