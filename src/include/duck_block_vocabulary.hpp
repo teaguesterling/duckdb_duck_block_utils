@@ -436,6 +436,29 @@ struct DuckBlockVocabulary {
 	//               (descendants strictly deeper than their root) and validated (L6).
 	//               PREDICATE_REVISION added (see below). Additive.
 	//
+	//   1.4 (amended 2026-09-16)  THE EXPLICIT DOCUMENT ROOT. TYPE_DOCUMENT added, and
+	//               level 0 is now legal for exactly one element: a kind='block'
+	//               element_type='document' row in first position, standing for the
+	//               document itself. Everything else still starts at 1, so every
+	//               document valid before this is valid after it, unchanged -- the
+	//               change only makes a previously-refused shape legal. Teague's
+	//               ruling: the 1-based top was chosen to leave 0 free for this, and
+	//               a consumer needing one root per document (duckent's tree contract)
+	//               should prepend the row rather than renumber levels, since
+	//               renumbering turns every top-level block into a root.
+	//               DELIBERATELY NOT a version bump: this is recorded here rather than
+	//               as 1.5 because the fleet had just finished moving to 1.4 and the
+	//               cost of another re-vendor outweighed the signal (Teague, "add it to
+	//               1.4, we don't need to churn versions any more"). The consequence,
+	//               stated plainly: two builds can both say SPEC_VERSION 1.4 and differ
+	//               on whether they accept a level-0 root, and a consumer cannot tell
+	//               them apart from the version alone. A consumer that needs to know
+	//               tests for TYPE_DOCUMENT's presence in its vendored copy.
+	//               PREDICATE_REVISION stays 1.3: no predicate's answer changes, because
+	//               no valid document could contain a level-0 row before today. The root
+	//               is an ordinary container block, so IsBody() says true for it exactly
+	//               as it does for `div`, and duck_blocks_body walks through it.
+	//
 	// The rule above is what will be followed from here.
 	static constexpr const char *SPEC_VERSION = "1.4";
 	// The last number of the internal 6.x line that 1.2 replaces. A consumer check
@@ -455,6 +478,16 @@ struct DuckBlockVocabulary {
 	// ========================================================================
 	// Block type names
 	// ========================================================================
+	// The document itself, as an OPTIONAL explicit root at level 0 -- the one element
+	// allowed shallower than the top level. A producer that emits it emits exactly one,
+	// in first position; everything else still starts at 1, so a document without it is
+	// unchanged and equally valid. It exists because a consumer whose contract is "these
+	// rows are one tree" needs a single root to point at, and prepending one is cheaper
+	// and safer than renumbering every level (a renumber makes every top-level block a
+	// root, which is a different document). NOT to be confused with ROLE_DOCUMENT below,
+	// which is an attributes['role'] value on a `metadata` blob saying the blob IS the
+	// whole document; this is a block element_type.
+	static constexpr const char *TYPE_DOCUMENT = "document";
 	static constexpr const char *TYPE_HEADING = "heading";
 	static constexpr const char *TYPE_PARAGRAPH = "paragraph";
 	// A block-level text run with NO paragraph semantics -- Pandoc's `Plain`, and

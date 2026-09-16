@@ -13,7 +13,9 @@ STRUCT(
     kind VARCHAR,                       -- 'block', 'inline' or 'value'
     element_type VARCHAR,               -- Element type identifier
     content VARCHAR,                    -- Primary content
-    level INTEGER,                      -- Structural depth, ALWAYS explicit; top level is 1, never NULL
+    level INTEGER,                      -- Structural depth, ALWAYS explicit; top level is 1, never NULL.
+                                        -- 0 is the OPTIONAL explicit document root: one kind='block'
+                                        -- element_type='document' element, in first position, and nothing else.
     encoding VARCHAR,                   -- Content encoding: 'text', 'json', 'yaml', 'html', 'xml'
     attributes MAP(VARCHAR, VARCHAR),   -- Type-specific metadata
     element_order INTEGER               -- Position in document (0-indexed)
@@ -522,7 +524,9 @@ SELECT duck_blocks_merge(
 
 The deterministic fixes for the list-level validation rules: wraps orphan runs in their
 implicit parent (`list_item` → `list`, `caption` → `figure`, an inline run → `plain`),
-rebases levels so the shallowest is 1, collapses level jumps, and renumbers
+rebases levels so the shallowest is 1 (a document whose first element is a level-0
+`document` root is left as it is, since rebasing would demote the root and sink
+everything beneath it), collapses level jumps, and renumbers
 `element_order` from 0. Structure first, numbering last. Idempotent. Never changes an
 existing element's `content`, `attributes` or `element_type` and never removes one; a
 per-element error (unknown kind, empty element_type, unknown encoding) is left for

@@ -244,6 +244,7 @@ now rejects a NULL level outright.
 
 | Type | Description | level Usage | encoding Values | Key Attributes |
 |------|-------------|-------------|-----------------|----------------|
+| `document` | The document itself, as an **optional** explicit root — the one element allowed shallower than the top | **0**, and only 0; first element, at most one | — (carries no content) | |
 | `heading` | Section heading | depth (top level 1) | `text` | `heading_level` (1-6) |
 | `paragraph` | Text paragraph | depth (top level 1) | `text`, `markdown` | |
 | `plain` | Block-level text run with NO paragraph semantics | depth (top level 1) | `text` | |
@@ -752,13 +753,44 @@ blocks, which is the normal case and was in none of its fixtures.
 blob.** `level` is not a claim of depth *inside* something — it is the absence of
 nesting. A frontmatter blob sits at the top level of its document exactly as the first
 paragraph does, and an `hr` and a top-level `kind='value'` field carry 1 for the same
-reason. There is no level 0: nothing is shallower than the top, and
-`duck_blocks_validate()` rejects it.
+reason.
 
-> The rule stands on the definition of the field and needs no further argument: `level`
-> is depth in a depth-first ordering, the top of that ordering is 1, and 0 names a place
-> the ordering does not have. A carve-out would have had this document bless a number
-> with no meaning in the rule that defines the field.
+**Level 0 is the OPTIONAL explicit document root, and nothing else** (Teague's ruling,
+2026-09-16). One `kind='block'`, `element_type='document'` element, in first position,
+standing for the document itself. It is optional: a document without it is unchanged and
+equally valid, which is every document written before this rule. A `metadata` blob at 0
+is still rejected — it is a top-level blob, not the document — and so is a second level-0
+row, a level-0 row anywhere but first, and any negative level.
+
+> **Why the top is 1 and the root is 0.** `level` is depth in a depth-first ordering, and
+> the top of that ordering is 1 — that is what makes a top-level paragraph and a
+> frontmatter blob agree without either one knowing about the other. Numbering the top 1
+> leaves exactly one number free *above* it, and the document is the one thing there can
+> be only one of. So 0 does not name "a place the ordering does not have": it names the
+> ordering's own container.
+>
+> **Why prepend rather than renumber.** A consumer whose contract is "these rows are one
+> tree" needs a single root to point at. duckent refuses a relation whose first row is not
+> its root, and duck_blocks documents are forests of top-level blocks. Shifting every
+> level down by one (`level - 1`) produces a relation whose *every* top-level block is a
+> root, which is a different document and passes only where the consumer's own
+> well-formedness check is too weak to notice. Adding the row costs one element and
+> changes nothing else.
+>
+> **This was NOT given a version number.** It is recorded as an amendment to 1.4 rather
+> than as 1.5, because the fleet had just finished moving to 1.4 and another re-vendor
+> cost more than the signal was worth (Teague: "add it to 1.4, we don't need to churn
+> versions any more"). The consequence is stated rather than hidden: two builds can both
+> report `SPEC_VERSION` 1.4 and disagree about whether a level-0 root is valid. A consumer
+> that must know tests for `TYPE_DOCUMENT` in its vendored header instead of reading the
+> version.
+>
+> **The previous ruling, kept visible because it was argued and then overturned.** This
+> document said "there is no level 0: nothing is shallower than the top", and that a
+> carve-out would bless a number with no meaning in the rule defining the field. The
+> reasoning was sound on its own terms and wrong about the requirement: it treated 0 as
+> a *depth* — a place inside the document — when the thing that needed naming was the
+> document. What follows is that ruling's own correction note, preserved.
 >
 > **A NOTE ON HOW THIS WAS DECIDED, because the reasoning published here was wrong
 > before it was corrected.** The ruling originally argued that the producer's `level`
@@ -861,6 +893,11 @@ per-type exceptions.**
 a child is its parent's level + 1; siblings share a level. Together, `level` and
 adjacency describe the entire tree — that is the whole reason the field exists, and
 why it cannot be optional. An element without a level cannot be placed.
+
+The one exception is the optional explicit document root: a single `kind='block'`,
+`element_type='document'` element at level 0, in first position, standing for the
+document that contains the top level. See "Level 0 is the OPTIONAL explicit document
+root" above.
 
 ```
 heading      1
@@ -1318,7 +1355,7 @@ by `duck_blocks_validate` with `field = 'list'`, and each has a deterministic re
 | rule | error message | repair |
 |---|---|---|
 | L1 `element_order` is dense from 0 in list order | `element_order starts at N; must start at 0` / `element_order gap after N` | renumber in list order |
-| L2 the shallowest element is at level 1 | `shallowest element is at level N; top level is 1` | subtract N-1 from every level |
+| L2 the shallowest element is at level 1, or at level 0 when the document carries its explicit root | `shallowest element is at level N; top level is 1` | subtract N-1 from every level; a document whose first element is a level-0 `document` block is left alone |
 | L3 a level never jumps by more than one from the previous element | `level jumps from N to M; ...` | subtract the excess from the jumped element and everything under it |
 | L4 an element that requires an ancestor has one | `list_item at N has no list ancestor` (likewise `caption`) | wrap the run in its implicit parent |
 | L5 an inline element has a block or `value` above it (a value's inline children belong to it) | `inline at N has no block or value parent` | wrap the run in `plain` |
@@ -1362,7 +1399,11 @@ Excerpt:
 CREATE OR REPLACE MACRO duck_block_is_valid(elem) AS (
     elem.kind IN ('block', 'inline', 'value')  -- omitting 'value' rejects all metadata
     AND elem.element_type IS NOT NULL
-    AND elem.level >= 1        -- explicit structural depth, never NULL
+    -- explicit structural depth, never NULL. Level 0 is the document root and only
+    -- that shape; that it is the FIRST element, and the only one, is a list-level
+    -- rule (L2) this per-element macro cannot see.
+    AND (elem.level >= 1
+         OR (elem.level = 0 AND elem.kind = 'block' AND elem.element_type = 'document'))
     AND elem.element_order >= 0
     AND (
         elem.kind != 'block'
