@@ -103,6 +103,9 @@ void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &
 		std::set<int32_t> seen_orders;
 		// Depth of the previous element, for the descend-by-one rule below.
 		int32_t prev_level = 0;
+		// First non-NULL element in list order: the only position a level-0 document
+		// root may occupy, which is also what makes "at most one" fall out for free.
+		bool first_element = true;
 
 		for (auto &block : blocks_list) {
 			if (block.IsNull()) {
@@ -133,12 +136,27 @@ void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &
 					errors.push_back(Value::STRUCT(std::move(error_values)));
 				} else {
 					const int32_t lvl = lvl_children[BlockTypes::LEVEL_IDX].GetValue<int32_t>();
-					if (lvl < 1) {
+					// Level 0 is the OPTIONAL explicit document root, and nothing else. It is
+					// the one place shallower than the top: a single block row of element_type
+					// `document` in first position, standing for the document itself, so a
+					// consumer needing one root per document has one without renumbering
+					// anything (a tree contract over ordered rows -- duckent -- refuses a
+					// relation whose first row is not its root). Every other element still
+					// starts at 1, which is why `metadata` at 0 stays invalid: it is a
+					// top-level blob, not the document. Teague's ruling, 2026-09-16; the
+					// 1-based top was chosen to leave 0 free for exactly this.
+					const bool is_document_root = lvl == 0 && first_element &&
+					                              kind == BlockTypes::KIND_BLOCK &&
+					                              element_type == BlockTypes::TYPE_DOCUMENT;
+					if (lvl < 0 || (lvl == 0 && !is_document_root)) {
 						child_list_t<Value> error_values;
 						error_values.push_back(make_pair("element_order", Value(element_order)));
 						error_values.push_back(make_pair("field", Value("level")));
 						error_values.push_back(make_pair(
-						    "message", Value("level " + std::to_string(lvl) + " is below 1; top level is 1")));
+						    "message",
+						    Value("level " + std::to_string(lvl) +
+						          " is below 1; top level is 1, and level 0 is only the document root: one "
+						          "kind='block' element_type='document' element in first position")));
 						errors.push_back(Value::STRUCT(std::move(error_values)));
 					} else if (prev_level > 0 && lvl > prev_level + 1) {
 						// Depth-first ordering descends one level at a time. A jump means
@@ -157,6 +175,7 @@ void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &
 					prev_level = lvl;
 				}
 			}
+			first_element = false;
 
 			// Check kind is valid
 			if (!kind.empty() && VALID_KINDS.find(kind) == VALID_KINDS.end()) {

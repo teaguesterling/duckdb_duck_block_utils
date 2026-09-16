@@ -744,3 +744,144 @@ SELECT len(duck_blocks_lint([{'kind':'block','element_type':'table','content':'[
 # the case that decides it -- that is the fourth column above, and it is the one
 # that would have caught a rule keyed on `encoding='json'` alone, since the native
 # schema is also JSON.
+
+# ============================================================================
+# THE EXPLICIT DOCUMENT ROOT (level 0), Teague's ruling 2026-09-16.
+#
+# Level 0 is the OPTIONAL document root and nothing else: one kind='block'
+# element_type='document' row in FIRST position. Everything else still starts at 1.
+# The point of the shape is that a consumer whose contract is "these rows are one
+# tree" gets a single root without renumbering -- shifting levels down by one would
+# make every top-level block a root, which is a different document.
+#
+# DISCRIMINATING: builders_v2.test asserts a `metadata` row at level 0 is INVALID,
+# and that assertion must keep failing here, or this change is indistinguishable
+# from "the validator got laxer about level 0", which is the wrong fix to the same
+# symptom.
+# ============================================================================
+
+# The root is accepted, and the document beneath it is unchanged
+query I
+SELECT duck_blocks_validate([
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'heading','content':'H','level':1,'encoding':'text','attributes':MAP{'heading_level':'1'},'element_order':1}::duck_block,
+    {'kind':'block','element_type':'paragraph','content':'p','level':1,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+]).valid;
+----
+true
+
+# A document without the root is still valid: this rule adds a shape, it does not require one
+query I
+SELECT duck_blocks_validate([
+    {'kind':'block','element_type':'heading','content':'H','level':1,'encoding':'text','attributes':MAP{'heading_level':'1'},'element_order':0}::duck_block
+]).valid;
+----
+true
+
+# NOT FIRST: level 0 anywhere but position one is rejected
+query I
+SELECT duck_blocks_validate([
+    {'kind':'block','element_type':'paragraph','content':'p','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block
+]).valid;
+----
+false
+
+# AT MOST ONE: a second root is rejected (it is not in first position)
+query I
+SELECT duck_blocks_validate([
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block
+]).valid;
+----
+false
+
+# ONLY `document`: a first-position block of another type at level 0 is rejected
+query I
+SELECT duck_blocks_validate([
+    {'kind':'block','element_type':'paragraph','content':'p','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block
+]).valid;
+----
+false
+
+# ONLY kind='block': a value row at level 0 is rejected
+query I
+SELECT duck_blocks_validate([
+    {'kind':'value','element_type':'document','content':'x','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block
+]).valid;
+----
+false
+
+# Negative levels remain rejected
+query I
+SELECT duck_blocks_validate([
+    {'kind':'block','element_type':'document','content':'','level':-1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block
+]).valid;
+----
+false
+
+# The refusal names what level 0 is for, rather than only that it is below 1
+query I
+SELECT duck_blocks_validate([
+    {'kind':'block','element_type':'metadata','content':'t','level':0,'encoding':'yaml','attributes':MAP{},'element_order':0}::duck_block
+]).errors[1].message LIKE '%level 0 is only the document root%';
+----
+true
+
+# REPAIR LEAVES A VALID ROOT ALONE. Rebasing it would hand back a document whose root
+# became an ordinary top-level block and whose every other element sank a level --
+# repair undoing the structure the producer just declared.
+query II
+SELECT list_transform(duck_blocks_repair([
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'heading','content':'H','level':1,'encoding':'text','attributes':MAP{'heading_level':'1'},'element_order':1}::duck_block
+]), lambda e: e.level),
+       duck_blocks_validate(duck_blocks_repair([
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'heading','content':'H','level':1,'encoding':'text','attributes':MAP{'heading_level':'1'},'element_order':1}::duck_block
+])).valid;
+----
+[0, 1]	true
+
+# DISCRIMINATING: repair still rebases a document with NO root, so the exemption is
+# the root's and not a blanket "stop rebasing".
+query I
+SELECT list_transform(duck_blocks_repair([
+    {'kind':'block','element_type':'paragraph','content':'a','level':2,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block
+]), lambda e: e.level);
+----
+[1]
+
+# The root renders nothing of its own: adding it does not change the document's text
+query I
+SELECT duck_blocks_to_text([
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'heading','content':'H','level':1,'encoding':'text','attributes':MAP{'heading_level':'1'},'element_order':1}::duck_block,
+    {'kind':'block','element_type':'paragraph','content':'p','level':1,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+]) = duck_blocks_to_text([
+    {'kind':'block','element_type':'heading','content':'H','level':1,'encoding':'text','attributes':MAP{'heading_level':'1'},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'paragraph','content':'p','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block
+]);
+----
+true
+
+# The root is an ordinary container block, so it is body exactly as `div` is
+query I
+SELECT len(duck_blocks_body([
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'heading','content':'H','level':1,'encoding':'text','attributes':MAP{'heading_level':'1'},'element_order':1}::duck_block,
+    {'kind':'block','element_type':'paragraph','content':'p','level':1,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+]));
+----
+3
+
+# A metadata blob under the root is still excluded from body, with its value subtree
+query I
+SELECT list_transform(duck_blocks_body([
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'metadata','content':'title: T','level':1,'encoding':'yaml','attributes':MAP{},'element_order':1}::duck_block,
+    {'kind':'value','element_type':'string','content':'T','level':2,'encoding':'text','attributes':MAP{'key':'title'},'element_order':2}::duck_block,
+    {'kind':'block','element_type':'paragraph','content':'p','level':1,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block
+]), lambda e: e.element_type);
+----
+[document, paragraph]

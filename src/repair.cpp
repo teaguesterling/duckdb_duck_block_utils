@@ -143,8 +143,18 @@ void WrapOrphans(vector<El> &els) {
 	els.swap(out);
 }
 
-// Pass 2 (L2): the shallowest element sits at 1.
+// Pass 2 (L2): the shallowest element sits at 1, unless the document carries its
+// explicit root. A level-0 `document` block in first position is the one legal thing
+// shallower than the top (2026-09-16), so rebasing it would REMOVE the structure the
+// producer just declared -- repair would hand back a document whose root became an
+// ordinary top-level block and whose every other element sank a level.
 void Rebase(vector<El> &els) {
+	const bool has_document_root = !els.empty() && els.front().level == 0 &&
+	                               els.front().kind == BlockTypes::KIND_BLOCK &&
+	                               els.front().type == BlockTypes::TYPE_DOCUMENT;
+	if (has_document_root) {
+		return;
+	}
 	bool seen = false;
 	int32_t min_level = 0;
 	for (auto &e : els) {
