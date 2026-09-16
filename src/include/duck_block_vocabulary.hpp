@@ -439,13 +439,11 @@ struct DuckBlockVocabulary {
 	//   1.4 (amended 2026-09-16)  THE EXPLICIT DOCUMENT ROOT. TYPE_DOCUMENT added, and
 	//               level 0 is now legal for kind='block' element_type='document' rows
 	//               and nothing else. A relation may carry SEVERAL -- one per document,
-	//               each opening the next -- so such a row is legal wherever it appears. Everything else still starts at 1, so every
-	//               document valid before this is valid after it, unchanged -- the
-	//               change only makes a previously-refused shape legal. Teague's
-	//               ruling: the 1-based top was chosen to leave 0 free for this, and
-	//               a consumer needing one root per document (duckent's tree contract)
-	//               should prepend the row rather than renumber levels, since
-	//               renumbering turns every top-level block into a root.
+	//               each opening the next -- so such a row is legal wherever it appears. Everything else still starts
+	//               at 1, so every document valid before this is valid after it, unchanged -- the change only makes a
+	//               previously-refused shape legal. Teague's ruling: the 1-based top was chosen to leave 0 free for
+	//               this, and a consumer needing one root per document (duckent's tree contract) should prepend the row
+	//               rather than renumber levels, since renumbering turns every top-level block into a root.
 	//               DELIBERATELY NOT a version bump: this is recorded here rather than
 	//               as 1.5 because the fleet had just finished moving to 1.4 and the
 	//               cost of another re-vendor outweighed the signal (Teague, "add it to
