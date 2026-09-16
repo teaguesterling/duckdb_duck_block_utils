@@ -145,18 +145,16 @@ void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &
 					// starts at 1, which is why `metadata` at 0 stays invalid: it is a
 					// top-level blob, not the document. Teague's ruling, 2026-09-16; the
 					// 1-based top was chosen to leave 0 free for exactly this.
-					const bool is_document_root = lvl == 0 && first_element &&
-					                              kind == BlockTypes::KIND_BLOCK &&
+					const bool is_document_root = lvl == 0 && first_element && kind == BlockTypes::KIND_BLOCK &&
 					                              element_type == BlockTypes::TYPE_DOCUMENT;
 					if (lvl < 0 || (lvl == 0 && !is_document_root)) {
 						child_list_t<Value> error_values;
 						error_values.push_back(make_pair("element_order", Value(element_order)));
 						error_values.push_back(make_pair("field", Value("level")));
 						error_values.push_back(make_pair(
-						    "message",
-						    Value("level " + std::to_string(lvl) +
-						          " is below 1; top level is 1, and level 0 is only the document root: one "
-						          "kind='block' element_type='document' element in first position")));
+						    "message", Value("level " + std::to_string(lvl) +
+						                     " is below 1; top level is 1, and level 0 is only the document root: one "
+						                     "kind='block' element_type='document' element in first position")));
 						errors.push_back(Value::STRUCT(std::move(error_values)));
 					} else if (prev_level > 0 && lvl > prev_level + 1) {
 						// Depth-first ordering descends one level at a time. A jump means
