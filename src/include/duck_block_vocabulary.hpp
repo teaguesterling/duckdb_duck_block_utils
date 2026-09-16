@@ -437,9 +437,9 @@ struct DuckBlockVocabulary {
 	//               PREDICATE_REVISION added (see below). Additive.
 	//
 	//   1.4 (amended 2026-09-16)  THE EXPLICIT DOCUMENT ROOT. TYPE_DOCUMENT added, and
-	//               level 0 is now legal for exactly one element: a kind='block'
-	//               element_type='document' row in first position, standing for the
-	//               document itself. Everything else still starts at 1, so every
+	//               level 0 is now legal for kind='block' element_type='document' rows
+	//               and nothing else. A relation may carry SEVERAL -- one per document,
+	//               each opening the next -- so such a row is legal wherever it appears. Everything else still starts at 1, so every
 	//               document valid before this is valid after it, unchanged -- the
 	//               change only makes a previously-refused shape legal. Teague's
 	//               ruling: the 1-based top was chosen to leave 0 free for this, and
@@ -479,9 +479,11 @@ struct DuckBlockVocabulary {
 	// Block type names
 	// ========================================================================
 	// The document itself, as an OPTIONAL explicit root at level 0 -- the one element
-	// allowed shallower than the top level. A producer that emits it emits exactly one,
-	// in first position; everything else still starts at 1, so a document without it is
-	// unchanged and equally valid. It exists because a consumer whose contract is "these
+	// allowed shallower than the top level. A relation may carry SEVERAL, one per
+	// document (a block list can hold many documents; that is what the filename
+	// provenance field is for), and each root opens the next, so such a row is legal
+	// wherever it appears. Everything else still starts at 1, so a document without a
+	// root is unchanged and equally valid. It exists because a consumer whose contract is "these
 	// rows are one tree" needs a single root to point at, and prepending one is cheaper
 	// and safer than renumbering every level (a renumber makes every top-level block a
 	// root, which is a different document). NOT to be confused with ROLE_DOCUMENT below,
