@@ -244,7 +244,7 @@ now rejects a NULL level outright.
 
 | Type | Description | level Usage | encoding Values | Key Attributes |
 |------|-------------|-------------|-----------------|----------------|
-| `document` | The document itself, as an **optional** explicit root — the one element allowed shallower than the top | **0**, and only 0; first element, at most one | — (carries no content) | |
+| `document` | The document itself, as an **optional** explicit root — the one element allowed shallower than the top | **0**, and only 0; several permitted, one per document | — (carries no content) | |
 | `heading` | Section heading | depth (top level 1) | `text` | `heading_level` (1-6) |
 | `paragraph` | Text paragraph | depth (top level 1) | `text`, `markdown` | |
 | `plain` | Block-level text run with NO paragraph semantics | depth (top level 1) | `text` | |
@@ -755,12 +755,17 @@ nesting. A frontmatter blob sits at the top level of its document exactly as the
 paragraph does, and an `hr` and a top-level `kind='value'` field carry 1 for the same
 reason.
 
-**Level 0 is the OPTIONAL explicit document root, and nothing else** (Teague's ruling,
-2026-09-16). One `kind='block'`, `element_type='document'` element, in first position,
+**Level 0 is the OPTIONAL explicit document root, and nothing else may sit there**
+(Teague's ruling, 2026-09-16). A `kind='block'`, `element_type='document'` element,
 standing for the document itself. It is optional: a document without it is unchanged and
-equally valid, which is every document written before this rule. A `metadata` blob at 0
-is still rejected — it is a top-level blob, not the document — and so is a second level-0
-row, a level-0 row anywhere but first, and any negative level.
+equally valid, which is every document written before this rule.
+
+**A relation may carry SEVERAL roots.** One block list can hold many documents — that is
+what the `filename` provenance field is for — and each level-0 root opens the next one,
+so such a row is legal wherever it appears, not only in first position. What stays
+rejected at level 0 is every *other* row: a `metadata` blob at 0 is a top-level blob and
+not a document, as is a `kind='value'` row or any other block type. Negative levels
+remain rejected outright.
 
 > **Why the top is 1 and the root is 0.** `level` is depth in a depth-first ordering, and
 > the top of that ordering is 1 — that is what makes a top-level paragraph and a
@@ -894,10 +899,10 @@ a child is its parent's level + 1; siblings share a level. Together, `level` and
 adjacency describe the entire tree — that is the whole reason the field exists, and
 why it cannot be optional. An element without a level cannot be placed.
 
-The one exception is the optional explicit document root: a single `kind='block'`,
-`element_type='document'` element at level 0, in first position, standing for the
-document that contains the top level. See "Level 0 is the OPTIONAL explicit document
-root" above.
+The one exception is the optional explicit document root: a `kind='block'`,
+`element_type='document'` element at level 0, standing for the document that contains the
+top level. A relation may carry several, one per document, each opening the next. See
+"Level 0 is the OPTIONAL explicit document root" above.
 
 ```
 heading      1
@@ -1355,7 +1360,7 @@ by `duck_blocks_validate` with `field = 'list'`, and each has a deterministic re
 | rule | error message | repair |
 |---|---|---|
 | L1 `element_order` is dense from 0 in list order | `element_order starts at N; must start at 0` / `element_order gap after N` | renumber in list order |
-| L2 the shallowest element is at level 1, or at level 0 when the document carries its explicit root | `shallowest element is at level N; top level is 1` | subtract N-1 from every level; a document whose first element is a level-0 `document` block is left alone |
+| L2 the shallowest element is at level 1, or at level 0 where the relation carries explicit `document` roots | `shallowest element is at level N; top level is 1` | subtract N-1 from every level; a relation containing a level-0 `document` block is left alone |
 | L3 a level never jumps by more than one from the previous element | `level jumps from N to M; ...` | subtract the excess from the jumped element and everything under it |
 | L4 an element that requires an ancestor has one | `list_item at N has no list ancestor` (likewise `caption`) | wrap the run in its implicit parent |
 | L5 an inline element has a block or `value` above it (a value's inline children belong to it) | `inline at N has no block or value parent` | wrap the run in `plain` |
@@ -1400,8 +1405,7 @@ CREATE OR REPLACE MACRO duck_block_is_valid(elem) AS (
     elem.kind IN ('block', 'inline', 'value')  -- omitting 'value' rejects all metadata
     AND elem.element_type IS NOT NULL
     -- explicit structural depth, never NULL. Level 0 is the document root and only
-    -- that shape; that it is the FIRST element, and the only one, is a list-level
-    -- rule (L2) this per-element macro cannot see.
+    -- that shape; a relation may carry several, one per document.
     AND (elem.level >= 1
          OR (elem.level = 0 AND elem.kind = 'block' AND elem.element_type = 'document'))
     AND elem.element_order >= 0
