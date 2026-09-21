@@ -817,9 +817,10 @@ document — one rooted list — and how a *source file* maps to documents is a 
 decision the core rule does not make. A reader may emit one document per file (sitting_duck
 reads each source file as a single document), split one file into several (a YAML stream
 separated by `---`, a concatenated mailbox, a notebook of cells), or gather several files
-into one. The validator only ever sees a single document — one relation, at most one root —
-so several documents out of one file are several such documents, each its own rooted list,
-never several roots in one list; the "at most one root, first position" rule is unchanged.
+into one. A relation may carry several such documents: each `document@0` row
+opens one, and the rows beneath it until the next root belong to it — which is why a root
+is legal wherever it appears and not only in first position. What a *document* may not
+have is a second root.
 A reader that must tell same-file documents apart carries that in provenance — an ordinal,
 or a byte offset on the root's attributes — which the core does not mandate, because
 different sources demarcate differently. For a reader that maps one file to one document
