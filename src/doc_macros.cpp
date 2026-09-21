@@ -437,15 +437,17 @@ void DocMacros::Register(ExtensionLoader &loader) {
 	// 2. The document-query macros, at LOAD (see above)
 	for (idx_t i = 0; DOC_SCALAR_MACROS[i].name != nullptr; i++) {
 		auto info = CreateScalarMacroInfo(DOC_SCALAR_MACROS[i]);
-		info->descriptions.push_back(
-		    FunctionDescription(FunctionNullHandling::DEFAULT_NULL_HANDLING, {"duck_block_utils"}));
+		FunctionDescription desc;
+		desc.categories = {"duck_block_utils"};
+		info->descriptions.push_back(desc);
 		info->on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
 		loader.RegisterFunction(*info);
 	}
 	for (idx_t i = 0; DOC_TABLE_MACROS[i].name != nullptr; i++) {
 		auto info = DefaultTableFunctionGenerator::CreateTableMacroInfo(DOC_TABLE_MACROS[i]);
-		info->descriptions.push_back(
-		    FunctionDescription(FunctionNullHandling::DEFAULT_NULL_HANDLING, {"duck_block_utils"}));
+		FunctionDescription desc;
+		desc.categories = {"duck_block_utils"};
+		info->descriptions.push_back(desc);
 		info->on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
 		loader.RegisterFunction(*info);
 	}
