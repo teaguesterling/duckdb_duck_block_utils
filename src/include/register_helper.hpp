@@ -14,8 +14,11 @@ inline void RegisterScalarWithDesc(ExtensionLoader &loader, ScalarFunction fn, v
                                    vector<string> examples) {
 	CreateScalarFunctionInfo info(std::move(fn));
 	info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
-	vector<string> categories = {"duck_block_utils"};
-	FunctionDescription desc(std::move(params), std::move(desc_str), std::move(examples), std::move(categories));
+	FunctionDescription desc;
+	desc.parameter_names = std::move(params);
+	desc.description = std::move(desc_str);
+	desc.examples = std::move(examples);
+	desc.categories = {"duck_block_utils"};
 	info.descriptions.push_back(std::move(desc));
 	loader.RegisterFunction(std::move(info));
 }
@@ -24,8 +27,11 @@ inline void RegisterScalarSetWithDesc(ExtensionLoader &loader, ScalarFunctionSet
                                       string desc_str, vector<string> examples) {
 	CreateScalarFunctionInfo info(std::move(fn_set));
 	info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
-	vector<string> categories = {"duck_block_utils"};
-	FunctionDescription desc(std::move(params), std::move(desc_str), std::move(examples), std::move(categories));
+	FunctionDescription desc;
+	desc.parameter_names = std::move(params);
+	desc.description = std::move(desc_str);
+	desc.examples = std::move(examples);
+	desc.categories = {"duck_block_utils"};
 	info.descriptions.push_back(std::move(desc));
 	loader.RegisterFunction(std::move(info));
 }
@@ -34,8 +40,11 @@ inline void RegisterTableWithDesc(ExtensionLoader &loader, TableFunction fn, vec
                                   vector<string> examples) {
 	CreateTableFunctionInfo info(std::move(fn));
 	info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
-	vector<string> categories = {"duck_block_utils"};
-	FunctionDescription desc(std::move(params), std::move(desc_str), std::move(examples), std::move(categories));
+	FunctionDescription desc;
+	desc.parameter_names = std::move(params);
+	desc.description = std::move(desc_str);
+	desc.examples = std::move(examples);
+	desc.categories = {"duck_block_utils"};
 	info.descriptions.push_back(std::move(desc));
 	loader.RegisterFunction(std::move(info));
 }
@@ -44,8 +53,11 @@ inline void RegisterTableSetWithDesc(ExtensionLoader &loader, TableFunctionSet f
                                      string desc_str, vector<string> examples) {
 	CreateTableFunctionInfo info(std::move(fn_set));
 	info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
-	vector<string> categories = {"duck_block_utils"};
-	FunctionDescription desc(std::move(params), std::move(desc_str), std::move(examples), std::move(categories));
+	FunctionDescription desc;
+	desc.parameter_names = std::move(params);
+	desc.description = std::move(desc_str);
+	desc.examples = std::move(examples);
+	desc.categories = {"duck_block_utils"};
 	info.descriptions.push_back(std::move(desc));
 	loader.RegisterFunction(std::move(info));
 }
