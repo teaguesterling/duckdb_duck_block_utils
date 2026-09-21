@@ -1,6 +1,7 @@
 #include "normalize.hpp"
 #include "duck_block_normalize.hpp"
 #include "block_types.hpp"
+#include "register_helper.hpp"
 #include "duckdb/common/types/value.hpp"
 
 namespace duckdb {
@@ -43,7 +44,9 @@ static void DbBlocksNormalizeFun(DataChunk &args, ExpressionState &state, Vector
 void NormalizeFunctions::Register(ExtensionLoader &loader) {
 	auto duck_block_list_type = BlockTypes::DuckBlockListType();
 	ScalarFunction fn("duck_blocks_normalize", {duck_block_list_type}, duck_block_list_type, DbBlocksNormalizeFun);
-	loader.RegisterFunction(fn);
+	RegisterScalarWithDesc(loader, fn, {"blocks"},
+	                       "Normalize block hierarchy by collapsing lone plain blocks into parent.",
+	                       {"duck_blocks_normalize(blocks)"});
 }
 
 } // namespace duckdb

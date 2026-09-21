@@ -2,6 +2,7 @@
 #include "duckdb_compat.hpp"
 #include "pandoc_convert_util.hpp"
 #include "block_types.hpp"
+#include "register_helper.hpp"
 #include "duckdb/common/types/value.hpp"
 
 #include <sstream>
@@ -853,44 +854,41 @@ void PandocInlineConvert::Register(ExtensionLoader &loader) {
 	auto duck_block_list_type = BlockTypes::DuckBlockListType();
 	auto duck_block_nested_list_type = LogicalType::LIST(duck_block_list_type);
 
-	// Registered through a local rather than inline, so SetFallible can run BEFORE
-	// the function is handed over. Every converter here can throw the Pandoc
-	// nesting-depth cap (CheckPandocDepth), and DuckDB v2.0 makes that a DECLARED
-	// property: an undeclared throw becomes "INTERNAL Error: ... the function is not
-	// marked as fallible". It is a RUNTIME contract, so it compiles clean either way
-	// and only shows up as a failing error-path test -- and only on a build with
-	// assertions on, which is why one CI arch can be green and another red on the
-	// same commit. The flag is not new to v2.0: it already exists on the v1.5 pin
-	// (BaseScalarFunction::SetFallible(), function.hpp) and feeds FunctionErrors into
-	// Expression::CanThrow(), which the v1.5 planner already reads in several places
-	// (expression_heuristics, pushdown_outer_join, pushdown_projection, pushdown_get,
-	// adaptive_filter, execute_function) to gate conjunct reordering and filter
-	// pushdown. v2.0 adds ENFORCEMENT of that existing contract; it does not
-	// introduce the contract itself.
-	auto register_fallible = [&loader](ScalarFunction fun) {
-		fun.SetFallible();
-		loader.RegisterFunction(fun);
-	};
-
 	// pandoc_inlines_to_db_inlines(json VARCHAR) -> LIST(duck_block)
-	register_fallible(ScalarFunction("pandoc_inlines_to_db_inlines", {LogicalType::VARCHAR}, duck_block_list_type,
-	                                 PandocInlinesToDbInlinesFun));
+	ScalarFunction inlines_to_db("pandoc_inlines_to_db_inlines", {LogicalType::VARCHAR}, duck_block_list_type,
+	                             PandocInlinesToDbInlinesFun);
+	inlines_to_db.SetFallible();
+	RegisterScalarWithDesc(loader, inlines_to_db, {"json"}, "Parse Pandoc inlines JSON into duck_blocks.",
+	                       {"pandoc_inlines_to_db_inlines('[{\"t\":\"Str\",\"c\":\"hi\"}]')"});
 
 	// duck_blocks_inlines_to_pandoc(LIST(duck_block)) -> VARCHAR (JSON)
-	register_fallible(ScalarFunction("duck_blocks_inlines_to_pandoc", {duck_block_list_type}, LogicalType::VARCHAR,
-	                                 DbInlinesToPandocFun));
+	ScalarFunction inlines_to_pandoc("duck_blocks_inlines_to_pandoc", {duck_block_list_type}, LogicalType::VARCHAR,
+	                                 DbInlinesToPandocFun);
+	inlines_to_pandoc.SetFallible();
+	RegisterScalarWithDesc(loader, inlines_to_pandoc, {"inlines"},
+	                       "Convert inline duck_blocks to Pandoc inlines JSON string.",
+	                       {"duck_blocks_inlines_to_pandoc(inlines)"});
 
 	// duck_blocks_inlines_to_pandoc(LIST(LIST(duck_block))) -> VARCHAR (JSON) - auto-flattening
-	register_fallible(ScalarFunction("duck_blocks_inlines_to_pandoc", {duck_block_nested_list_type},
-	                                 LogicalType::VARCHAR, DbInlinesToPandocNestedFun));
-
+	ScalarFunction nested_inlines_to_pandoc("duck_blocks_inlines_to_pandoc", {duck_block_nested_list_type},
+	                                        LogicalType::VARCHAR, DbInlinesToPandocNestedFun);
+	nested_inlines_to_pandoc.SetFallible();
+	RegisterScalarWithDesc(loader, nested_inlines_to_pandoc, {"nested_inlines"},
+	                       "Convert nested inline duck_blocks to Pandoc inlines JSON string.",
 	// pandoc_inlines_to_text(json VARCHAR) -> VARCHAR
-	register_fallible(
-	    ScalarFunction("pandoc_inlines_to_text", {LogicalType::VARCHAR}, LogicalType::VARCHAR, PandocInlinesToTextFun));
+	ScalarFunction inlines_to_text1("pandoc_inlines_to_text", {LogicalType::VARCHAR}, LogicalType::VARCHAR,
+	                                PandocInlinesToTextFun);
+	inlines_to_text1.SetFallible();
+	RegisterScalarWithDesc(loader, inlines_to_text1, {"json"}, "Extract plain text from Pandoc inlines JSON.",
+	                       {"pandoc_inlines_to_text('[{\"t\":\"Str\",\"c\":\"hi\"}]')"});
 
 	// pandoc_inlines_to_text(json VARCHAR, mode VARCHAR) -> VARCHAR
-	register_fallible(ScalarFunction("pandoc_inlines_to_text", {LogicalType::VARCHAR, LogicalType::VARCHAR},
-	                                 LogicalType::VARCHAR, PandocInlinesToTextFun));
+	ScalarFunction inlines_to_text2("pandoc_inlines_to_text", {LogicalType::VARCHAR, LogicalType::VARCHAR},
+	                                LogicalType::VARCHAR, PandocInlinesToTextFun);
+	inlines_to_text2.SetFallible();
+	RegisterScalarWithDesc(loader, inlines_to_text2, {"json", "mode"},
+	                       "Extract text from Pandoc inlines JSON with rendering mode.",
+	                       {"pandoc_inlines_to_text('[{\"t\":\"Str\",\"c\":\"hi\"}]', 'plain')"});
 }
 
 } // namespace duckdb

@@ -1,6 +1,7 @@
 #include "validation.hpp"
 #include "block_types.hpp"
 #include "pandoc_convert_util.hpp"
+#include "register_helper.hpp"
 #include "duckdb/common/types/value.hpp"
 
 #include <set>
@@ -986,7 +987,8 @@ void ValidationFunctions::Register(ExtensionLoader &loader) {
 	// duck_blocks_validate(blocks LIST(duck_block)) -> STRUCT(valid, errors)
 	auto validate_func =
 	    ScalarFunction("duck_blocks_validate", {duck_block_list_type}, validate_result_type, DbBlocksValidateFun);
-	loader.RegisterFunction(validate_func);
+	RegisterScalarWithDesc(loader, validate_func, {"blocks"}, "Validate structural correctness of block list.",
+	                       {"duck_blocks_validate(blocks)"});
 
 	// Define warning struct type for lint
 	child_list_t<LogicalType> warning_struct_children;
@@ -997,7 +999,8 @@ void ValidationFunctions::Register(ExtensionLoader &loader) {
 
 	// duck_blocks_lint(blocks LIST(duck_block)) -> LIST(STRUCT)
 	auto lint_func = ScalarFunction("duck_blocks_lint", {duck_block_list_type}, warning_list_type, DbBlocksLintFun);
-	loader.RegisterFunction(lint_func);
+	RegisterScalarWithDesc(loader, lint_func, {"blocks"}, "Lint a block list for structural style and issues.",
+	                       {"duck_blocks_lint(blocks)"});
 
 	// Define structure result type
 	child_list_t<LogicalType> structure_result_children;
@@ -1017,7 +1020,8 @@ void ValidationFunctions::Register(ExtensionLoader &loader) {
 	// duck_blocks_structure(blocks LIST(duck_block)) -> STRUCT
 	auto structure_func =
 	    ScalarFunction("duck_blocks_structure", {duck_block_list_type}, structure_result_type, DbBlocksStructureFun);
-	loader.RegisterFunction(structure_func);
+	RegisterScalarWithDesc(loader, structure_func, {"blocks"}, "Analyze structural composition of a block list.",
+	                       {"duck_blocks_structure(blocks)"});
 }
 
 } // namespace duckdb

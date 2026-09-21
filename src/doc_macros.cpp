@@ -1,5 +1,6 @@
 #include "doc_macros.hpp"
 #include "duckdb_compat.hpp"
+#include "register_helper.hpp"
 #include "duckdb/catalog/default/default_functions.hpp"
 #include "duckdb/catalog/default/default_table_functions.hpp"
 #include "duckdb/function/pragma_function.hpp"
@@ -430,15 +431,22 @@ void DocMacros::Register(ExtensionLoader &loader) {
 	auto ensure_ext_func = ScalarFunction("duck_block_ensure_extension", {LogicalType::VARCHAR}, LogicalType::BOOLEAN,
 	                                      DbEnsureExtensionFun);
 	ensure_ext_func.SetStability(FunctionStability::VOLATILE);
-	loader.RegisterFunction(ensure_ext_func);
+	RegisterScalarWithDesc(loader, ensure_ext_func, {"extension_name"}, "Ensure specified extension is loaded.",
+	                       {"duck_block_ensure_extension('json')"});
 
 	// 2. The document-query macros, at LOAD (see above)
 	for (idx_t i = 0; DOC_SCALAR_MACROS[i].name != nullptr; i++) {
 		auto info = CreateScalarMacroInfo(DOC_SCALAR_MACROS[i]);
+		info->descriptions.push_back(
+		    FunctionDescription(FunctionNullHandling::DEFAULT_NULL_HANDLING, {"duck_block_utils"}));
+		info->on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
 		loader.RegisterFunction(*info);
 	}
 	for (idx_t i = 0; DOC_TABLE_MACROS[i].name != nullptr; i++) {
 		auto info = DefaultTableFunctionGenerator::CreateTableMacroInfo(DOC_TABLE_MACROS[i]);
+		info->descriptions.push_back(
+		    FunctionDescription(FunctionNullHandling::DEFAULT_NULL_HANDLING, {"duck_block_utils"}));
+		info->on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
 		loader.RegisterFunction(*info);
 	}
 

@@ -1,5 +1,6 @@
 #include "manipulation.hpp"
 #include "block_types.hpp"
+#include "register_helper.hpp"
 #include "duckdb/common/types/value.hpp"
 #include "duckdb/common/vector_operations/generic_executor.hpp"
 
@@ -250,32 +251,41 @@ void ManipulationFunctions::Register(ExtensionLoader &loader) {
 	auto duck_block_list_type = BlockTypes::DuckBlockListType();
 
 	// duck_blocks_filter(blocks LIST(duck_block), types VARCHAR[]) -> LIST(duck_block)
-	auto filter_func =
-	    ScalarFunction("duck_blocks_filter", {duck_block_list_type, LogicalType::LIST(LogicalType::VARCHAR)},
-	                   duck_block_list_type, DbBlocksFilterFun);
-	loader.RegisterFunction(filter_func);
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_blocks_filter",
+	                                      {duck_block_list_type, LogicalType::LIST(LogicalType::VARCHAR)},
+	                                      duck_block_list_type, DbBlocksFilterFun),
+	                       {"blocks", "types"}, "Filter a list of duck_blocks to only include specified element types.",
+	                       {"duck_blocks_filter(blocks, ['heading', 'paragraph'])"});
 
 	// duck_blocks_exclude(blocks LIST(duck_block), types VARCHAR[]) -> LIST(duck_block)
-	auto exclude_func =
-	    ScalarFunction("duck_blocks_exclude", {duck_block_list_type, LogicalType::LIST(LogicalType::VARCHAR)},
-	                   duck_block_list_type, DbBlocksExcludeFun);
-	loader.RegisterFunction(exclude_func);
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_blocks_exclude",
+	                                      {duck_block_list_type, LogicalType::LIST(LogicalType::VARCHAR)},
+	                                      duck_block_list_type, DbBlocksExcludeFun),
+	                       {"blocks", "types"}, "Exclude specified element types from a list of duck_blocks.",
+	                       {"duck_blocks_exclude(blocks, ['raw', 'metadata'])"});
 
 	// duck_blocks_merge(blocks1 LIST(duck_block), blocks2 LIST(duck_block)) -> LIST(duck_block)
-	auto merge_func = ScalarFunction("duck_blocks_merge", {duck_block_list_type, duck_block_list_type},
-	                                 duck_block_list_type, DbBlocksMergeFun);
-	loader.RegisterFunction(merge_func);
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_blocks_merge", {duck_block_list_type, duck_block_list_type},
+	                                      duck_block_list_type, DbBlocksMergeFun),
+	                       {"blocks1", "blocks2"}, "Merge two lists of duck_blocks and renumber element orders.",
+	                       {"duck_blocks_merge(blocks1, blocks2)"});
 
 	// duck_blocks_reorder(blocks LIST(duck_block)) -> LIST(duck_block)
-	auto reorder_func =
-	    ScalarFunction("duck_blocks_reorder", {duck_block_list_type}, duck_block_list_type, DbBlocksReorderFun);
-	loader.RegisterFunction(reorder_func);
+	RegisterScalarWithDesc(
+	    loader, ScalarFunction("duck_blocks_reorder", {duck_block_list_type}, duck_block_list_type, DbBlocksReorderFun),
+	    {"blocks"}, "Renumber element_order sequentially from 1 for a list of duck_blocks.",
+	    {"duck_blocks_reorder(blocks)"});
 
 	// duck_blocks_slice(blocks LIST(duck_block), start INTEGER, end INTEGER) -> LIST(duck_block)
-	auto slice_func =
-	    ScalarFunction("duck_blocks_slice", {duck_block_list_type, LogicalType::INTEGER, LogicalType::INTEGER},
-	                   duck_block_list_type, DbBlocksSliceFun);
-	loader.RegisterFunction(slice_func);
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_blocks_slice",
+	                                      {duck_block_list_type, LogicalType::INTEGER, LogicalType::INTEGER},
+	                                      duck_block_list_type, DbBlocksSliceFun),
+	                       {"blocks", "start", "end"}, "Slice a list of duck_blocks by 1-based index range.",
+	                       {"duck_blocks_slice(blocks, 1, 5)"});
 }
 
 } // namespace duckdb

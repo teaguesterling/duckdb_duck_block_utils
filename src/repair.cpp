@@ -1,6 +1,7 @@
 #include "repair.hpp"
 #include "block_types.hpp"
 #include "duckdb_compat.hpp"
+#include "register_helper.hpp"
 #include "duckdb/common/types/value.hpp"
 
 namespace duckdb {
@@ -231,8 +232,11 @@ void RepairFunctions::DbBlocksRepairFun(DataChunk &args, ExpressionState &state,
 }
 
 void RepairFunctions::Register(ExtensionLoader &loader) {
-	loader.RegisterFunction(ScalarFunction("duck_blocks_repair", {BlockTypes::DuckBlockListType()},
-	                                       BlockTypes::DuckBlockListType(), DbBlocksRepairFun));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_blocks_repair", {BlockTypes::DuckBlockListType()},
+	                                      BlockTypes::DuckBlockListType(), DbBlocksRepairFun),
+	                       {"blocks"}, "Repair and normalize block structure and levels.",
+	                       {"duck_blocks_repair(blocks)"});
 }
 
 } // namespace duckdb
