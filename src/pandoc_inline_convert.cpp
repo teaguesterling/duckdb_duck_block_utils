@@ -875,6 +875,8 @@ void PandocInlineConvert::Register(ExtensionLoader &loader) {
 	nested_inlines_to_pandoc.SetFallible();
 	RegisterScalarWithDesc(loader, nested_inlines_to_pandoc, {"nested_inlines"},
 	                       "Convert nested inline duck_blocks to Pandoc inlines JSON string.",
+	                       {"duck_blocks_inlines_to_pandoc(nested_inlines)"});
+
 	// pandoc_inlines_to_text(json VARCHAR) -> VARCHAR
 	ScalarFunction inlines_to_text1("pandoc_inlines_to_text", {LogicalType::VARCHAR}, LogicalType::VARCHAR,
 	                                PandocInlinesToTextFun);
