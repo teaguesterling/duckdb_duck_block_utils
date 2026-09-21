@@ -748,8 +748,10 @@ SELECT len(duck_blocks_lint([{'kind':'block','element_type':'table','content':'[
 # ============================================================================
 # THE EXPLICIT DOCUMENT ROOT (level 0), Teague's ruling 2026-09-16.
 #
-# Level 0 is the OPTIONAL document root and nothing else: one kind='block'
-# element_type='document' row in FIRST position. Everything else still starts at 1.
+# Level 0 is the OPTIONAL document root and nothing else may sit there. A relation may
+# carry SEVERAL -- one block list can hold many documents, which is what the filename
+# provenance field is for -- and each root opens the next, so such a row is legal
+# wherever it appears. Everything else still starts at 1.
 # The point of the shape is that a consumer whose contract is "these rows are one
 # tree" gets a single root without renumbering -- shifting levels down by one would
 # make every top-level block a root, which is a different document.
@@ -778,25 +780,37 @@ SELECT duck_blocks_validate([
 ----
 true
 
-# NOT FIRST: level 0 anywhere but position one is rejected
+# NOT FIRST IS FINE: a root opens the next document, wherever it appears
 query I
 SELECT duck_blocks_validate([
     {'kind':'block','element_type':'paragraph','content':'p','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
     {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block
 ]).valid;
 ----
-false
+true
 
-# AT MOST ONE: a second root is rejected (it is not in first position)
+# SEVERAL ARE PERMITTED: two documents in one relation
 query I
 SELECT duck_blocks_validate([
     {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
     {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block
 ]).valid;
 ----
-false
+true
 
-# ONLY `document`: a first-position block of another type at level 0 is rejected
+# A real two-document relation: root, its blocks, then the next root and its blocks
+query I
+SELECT duck_blocks_validate([
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'heading','content':'A','level':1,'encoding':'text','attributes':MAP{'heading_level':'1'},'element_order':1}::duck_block,
+    {'kind':'inline','element_type':'text','content':'a','level':2,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block,
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block,
+    {'kind':'block','element_type':'paragraph','content':'b','level':1,'encoding':'text','attributes':MAP{},'element_order':4}::duck_block
+]).valid;
+----
+true
+
+# ONLY `document`: any other block type at level 0 is rejected, wherever it sits
 query I
 SELECT duck_blocks_validate([
     {'kind':'block','element_type':'paragraph','content':'p','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block
@@ -819,6 +833,17 @@ SELECT duck_blocks_validate([
 ]).valid;
 ----
 false
+
+# DISCRIMINATING: repair leaves BOTH roots of a two-document relation alone
+query I
+SELECT list_transform(duck_blocks_repair([
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'heading','content':'A','level':1,'encoding':'text','attributes':MAP{'heading_level':'1'},'element_order':1}::duck_block,
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block,
+    {'kind':'block','element_type':'paragraph','content':'b','level':1,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block
+]), lambda e: e.level);
+----
+[0, 1, 0, 1]
 
 # The refusal names what level 0 is for, rather than only that it is below 1
 query I

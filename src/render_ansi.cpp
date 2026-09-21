@@ -1,5 +1,6 @@
 #include "render_ansi.hpp"
 #include "block_types.hpp"
+#include "register_helper.hpp"
 #include "duckdb/common/types/value.hpp"
 #include "utf8proc_wrapper.hpp"
 
@@ -1422,36 +1423,44 @@ void RenderAnsiFunctions::Register(ExtensionLoader &loader) {
 	// duck_blocks_render_ansi(blocks) -> VARCHAR (auto-detected width and theme)
 	auto render_auto =
 	    ScalarFunction("duck_blocks_render_ansi", {duck_block_list_type}, LogicalType::VARCHAR, RenderAnsiFun);
-	loader.RegisterFunction(render_auto);
+	RegisterScalarWithDesc(loader, render_auto, {"blocks"}, "Render duck_blocks to ANSI terminal string.",
+	                       {"duck_blocks_render_ansi(blocks)"});
 
 	// duck_blocks_render_ansi(blocks, width) -> VARCHAR
 	auto render_width = ScalarFunction("duck_blocks_render_ansi", {duck_block_list_type, LogicalType::INTEGER},
 	                                   LogicalType::VARCHAR, RenderAnsiFun);
-	loader.RegisterFunction(render_width);
+	RegisterScalarWithDesc(loader, render_width, {"blocks", "width"},
+	                       "Render duck_blocks to ANSI terminal string with target width.",
+	                       {"duck_blocks_render_ansi(blocks, 80)"});
 
 	// duck_blocks_render_ansi(blocks, theme) -> VARCHAR
 	auto render_theme = ScalarFunction("duck_blocks_render_ansi", {duck_block_list_type, LogicalType::VARCHAR},
 	                                   LogicalType::VARCHAR, RenderAnsiFun);
-	loader.RegisterFunction(render_theme);
+	RegisterScalarWithDesc(loader, render_theme, {"blocks", "theme"},
+	                       "Render duck_blocks to ANSI terminal string with theme.",
+	                       {"duck_blocks_render_ansi(blocks, 'dark')"});
 
 	// duck_blocks_render_ansi(blocks, width, theme) -> VARCHAR
 	auto render_width_theme =
 	    ScalarFunction("duck_blocks_render_ansi", {duck_block_list_type, LogicalType::INTEGER, LogicalType::VARCHAR},
 	                   LogicalType::VARCHAR, RenderAnsiFun);
-	loader.RegisterFunction(render_width_theme);
+	RegisterScalarWithDesc(loader, render_width_theme, {"blocks", "width", "theme"},
+	                       "Render duck_blocks to ANSI with width and theme.",
+	                       {"duck_blocks_render_ansi(blocks, 80, 'dark')"});
 
 	// duck_blocks_render_ansi(blocks, theme, width) -> VARCHAR
 	auto render_theme_width =
 	    ScalarFunction("duck_blocks_render_ansi", {duck_block_list_type, LogicalType::VARCHAR, LogicalType::INTEGER},
 	                   LogicalType::VARCHAR, RenderAnsiFun);
-	loader.RegisterFunction(render_theme_width);
+	RegisterScalarWithDesc(loader, render_theme_width, {"blocks", "theme", "width"},
+	                       "Render duck_blocks to ANSI with theme and width.",
+	                       {"duck_blocks_render_ansi(blocks, 'dark', 80)"});
 
 	// duck_block_terminal_width() -> INTEGER
 	auto term_width = ScalarFunction("duck_block_terminal_width", {}, LogicalType::INTEGER, TerminalWidthFun);
-	// SetStability, not the field: on DuckDB v2.0 the stability moved into a
-	// protected FunctionProperties member. The setter exists on both versions.
 	term_width.SetStability(FunctionStability::VOLATILE);
-	loader.RegisterFunction(term_width);
+	RegisterScalarWithDesc(loader, term_width, {}, "Detect current terminal width in columns.",
+	                       {"duck_block_terminal_width()"});
 }
 
 } // namespace duckdb

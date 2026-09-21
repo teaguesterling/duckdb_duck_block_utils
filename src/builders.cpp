@@ -1,6 +1,7 @@
 #include "builders.hpp"
 #include "duckdb_compat.hpp"
 #include "block_types.hpp"
+#include "register_helper.hpp"
 #include "duckdb/common/types/value.hpp"
 
 namespace duckdb {
@@ -940,705 +941,763 @@ void BuilderFunctions::DbRawV2NoFormatFun(DataChunk &args, ExpressionState &stat
 void BuilderFunctions::Register(ExtensionLoader &loader) {
 	auto duck_block_type = BlockTypes::DuckBlockType();
 	auto duck_block_list_type = BlockTypes::DuckBlockListType();
-
-	// ========================================================================
-	// Legacy V1 API - Only register overloads that DON'T conflict with V2
-	// (V2 versions with same input signature but different return type win)
-	// ========================================================================
-
-	// duck_block_heading(content, level) - LEGACY ONLY (V2 uses level, content order)
-	loader.RegisterFunction(ScalarFunction("duck_block_heading", {LogicalType::VARCHAR, LogicalType::INTEGER},
-	                                       duck_block_type, DbHeadingFun));
-
-	// duck_block_paragraph(content) - REMOVED: V2 version exists with same signature
-
-	// duck_block_code(content, language) - REMOVED: V2 has same signature (VARCHAR, VARCHAR)
-	// duck_block_code(content) - REMOVED: V2 version exists with same signature
-
-	// duck_block_blockquote(content, level) - LEGACY ONLY (V2 uses level, content order)
-	loader.RegisterFunction(ScalarFunction("duck_block_blockquote", {LogicalType::VARCHAR, LogicalType::INTEGER},
-	                                       duck_block_type, DbBlockquoteFun));
-	// duck_block_blockquote(content) - REMOVED: V2 version exists with same signature
-
-	// duck_block_list_block(items, ordered) - LEGACY ONLY (V2 uses ordered, items order)
-	loader.RegisterFunction(ScalarFunction("duck_block_list_block",
-	                                       {LogicalType::LIST(LogicalType::VARCHAR), LogicalType::BOOLEAN},
-	                                       duck_block_type, DbListBlockFun));
-	// duck_block_list_block(items) - REMOVED: V2 version exists with same signature
-
-	// duck_block_hr() - REMOVED: V2 version exists with same signature
-
-	// duck_block_metadata(yaml_content) - REMOVED: V2 version exists with same signature
-
-	// duck_block_image - REMOVED: V2 versions exist with same signatures
-
-	// duck_block_raw(content, format) - REMOVED: V2 has same signature (VARCHAR, VARCHAR)
-	// duck_block_raw(content) - REMOVED: V2 version exists with same signature
-
-	// ========================================================================
-	// Flattening overloads - take children list, return flattened list
-	// ========================================================================
-
-	// duck_block_paragraph(children LIST(duck_block)) -> LIST(duck_block)
-	loader.RegisterFunction(
-	    ScalarFunction("duck_block_paragraph", {duck_block_list_type}, duck_block_list_type, DbParagraphFlattenFun));
-
-	// duck_block_heading(level, children LIST(duck_block)) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("duck_block_heading", {LogicalType::INTEGER, duck_block_list_type},
-	                                       duck_block_list_type, DbHeadingFlattenFun));
-
-	// duck_block_blockquote(level, children LIST(duck_block)) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("duck_block_blockquote", {LogicalType::INTEGER, duck_block_list_type},
-	                                       duck_block_list_type, DbBlockquoteFlattenFun));
-
-	// duck_block_blockquote(children LIST(duck_block)) -> LIST(duck_block) (level defaults to 1)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_blockquote", {duck_block_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &children_vec = args.data[0];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto children_list = children_vec.GetValue(i);
-			    auto parent = BuilderFunctions::CreateBlockWithNullContent(
-			        BlockTypes::TYPE_BLOCKQUOTE, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, {});
-			    auto flattened = FlattenBlockWithChildren(parent, children_list, 1);
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
-		    }
-	    }));
-
-	// duck_block_code(language, children LIST(duck_block)) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("duck_block_code", {LogicalType::VARCHAR, duck_block_list_type},
-	                                       duck_block_list_type, DbCodeFlattenFun));
-
-	// duck_block_code(children LIST(duck_block)) -> LIST(duck_block) (no language)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_code", {duck_block_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &children_vec = args.data[0];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto children_list = children_vec.GetValue(i);
-			    auto parent = BuilderFunctions::CreateBlockWithNullContent(
-			        BlockTypes::TYPE_CODE, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, {});
-			    auto flattened = FlattenBlockWithChildren(parent, children_list, 1);
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
-		    }
-	    }));
-
-	// ========================================================================
-	// Nested list overloads - accept LIST(LIST(duck_block)) and flatten
-	// This enables: duck_block_heading(1, [duck_block_text('A'), duck_block_bold('B')])
-	// ========================================================================
 	auto duck_block_nested_list_type = LogicalType::LIST(duck_block_list_type);
 
-	// duck_block_heading(level, LIST(LIST(duck_block))) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_heading", {LogicalType::INTEGER, duck_block_nested_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &level_vec = args.data[0];
-		    auto &nested_vec = args.data[1];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto level = level_vec.GetValue(i);
-			    auto nested_list = nested_vec.GetValue(i);
-			    auto flat_children = FlattenNestedList(nested_list);
-			    int32_t heading_level = level.IsNull() ? 1 : level.GetValue<int32_t>();
-			    map<string, string> attrs;
-			    attrs[BlockTypes::ATTR_HEADING_LEVEL] = to_string(heading_level);
-			    auto parent = BuilderFunctions::CreateBlockWithNullContent(
-			        BlockTypes::TYPE_HEADING, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
-			    auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
-		    }
-	    }));
+	// Legacy V1 API
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_heading", {LogicalType::VARCHAR, LogicalType::INTEGER},
+	                                      duck_block_type, DbHeadingFun),
+	                       {"content", "level"}, "Build a heading block (legacy V1).",
+	                       {"duck_block_heading('Section 1', 1)"});
 
-	// duck_block_paragraph(LIST(LIST(duck_block))) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_paragraph", {duck_block_nested_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &nested_vec = args.data[0];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto nested_list = nested_vec.GetValue(i);
-			    auto flat_children = FlattenNestedList(nested_list);
-			    auto parent = BuilderFunctions::CreateBlockWithNullContent(
-			        BlockTypes::TYPE_PARAGRAPH, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, {});
-			    auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
-		    }
-	    }));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_blockquote", {LogicalType::VARCHAR, LogicalType::INTEGER},
+	                                      duck_block_type, DbBlockquoteFun),
+	                       {"content", "level"}, "Build a blockquote block (legacy V1).",
+	                       {"duck_block_blockquote('Quote', 1)"});
 
-	// duck_block_plain(LIST(LIST(duck_block))) -> LIST(duck_block)
-	// Mirrors the paragraph overload above: rich inline content in a block-level run
-	// that carries no paragraph semantics.
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_plain", {duck_block_nested_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &nested_vec = args.data[0];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto nested_list = nested_vec.GetValue(i);
-			    auto flat_children = FlattenNestedList(nested_list);
-			    auto parent = BuilderFunctions::CreateBlockWithNullContent(
-			        BlockTypes::TYPE_PLAIN, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, {});
-			    auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
-		    }
-	    }));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_list_block", {LogicalType::LIST(LogicalType::VARCHAR), LogicalType::BOOLEAN},
+	                   duck_block_type, DbListBlockFun),
+	    {"items", "ordered"}, "Build a list block (legacy V1).", {"duck_block_list_block(['Item 1', 'Item 2'], true)"});
 
-	// duck_block_paragraph(VARCHAR[]) -> LIST(duck_block)
-	// Converts each string to a duck_block_text inline element (Issue #4)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_paragraph", {LogicalType::LIST(LogicalType::VARCHAR)}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &strings_vec = args.data[0];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto strings_list = strings_vec.GetValue(i);
+	// Flattening overloads
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_paragraph", {duck_block_list_type}, duck_block_list_type, DbParagraphFlattenFun),
+	    {"children"}, "Build a paragraph containing inline children elements.",
+	    {"duck_block_paragraph([duck_block_text('Hello')])"});
 
-			    // Create paragraph parent with NULL content
-			    auto parent = BuilderFunctions::CreateBlockWithNullContent(
-			        BlockTypes::TYPE_PARAGRAPH, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, {});
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_heading", {LogicalType::INTEGER, duck_block_list_type},
+	                                      duck_block_list_type, DbHeadingFlattenFun),
+	                       {"level", "children"}, "Build a heading of given level containing inline children elements.",
+	                       {"duck_block_heading(1, [duck_block_text('Title')])"});
 
-			    vector<Value> result_list;
-			    result_list.push_back(parent);
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_blockquote", {LogicalType::INTEGER, duck_block_list_type},
+	                                      duck_block_list_type, DbBlockquoteFlattenFun),
+	                       {"level", "children"}, "Build a blockquote of given level containing children elements.",
+	                       {"duck_block_blockquote(1, [duck_block_text('Quote')])"});
 
-			    // Convert each string to a text inline element at level 2
-			    if (!strings_list.IsNull()) {
-				    auto &string_children = ListValue::GetChildren(strings_list);
-				    int32_t child_order = 0;
-				    for (auto &str_val : string_children) {
-					    if (!str_val.IsNull()) {
-						    child_list_t<Value> text_struct;
-						    text_struct.push_back(make_pair("kind", Value(BlockTypes::KIND_INLINE)));
-						    text_struct.push_back(make_pair("element_type", Value(BlockTypes::INLINE_TEXT)));
-						    text_struct.push_back(make_pair("content", str_val));
-						    text_struct.push_back(make_pair("level", Value(2)));
-						    text_struct.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_TEXT)));
-						    text_struct.push_back(make_pair("attributes", CreateAttributesMap({})));
-						    text_struct.push_back(make_pair("element_order", Value(child_order++)));
-						    result_list.push_back(Value::STRUCT(std::move(text_struct)));
-					    }
-				    }
-			    }
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_blockquote", {duck_block_list_type}, duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &children_vec = args.data[0];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto children_list = children_vec.GetValue(i);
+			                   auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			                       BlockTypes::TYPE_BLOCKQUOTE, BlockTypes::KIND_BLOCK, Value(1),
+			                       BlockTypes::ENCODING_TEXT, {});
+			                   auto flattened = FlattenBlockWithChildren(parent, children_list, 1);
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		                   }
+	                   }),
+	    {"children"}, "Build a blockquote containing children elements.",
+	    {"duck_block_blockquote([duck_block_text('Quote')])"});
 
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
-		    }
-	    }));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_code", {LogicalType::VARCHAR, duck_block_list_type},
+	                                      duck_block_list_type, DbCodeFlattenFun),
+	                       {"language", "children"}, "Build a code block with language and children elements.",
+	                       {"duck_block_code('sql', [duck_block_text('SELECT 1')])"});
 
-	// duck_block_blockquote(level, LIST(LIST(duck_block))) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_blockquote", {LogicalType::INTEGER, duck_block_nested_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &level_vec = args.data[0];
-		    auto &nested_vec = args.data[1];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto level = level_vec.GetValue(i);
-			    auto nested_list = nested_vec.GetValue(i);
-			    auto flat_children = FlattenNestedList(nested_list);
-			    int32_t quote_level = level.IsNull() ? 1 : level.GetValue<int32_t>();
-			    auto parent =
-			        BuilderFunctions::CreateBlockWithNullContent(BlockTypes::TYPE_BLOCKQUOTE, BlockTypes::KIND_BLOCK,
-			                                                     Value(quote_level), BlockTypes::ENCODING_TEXT, {});
-			    auto flattened = FlattenBlockWithChildren(parent, flat_children, quote_level);
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
-		    }
-	    }));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_code", {duck_block_list_type}, duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &children_vec = args.data[0];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto children_list = children_vec.GetValue(i);
+			                   auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			                       BlockTypes::TYPE_CODE, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT,
+			                       {});
+			                   auto flattened = FlattenBlockWithChildren(parent, children_list, 1);
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		                   }
+	                   }),
+	    {"children"}, "Build a code block containing children elements.",
+	    {"duck_block_code([duck_block_text('code')])"});
 
-	// duck_block_blockquote(LIST(LIST(duck_block))) -> LIST(duck_block) (level defaults to 1)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_blockquote", {duck_block_nested_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &nested_vec = args.data[0];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto nested_list = nested_vec.GetValue(i);
-			    auto flat_children = FlattenNestedList(nested_list);
-			    auto parent = BuilderFunctions::CreateBlockWithNullContent(
-			        BlockTypes::TYPE_BLOCKQUOTE, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, {});
-			    auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
-		    }
-	    }));
+	// Nested list overloads
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_heading", {LogicalType::INTEGER, duck_block_nested_list_type}, duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &level_vec = args.data[0];
+		                   auto &nested_vec = args.data[1];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto level = level_vec.GetValue(i);
+			                   auto nested_list = nested_vec.GetValue(i);
+			                   auto flat_children = FlattenNestedList(nested_list);
+			                   int32_t heading_level = level.IsNull() ? 1 : level.GetValue<int32_t>();
+			                   map<string, string> attrs;
+			                   attrs[BlockTypes::ATTR_HEADING_LEVEL] = to_string(heading_level);
+			                   auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			                       BlockTypes::TYPE_HEADING, BlockTypes::KIND_BLOCK, Value(1),
+			                       BlockTypes::ENCODING_TEXT, attrs);
+			                   auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		                   }
+	                   }),
+	    {"level", "children_nested"}, "Build a heading from nested inline element lists.",
+	    {"duck_block_heading(1, [duck_block_text('A'), duck_block_bold('B')])"});
 
-	// duck_block_code(language, LIST(LIST(duck_block))) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_code", {LogicalType::VARCHAR, duck_block_nested_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &lang_vec = args.data[0];
-		    auto &nested_vec = args.data[1];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto lang = lang_vec.GetValue(i);
-			    auto nested_list = nested_vec.GetValue(i);
-			    auto flat_children = FlattenNestedList(nested_list);
-			    map<string, string> attrs;
-			    if (!lang.IsNull())
-				    attrs["language"] = lang.GetValue<string>();
-			    auto parent = BuilderFunctions::CreateBlockWithNullContent(
-			        BlockTypes::TYPE_CODE, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
-			    auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
-		    }
-	    }));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_paragraph", {duck_block_nested_list_type}, duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &nested_vec = args.data[0];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto nested_list = nested_vec.GetValue(i);
+			                   auto flat_children = FlattenNestedList(nested_list);
+			                   auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			                       BlockTypes::TYPE_PARAGRAPH, BlockTypes::KIND_BLOCK, Value(1),
+			                       BlockTypes::ENCODING_TEXT, {});
+			                   auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		                   }
+	                   }),
+	    {"children_nested"}, "Build a paragraph from nested inline element lists.",
+	    {"duck_block_paragraph([duck_block_text('A'), duck_block_bold('B')])"});
 
-	// duck_block_code(LIST(LIST(duck_block))) -> LIST(duck_block) (no language)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_code", {duck_block_nested_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &nested_vec = args.data[0];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto nested_list = nested_vec.GetValue(i);
-			    auto flat_children = FlattenNestedList(nested_list);
-			    auto parent = BuilderFunctions::CreateBlockWithNullContent(
-			        BlockTypes::TYPE_CODE, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, {});
-			    auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
-		    }
-	    }));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_plain", {duck_block_nested_list_type}, duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &nested_vec = args.data[0];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto nested_list = nested_vec.GetValue(i);
+			                   auto flat_children = FlattenNestedList(nested_list);
+			                   auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			                       BlockTypes::TYPE_PLAIN, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT,
+			                       {});
+			                   auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		                   }
+	                   }),
+	    {"children_nested"}, "Build a plain block from nested inline element lists.",
+	    {"duck_block_plain([duck_block_text('A'), duck_block_bold('B')])"});
 
-	// ========================================================================
-	// V2 API: All builders return LIST(duck_block)
-	// Config params first, content last
-	// These REPLACE legacy overloads by having different return type
-	// ========================================================================
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction(
+	        "duck_block_paragraph", {LogicalType::LIST(LogicalType::VARCHAR)}, duck_block_list_type,
+	        [](DataChunk &args, ExpressionState &state, Vector &result) {
+		        auto &strings_vec = args.data[0];
+		        auto count = args.size();
+		        for (idx_t i = 0; i < count; i++) {
+			        auto strings_list = strings_vec.GetValue(i);
+			        auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			            BlockTypes::TYPE_PARAGRAPH, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, {});
+			        vector<Value> result_list;
+			        result_list.push_back(parent);
+			        if (!strings_list.IsNull()) {
+				        auto &string_children = ListValue::GetChildren(strings_list);
+				        int32_t child_order = 0;
+				        for (auto &str_val : string_children) {
+					        if (!str_val.IsNull()) {
+						        child_list_t<Value> text_struct;
+						        text_struct.push_back(make_pair("kind", Value(BlockTypes::KIND_INLINE)));
+						        text_struct.push_back(make_pair("element_type", Value(BlockTypes::INLINE_TEXT)));
+						        text_struct.push_back(make_pair("content", str_val));
+						        text_struct.push_back(make_pair("level", Value(2)));
+						        text_struct.push_back(make_pair("encoding", Value(BlockTypes::ENCODING_TEXT)));
+						        text_struct.push_back(make_pair("attributes", CreateAttributesMap({})));
+						        text_struct.push_back(make_pair("element_order", Value(child_order++)));
+						        result_list.push_back(Value::STRUCT(std::move(text_struct)));
+					        }
+				        }
+			        }
+			        result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
+		        }
+	        }),
+	    {"strings"}, "Build a paragraph from a list of strings.", {"duck_block_paragraph(['Hello', 'world'])"});
 
-	// duck_block_heading(level INTEGER, content VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("duck_block_heading", {LogicalType::INTEGER, LogicalType::VARCHAR},
-	                                       duck_block_list_type, DbHeadingV2Fun));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_blockquote", {LogicalType::INTEGER, duck_block_nested_list_type},
+	                   duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &level_vec = args.data[0];
+		                   auto &nested_vec = args.data[1];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto level = level_vec.GetValue(i);
+			                   auto nested_list = nested_vec.GetValue(i);
+			                   auto flat_children = FlattenNestedList(nested_list);
+			                   int32_t quote_level = level.IsNull() ? 1 : level.GetValue<int32_t>();
+			                   auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			                       BlockTypes::TYPE_BLOCKQUOTE, BlockTypes::KIND_BLOCK, Value(quote_level),
+			                       BlockTypes::ENCODING_TEXT, {});
+			                   auto flattened = FlattenBlockWithChildren(parent, flat_children, quote_level);
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		                   }
+	                   }),
+	    {"level", "children_nested"}, "Build a blockquote of given level from nested lists.",
+	    {"duck_block_blockquote(1, [duck_block_text('A')])"});
 
-	// duck_block_paragraph(content VARCHAR) -> LIST(duck_block)
-	// V2: Returns LIST instead of single duck_block
-	loader.RegisterFunction(
-	    ScalarFunction("duck_block_paragraph", {LogicalType::VARCHAR}, duck_block_list_type, DbParagraphV2Fun));
-	loader.RegisterFunction(
-	    ScalarFunction("duck_block_plain", {LogicalType::VARCHAR}, duck_block_list_type, DbPlainV2Fun));
-	loader.RegisterFunction(
-	    ScalarFunction("duck_block_plain", {duck_block_list_type}, duck_block_list_type, DbPlainV2Fun));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_blockquote", {duck_block_nested_list_type}, duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &nested_vec = args.data[0];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto nested_list = nested_vec.GetValue(i);
+			                   auto flat_children = FlattenNestedList(nested_list);
+			                   auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			                       BlockTypes::TYPE_BLOCKQUOTE, BlockTypes::KIND_BLOCK, Value(1),
+			                       BlockTypes::ENCODING_TEXT, {});
+			                   auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		                   }
+	                   }),
+	    {"children_nested"}, "Build a blockquote from nested lists.",
+	    {"duck_block_blockquote([duck_block_text('A')])"});
 
-	// duck_block_code(language VARCHAR, content VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("duck_block_code", {LogicalType::VARCHAR, LogicalType::VARCHAR},
-	                                       duck_block_list_type, DbCodeV2Fun));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_code", {LogicalType::VARCHAR, duck_block_nested_list_type}, duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &lang_vec = args.data[0];
+		                   auto &nested_vec = args.data[1];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto lang = lang_vec.GetValue(i);
+			                   auto nested_list = nested_vec.GetValue(i);
+			                   auto flat_children = FlattenNestedList(nested_list);
+			                   map<string, string> attrs;
+			                   if (!lang.IsNull())
+				                   attrs["language"] = lang.GetValue<string>();
+			                   auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			                       BlockTypes::TYPE_CODE, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT,
+			                       attrs);
+			                   auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		                   }
+	                   }),
+	    {"language", "children_nested"}, "Build a code block with language from nested lists.",
+	    {"duck_block_code('sql', [duck_block_text('SELECT 1')])"});
 
-	// duck_block_code(content VARCHAR) -> LIST(duck_block) (no language)
-	loader.RegisterFunction(
-	    ScalarFunction("duck_block_code", {LogicalType::VARCHAR}, duck_block_list_type, DbCodeV2NoLangFun));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_code", {duck_block_nested_list_type}, duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &nested_vec = args.data[0];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto nested_list = nested_vec.GetValue(i);
+			                   auto flat_children = FlattenNestedList(nested_list);
+			                   auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			                       BlockTypes::TYPE_CODE, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT,
+			                       {});
+			                   auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		                   }
+	                   }),
+	    {"children_nested"}, "Build a code block from nested lists.", {"duck_block_code([duck_block_text('code')])"});
 
-	// duck_block_blockquote(level INTEGER, content VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("duck_block_blockquote", {LogicalType::INTEGER, LogicalType::VARCHAR},
-	                                       duck_block_list_type, DbBlockquoteV2Fun));
+	// V2 API
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_heading", {LogicalType::INTEGER, LogicalType::VARCHAR},
+	                                      duck_block_list_type, DbHeadingV2Fun),
+	                       {"level", "content"}, "Build a heading block (V2).", {"duck_block_heading(1, 'Title')"});
 
-	// duck_block_blockquote(content VARCHAR) -> LIST(duck_block) (level defaults to 1)
-	loader.RegisterFunction(ScalarFunction("duck_block_blockquote", {LogicalType::VARCHAR}, duck_block_list_type,
-	                                       DbBlockquoteV2NoLevelFun));
+	RegisterScalarWithDesc(
+	    loader, ScalarFunction("duck_block_paragraph", {LogicalType::VARCHAR}, duck_block_list_type, DbParagraphV2Fun),
+	    {"content"}, "Build a paragraph block (V2).", {"duck_block_paragraph('Hello world')"});
 
-	// duck_block_hr() -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("duck_block_hr", {}, duck_block_list_type, DbHrV2Fun));
+	RegisterScalarWithDesc(
+	    loader, ScalarFunction("duck_block_plain", {LogicalType::VARCHAR}, duck_block_list_type, DbPlainV2Fun),
+	    {"content"}, "Build a plain block from text (V2).", {"duck_block_plain('Hello world')"});
 
-	// duck_block_metadata(yaml_content VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(
-	    ScalarFunction("duck_block_metadata", {LogicalType::VARCHAR}, duck_block_list_type, DbMetadataV2Fun));
+	RegisterScalarWithDesc(
+	    loader, ScalarFunction("duck_block_plain", {duck_block_list_type}, duck_block_list_type, DbPlainV2Fun),
+	    {"children"}, "Build a plain block from children elements (V2).",
+	    {"duck_block_plain([duck_block_text('Hello')])"});
 
-	// duck_block_image(src VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(
-	    ScalarFunction("duck_block_image", {LogicalType::VARCHAR}, duck_block_list_type, DbImageV2Fun));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_code", {LogicalType::VARCHAR, LogicalType::VARCHAR},
+	                                      duck_block_list_type, DbCodeV2Fun),
+	                       {"language", "content"}, "Build a code block with language (V2).",
+	                       {"duck_block_code('sql', 'SELECT 1')"});
 
-	// duck_block_image(src VARCHAR, alt VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("duck_block_image", {LogicalType::VARCHAR, LogicalType::VARCHAR},
-	                                       duck_block_list_type, DbImageV2Fun));
+	RegisterScalarWithDesc(
+	    loader, ScalarFunction("duck_block_code", {LogicalType::VARCHAR}, duck_block_list_type, DbCodeV2NoLangFun),
+	    {"content"}, "Build a code block (V2).", {"duck_block_code('print(1)')"});
 
-	// duck_block_image(src VARCHAR, alt VARCHAR, title VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("duck_block_image",
-	                                       {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR},
-	                                       duck_block_list_type, DbImageV2Fun));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_blockquote", {LogicalType::INTEGER, LogicalType::VARCHAR},
+	                                      duck_block_list_type, DbBlockquoteV2Fun),
+	                       {"level", "content"}, "Build a blockquote block with level (V2).",
+	                       {"duck_block_blockquote(1, 'Quote text')"});
 
-	// duck_block_raw(content VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(
-	    ScalarFunction("duck_block_raw", {LogicalType::VARCHAR}, duck_block_list_type, DbRawV2NoFormatFun));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_blockquote", {LogicalType::VARCHAR}, duck_block_list_type, DbBlockquoteV2NoLevelFun),
+	    {"content"}, "Build a blockquote block (V2).", {"duck_block_blockquote('Quote text')"});
 
-	// duck_block_raw(format VARCHAR, content VARCHAR) -> LIST(duck_block)
-	// Note: V2 has format first
+	RegisterScalarWithDesc(loader, ScalarFunction("duck_block_hr", {}, duck_block_list_type, DbHrV2Fun), {},
+	                       "Build a horizontal rule block (V2).", {"duck_block_hr()"});
 
-	// duck_block_list_block(ordered BOOLEAN, items VARCHAR[]) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("duck_block_list_block",
-	                                       {LogicalType::BOOLEAN, LogicalType::LIST(LogicalType::VARCHAR)},
-	                                       duck_block_list_type, DbListBlockV2Fun));
+	RegisterScalarWithDesc(
+	    loader, ScalarFunction("duck_block_metadata", {LogicalType::VARCHAR}, duck_block_list_type, DbMetadataV2Fun),
+	    {"yaml_content"}, "Build a document metadata block from YAML string (V2).",
+	    {"duck_block_metadata('title: Document\nauthor: Me')"});
 
-	// duck_block_list_block(items VARCHAR[]) -> LIST(duck_block) (ordered defaults to false)
-	loader.RegisterFunction(ScalarFunction("duck_block_list_block", {LogicalType::LIST(LogicalType::VARCHAR)},
-	                                       duck_block_list_type, DbListBlockV2NoOrderFun));
+	RegisterScalarWithDesc(
+	    loader, ScalarFunction("duck_block_image", {LogicalType::VARCHAR}, duck_block_list_type, DbImageV2Fun), {"src"},
+	    "Build an image block from source URL (V2).", {"duck_block_image('image.png')"});
 
-	// duck_block_list_block(ordered BOOLEAN, items LIST(LIST(duck_block))) -> LIST(duck_block)
-	// Wraps duck_block_list_item results with a list container
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_list_block", {LogicalType::BOOLEAN, duck_block_nested_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &ordered_vec = args.data[0];
-		    auto &nested_vec = args.data[1];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto ordered = ordered_vec.GetValue(i);
-			    auto nested_list = nested_vec.GetValue(i);
-			    bool is_ordered = !ordered.IsNull() && ordered.GetValue<bool>();
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_image", {LogicalType::VARCHAR, LogicalType::VARCHAR},
+	                                      duck_block_list_type, DbImageV2Fun),
+	                       {"src", "alt"}, "Build an image block with alt text (V2).",
+	                       {"duck_block_image('image.png', 'Alt text')"});
 
-			    // Create list parent element with NULL content (children follow)
-			    map<string, string> attrs;
-			    attrs[BlockTypes::ATTR_ORDERED_LEGACY] = is_ordered ? "true" : "false";
-			    auto list_parent = BuilderFunctions::CreateBlockWithNullContent(
-			        BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_image",
+	                                      {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR},
+	                                      duck_block_list_type, DbImageV2Fun),
+	                       {"src", "alt", "title"}, "Build an image block with alt and title (V2).",
+	                       {"duck_block_image('image.png', 'Alt text', 'Image title')"});
 
-			    vector<Value> result_list;
-			    result_list.push_back(list_parent);
+	RegisterScalarWithDesc(
+	    loader, ScalarFunction("duck_block_raw", {LogicalType::VARCHAR}, duck_block_list_type, DbRawV2NoFormatFun),
+	    {"content"}, "Build a raw text block (V2).", {"duck_block_raw('raw content')"});
 
-			    // Flatten nested list and add children at level 2
-			    int32_t child_order = 0;
-			    if (!nested_list.IsNull()) {
-				    auto &outer_children = ListValue::GetChildren(nested_list);
-				    for (auto &inner_list : outer_children) {
-					    if (!inner_list.IsNull()) {
-						    auto &inner_children = ListValue::GetChildren(inner_list);
-						    for (auto &item : inner_children) {
-							    if (!item.IsNull()) {
-								    auto child_fields = StructValue::GetChildren(item);
-								    child_fields[BlockTypes::LEVEL_IDX] =
-								        Value((child_fields[BlockTypes::LEVEL_IDX].IsNull()
-								                   ? 1 // a NULL level means top level, i.e. depth 1
-								                   : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>()) +
-								              1);
-								    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
-								    result_list.push_back(
-								        Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
-							    }
-						    }
-					    }
-				    }
-			    }
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
-		    }
-	    }));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_raw", {LogicalType::VARCHAR, LogicalType::VARCHAR},
+	                                      duck_block_list_type, DbRawV2Fun),
+	                       {"format", "content"}, "Build a raw content block for format (V2).",
+	                       {"duck_block_raw('html', '<div>Hello</div>')"});
 
-	// duck_block_list_block(items LIST(LIST(duck_block))) -> LIST(duck_block) (unordered by default)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_list_block", {duck_block_nested_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &nested_vec = args.data[0];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto nested_list = nested_vec.GetValue(i);
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_list_block",
+	                                      {LogicalType::BOOLEAN, LogicalType::LIST(LogicalType::VARCHAR)},
+	                                      duck_block_list_type, DbListBlockV2Fun),
+	                       {"ordered", "items"}, "Build a list block from string items (V2).",
+	                       {"duck_block_list_block(true, ['First', 'Second'])"});
 
-			    // Create list parent element with NULL content (children follow)
-			    map<string, string> attrs;
-			    attrs[BlockTypes::ATTR_ORDERED_LEGACY] = "false";
-			    auto list_parent = BuilderFunctions::CreateBlockWithNullContent(
-			        BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_list_block", {LogicalType::LIST(LogicalType::VARCHAR)},
+	                                      duck_block_list_type, DbListBlockV2NoOrderFun),
+	                       {"items"}, "Build an unordered list block from string items (V2).",
+	                       {"duck_block_list_block(['First', 'Second'])"});
 
-			    vector<Value> result_list;
-			    result_list.push_back(list_parent);
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction(
+	        "duck_block_list_block", {LogicalType::BOOLEAN, duck_block_nested_list_type}, duck_block_list_type,
+	        [](DataChunk &args, ExpressionState &state, Vector &result) {
+		        auto &ordered_vec = args.data[0];
+		        auto &nested_vec = args.data[1];
+		        auto count = args.size();
+		        for (idx_t i = 0; i < count; i++) {
+			        auto ordered = ordered_vec.GetValue(i);
+			        auto nested_list = nested_vec.GetValue(i);
+			        bool is_ordered = !ordered.IsNull() && ordered.GetValue<bool>();
+			        map<string, string> attrs;
+			        attrs[BlockTypes::ATTR_ORDERED_LEGACY] = is_ordered ? "true" : "false";
+			        auto list_parent = BuilderFunctions::CreateBlockWithNullContent(
+			            BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
+			        vector<Value> result_list;
+			        result_list.push_back(list_parent);
+			        int32_t child_order = 0;
+			        if (!nested_list.IsNull()) {
+				        auto &outer_children = ListValue::GetChildren(nested_list);
+				        for (auto &inner_list : outer_children) {
+					        if (!inner_list.IsNull()) {
+						        auto &inner_children = ListValue::GetChildren(inner_list);
+						        for (auto &item : inner_children) {
+							        if (!item.IsNull()) {
+								        auto child_fields = StructValue::GetChildren(item);
+								        child_fields[BlockTypes::LEVEL_IDX] =
+								            Value((child_fields[BlockTypes::LEVEL_IDX].IsNull()
+								                       ? 1
+								                       : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>()) +
+								                  1);
+								        child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
+								        result_list.push_back(
+								            Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
+							        }
+						        }
+					        }
+				        }
+			        }
+			        result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
+		        }
+	        }),
+	    {"ordered", "items_nested"}, "Build a list block from nested item elements.",
+	    {"duck_block_list_block(true, [duck_block_list_item('Item')])"});
 
-			    // Flatten nested list and add children at level 2
-			    int32_t child_order = 0;
-			    if (!nested_list.IsNull()) {
-				    auto &outer_children = ListValue::GetChildren(nested_list);
-				    for (auto &inner_list : outer_children) {
-					    if (!inner_list.IsNull()) {
-						    auto &inner_children = ListValue::GetChildren(inner_list);
-						    for (auto &item : inner_children) {
-							    if (!item.IsNull()) {
-								    auto child_fields = StructValue::GetChildren(item);
-								    child_fields[BlockTypes::LEVEL_IDX] =
-								        Value((child_fields[BlockTypes::LEVEL_IDX].IsNull()
-								                   ? 1 // a NULL level means top level, i.e. depth 1
-								                   : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>()) +
-								              1);
-								    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
-								    result_list.push_back(
-								        Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
-							    }
-						    }
-					    }
-				    }
-			    }
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
-		    }
-	    }));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction(
+	        "duck_block_list_block", {duck_block_nested_list_type}, duck_block_list_type,
+	        [](DataChunk &args, ExpressionState &state, Vector &result) {
+		        auto &nested_vec = args.data[0];
+		        auto count = args.size();
+		        for (idx_t i = 0; i < count; i++) {
+			        auto nested_list = nested_vec.GetValue(i);
+			        map<string, string> attrs;
+			        attrs[BlockTypes::ATTR_ORDERED_LEGACY] = "false";
+			        auto list_parent = BuilderFunctions::CreateBlockWithNullContent(
+			            BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
+			        vector<Value> result_list;
+			        result_list.push_back(list_parent);
+			        int32_t child_order = 0;
+			        if (!nested_list.IsNull()) {
+				        auto &outer_children = ListValue::GetChildren(nested_list);
+				        for (auto &inner_list : outer_children) {
+					        if (!inner_list.IsNull()) {
+						        auto &inner_children = ListValue::GetChildren(inner_list);
+						        for (auto &item : inner_children) {
+							        if (!item.IsNull()) {
+								        auto child_fields = StructValue::GetChildren(item);
+								        child_fields[BlockTypes::LEVEL_IDX] =
+								            Value((child_fields[BlockTypes::LEVEL_IDX].IsNull()
+								                       ? 1
+								                       : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>()) +
+								                  1);
+								        child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
+								        result_list.push_back(
+								            Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
+							        }
+						        }
+					        }
+				        }
+			        }
+			        result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
+		        }
+	        }),
+	    {"items_nested"}, "Build an unordered list block from nested item elements.",
+	    {"duck_block_list_block([duck_block_list_item('Item')])"});
 
-	// duck_block_list - shorter alias for duck_block_list_block
-	loader.RegisterFunction(ScalarFunction("duck_block_list",
-	                                       {LogicalType::BOOLEAN, LogicalType::LIST(LogicalType::VARCHAR)},
-	                                       duck_block_list_type, DbListBlockV2Fun));
-	loader.RegisterFunction(ScalarFunction("duck_block_list", {LogicalType::LIST(LogicalType::VARCHAR)},
-	                                       duck_block_list_type, DbListBlockV2NoOrderFun));
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_list", {LogicalType::BOOLEAN, duck_block_nested_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &ordered_vec = args.data[0];
-		    auto &nested_vec = args.data[1];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto ordered = ordered_vec.GetValue(i);
-			    auto nested_list = nested_vec.GetValue(i);
-			    bool is_ordered = !ordered.IsNull() && ordered.GetValue<bool>();
-			    map<string, string> attrs;
-			    attrs[BlockTypes::ATTR_ORDERED_LEGACY] = is_ordered ? "true" : "false";
-			    auto list_parent = BuilderFunctions::CreateBlockWithNullContent(
-			        BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
-			    vector<Value> result_list;
-			    result_list.push_back(list_parent);
-			    int32_t child_order = 0;
-			    if (!nested_list.IsNull()) {
-				    auto &outer_children = ListValue::GetChildren(nested_list);
-				    for (auto &inner_list : outer_children) {
-					    if (!inner_list.IsNull()) {
-						    auto &inner_children = ListValue::GetChildren(inner_list);
-						    for (auto &item : inner_children) {
-							    if (!item.IsNull()) {
-								    auto child_fields = StructValue::GetChildren(item);
-								    child_fields[BlockTypes::LEVEL_IDX] =
-								        Value((child_fields[BlockTypes::LEVEL_IDX].IsNull()
-								                   ? 1 // a NULL level means top level, i.e. depth 1
-								                   : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>()) +
-								              1);
-								    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
-								    result_list.push_back(
-								        Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
-							    }
-						    }
-					    }
-				    }
-			    }
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
-		    }
-	    }));
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_list", {duck_block_nested_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &nested_vec = args.data[0];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto nested_list = nested_vec.GetValue(i);
-			    map<string, string> attrs;
-			    attrs[BlockTypes::ATTR_ORDERED_LEGACY] = "false";
-			    auto list_parent = BuilderFunctions::CreateBlockWithNullContent(
-			        BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
-			    vector<Value> result_list;
-			    result_list.push_back(list_parent);
-			    int32_t child_order = 0;
-			    if (!nested_list.IsNull()) {
-				    auto &outer_children = ListValue::GetChildren(nested_list);
-				    for (auto &inner_list : outer_children) {
-					    if (!inner_list.IsNull()) {
-						    auto &inner_children = ListValue::GetChildren(inner_list);
-						    for (auto &item : inner_children) {
-							    if (!item.IsNull()) {
-								    auto child_fields = StructValue::GetChildren(item);
-								    child_fields[BlockTypes::LEVEL_IDX] =
-								        Value((child_fields[BlockTypes::LEVEL_IDX].IsNull()
-								                   ? 1 // a NULL level means top level, i.e. depth 1
-								                   : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>()) +
-								              1);
-								    child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
-								    result_list.push_back(
-								        Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
-							    }
-						    }
-					    }
-				    }
-			    }
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
-		    }
-	    }));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_list",
+	                                      {LogicalType::BOOLEAN, LogicalType::LIST(LogicalType::VARCHAR)},
+	                                      duck_block_list_type, DbListBlockV2Fun),
+	                       {"ordered", "items"}, "Build a list block (alias for duck_block_list_block).",
+	                       {"duck_block_list(true, ['First', 'Second'])"});
 
-	// duck_block_list_item(content VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(
-	    ScalarFunction("duck_block_list_item", {LogicalType::VARCHAR}, duck_block_list_type, DbListItemV2NoOrderFun));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_list", {LogicalType::LIST(LogicalType::VARCHAR)},
+	                                      duck_block_list_type, DbListBlockV2NoOrderFun),
+	                       {"items"}, "Build an unordered list block (alias for duck_block_list_block).",
+	                       {"duck_block_list(['First', 'Second'])"});
 
-	// duck_block_list_item(ordered BOOLEAN, content VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("duck_block_list_item", {LogicalType::BOOLEAN, LogicalType::VARCHAR},
-	                                       duck_block_list_type, DbListItemV2Fun));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction(
+	        "duck_block_list", {LogicalType::BOOLEAN, duck_block_nested_list_type}, duck_block_list_type,
+	        [](DataChunk &args, ExpressionState &state, Vector &result) {
+		        auto &ordered_vec = args.data[0];
+		        auto &nested_vec = args.data[1];
+		        auto count = args.size();
+		        for (idx_t i = 0; i < count; i++) {
+			        auto ordered = ordered_vec.GetValue(i);
+			        auto nested_list = nested_vec.GetValue(i);
+			        bool is_ordered = !ordered.IsNull() && ordered.GetValue<bool>();
+			        map<string, string> attrs;
+			        attrs[BlockTypes::ATTR_ORDERED_LEGACY] = is_ordered ? "true" : "false";
+			        auto list_parent = BuilderFunctions::CreateBlockWithNullContent(
+			            BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
+			        vector<Value> result_list;
+			        result_list.push_back(list_parent);
+			        int32_t child_order = 0;
+			        if (!nested_list.IsNull()) {
+				        auto &outer_children = ListValue::GetChildren(nested_list);
+				        for (auto &inner_list : outer_children) {
+					        if (!inner_list.IsNull()) {
+						        auto &inner_children = ListValue::GetChildren(inner_list);
+						        for (auto &item : inner_children) {
+							        if (!item.IsNull()) {
+								        auto child_fields = StructValue::GetChildren(item);
+								        child_fields[BlockTypes::LEVEL_IDX] =
+								            Value((child_fields[BlockTypes::LEVEL_IDX].IsNull()
+								                       ? 1
+								                       : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>()) +
+								                  1);
+								        child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
+								        result_list.push_back(
+								            Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
+							        }
+						        }
+					        }
+				        }
+			        }
+			        result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
+		        }
+	        }),
+	    {"ordered", "items_nested"}, "Build a list block from nested item elements.",
+	    {"duck_block_list(true, [duck_block_list_item('Item')])"});
 
-	// duck_block_list_item(content LIST(duck_block)) -> LIST(duck_block)
-	loader.RegisterFunction(
-	    ScalarFunction("duck_block_list_item", {duck_block_list_type}, duck_block_list_type, DbListItemV2NoOrderFun));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction(
+	        "duck_block_list", {duck_block_nested_list_type}, duck_block_list_type,
+	        [](DataChunk &args, ExpressionState &state, Vector &result) {
+		        auto &nested_vec = args.data[0];
+		        auto count = args.size();
+		        for (idx_t i = 0; i < count; i++) {
+			        auto nested_list = nested_vec.GetValue(i);
+			        map<string, string> attrs;
+			        attrs[BlockTypes::ATTR_ORDERED_LEGACY] = "false";
+			        auto list_parent = BuilderFunctions::CreateBlockWithNullContent(
+			            BlockTypes::TYPE_LIST, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
+			        vector<Value> result_list;
+			        result_list.push_back(list_parent);
+			        int32_t child_order = 0;
+			        if (!nested_list.IsNull()) {
+				        auto &outer_children = ListValue::GetChildren(nested_list);
+				        for (auto &inner_list : outer_children) {
+					        if (!inner_list.IsNull()) {
+						        auto &inner_children = ListValue::GetChildren(inner_list);
+						        for (auto &item : inner_children) {
+							        if (!item.IsNull()) {
+								        auto child_fields = StructValue::GetChildren(item);
+								        child_fields[BlockTypes::LEVEL_IDX] =
+								            Value((child_fields[BlockTypes::LEVEL_IDX].IsNull()
+								                       ? 1
+								                       : child_fields[BlockTypes::LEVEL_IDX].GetValue<int32_t>()) +
+								                  1);
+								        child_fields[BlockTypes::ELEMENT_ORDER_IDX] = Value(child_order++);
+								        result_list.push_back(
+								            Value::STRUCT(BlockTypes::DuckBlockType(), std::move(child_fields)));
+							        }
+						        }
+					        }
+				        }
+			        }
+			        result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(result_list)));
+		        }
+	        }),
+	    {"items_nested"}, "Build an unordered list block from nested item elements.",
+	    {"duck_block_list([duck_block_list_item('Item')])"});
 
-	// duck_block_list_item(ordered BOOLEAN, content LIST(duck_block)) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("duck_block_list_item", {LogicalType::BOOLEAN, duck_block_list_type},
-	                                       duck_block_list_type, DbListItemV2Fun));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_list_item", {LogicalType::VARCHAR}, duck_block_list_type, DbListItemV2NoOrderFun),
+	    {"content"}, "Build a list item block from text.", {"duck_block_list_item('List item text')"});
 
-	// duck_block_list_item(content LIST(LIST(duck_block))) -> LIST(duck_block) (flatten nested lists)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_list_item", {duck_block_nested_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &nested_vec = args.data[0];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto nested_list = nested_vec.GetValue(i);
-			    auto flat_children = FlattenNestedList(nested_list);
-			    map<string, string> attrs;
-			    attrs[BlockTypes::ATTR_ORDERED_LEGACY] = "false";
-			    auto parent = BuilderFunctions::CreateBlockWithNullContent(
-			        BlockTypes::TYPE_LIST_ITEM, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
-			    auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
-		    }
-	    }));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_list_item", {LogicalType::BOOLEAN, LogicalType::VARCHAR},
+	                                      duck_block_list_type, DbListItemV2Fun),
+	                       {"ordered", "content"}, "Build a list item block with ordered flag.",
+	                       {"duck_block_list_item(true, 'List item text')"});
 
-	// duck_block_list_item(ordered BOOLEAN, content LIST(LIST(duck_block))) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_list_item", {LogicalType::BOOLEAN, duck_block_nested_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &ordered_vec = args.data[0];
-		    auto &nested_vec = args.data[1];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto ordered = ordered_vec.GetValue(i);
-			    auto nested_list = nested_vec.GetValue(i);
-			    auto flat_children = FlattenNestedList(nested_list);
-			    bool is_ordered = !ordered.IsNull() && ordered.GetValue<bool>();
-			    map<string, string> attrs;
-			    attrs[BlockTypes::ATTR_ORDERED_LEGACY] = is_ordered ? "true" : "false";
-			    auto parent = BuilderFunctions::CreateBlockWithNullContent(
-			        BlockTypes::TYPE_LIST_ITEM, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
-			    auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
-		    }
-	    }));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_list_item", {duck_block_list_type}, duck_block_list_type, DbListItemV2NoOrderFun),
+	    {"content"}, "Build a list item block from children elements.",
+	    {"duck_block_list_item([duck_block_text('List item text')])"});
 
-	// duck_block_raw(format VARCHAR, content VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction("duck_block_raw", {LogicalType::VARCHAR, LogicalType::VARCHAR},
-	                                       duck_block_list_type, DbRawV2Fun));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_list_item", {LogicalType::BOOLEAN, duck_block_list_type},
+	                                      duck_block_list_type, DbListItemV2Fun),
+	                       {"ordered", "content"}, "Build a list item block with ordered flag and children.",
+	                       {"duck_block_list_item(true, [duck_block_text('List item text')])"});
 
-	// ========================================================================
-	// duck_block_div - Generic block container (Issue #6)
-	// ========================================================================
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_list_item", {duck_block_nested_list_type}, duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &nested_vec = args.data[0];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto nested_list = nested_vec.GetValue(i);
+			                   auto flat_children = FlattenNestedList(nested_list);
+			                   map<string, string> attrs;
+			                   attrs[BlockTypes::ATTR_ORDERED_LEGACY] = "false";
+			                   auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			                       BlockTypes::TYPE_LIST_ITEM, BlockTypes::KIND_BLOCK, Value(1),
+			                       BlockTypes::ENCODING_TEXT, attrs);
+			                   auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		                   }
+	                   }),
+	    {"content_nested"}, "Build a list item block from nested element lists.",
+	    {"duck_block_list_item([duck_block_text('Item')])"});
 
-	// duck_block_div(children LIST(duck_block)) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_div", {duck_block_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &children_vec = args.data[0];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto children_list = children_vec.GetValue(i);
-			    auto parent = BuilderFunctions::CreateBlockWithNullContent(BlockTypes::TYPE_DIV, BlockTypes::KIND_BLOCK,
-			                                                               Value(1), BlockTypes::ENCODING_TEXT, {});
-			    auto flattened = FlattenBlockWithChildren(parent, children_list, 1);
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
-		    }
-	    }));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction(
+	        "duck_block_list_item", {LogicalType::BOOLEAN, duck_block_nested_list_type}, duck_block_list_type,
+	        [](DataChunk &args, ExpressionState &state, Vector &result) {
+		        auto &ordered_vec = args.data[0];
+		        auto &nested_vec = args.data[1];
+		        auto count = args.size();
+		        for (idx_t i = 0; i < count; i++) {
+			        auto ordered = ordered_vec.GetValue(i);
+			        auto nested_list = nested_vec.GetValue(i);
+			        auto flat_children = FlattenNestedList(nested_list);
+			        bool is_ordered = !ordered.IsNull() && ordered.GetValue<bool>();
+			        map<string, string> attrs;
+			        attrs[BlockTypes::ATTR_ORDERED_LEGACY] = is_ordered ? "true" : "false";
+			        auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			            BlockTypes::TYPE_LIST_ITEM, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
+			        auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
+			        result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		        }
+	        }),
+	    {"ordered", "content_nested"}, "Build a list item block from nested element lists with ordered flag.",
+	    {"duck_block_list_item(true, [duck_block_text('Item')])"});
 
-	// duck_block_div(id VARCHAR, children LIST(duck_block)) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_div", {LogicalType::VARCHAR, duck_block_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &id_vec = args.data[0];
-		    auto &children_vec = args.data[1];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto id = id_vec.GetValue(i);
-			    auto children_list = children_vec.GetValue(i);
-			    map<string, string> attrs;
-			    if (!id.IsNull()) {
-				    attrs["id"] = id.GetValue<string>();
-			    }
-			    auto parent = BuilderFunctions::CreateBlockWithNullContent(BlockTypes::TYPE_DIV, BlockTypes::KIND_BLOCK,
-			                                                               Value(1), BlockTypes::ENCODING_TEXT, attrs);
-			    auto flattened = FlattenBlockWithChildren(parent, children_list, 1);
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
-		    }
-	    }));
+	// duck_block_div
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_div", {duck_block_list_type}, duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &children_vec = args.data[0];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto children_list = children_vec.GetValue(i);
+			                   auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			                       BlockTypes::TYPE_DIV, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT,
+			                       {});
+			                   auto flattened = FlattenBlockWithChildren(parent, children_list, 1);
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		                   }
+	                   }),
+	    {"children"}, "Build a generic div container block with children elements.",
+	    {"duck_block_div([duck_block_text('Inside div')])"});
 
-	// duck_block_div(id VARCHAR, class VARCHAR, children LIST(duck_block)) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_div", {LogicalType::VARCHAR, LogicalType::VARCHAR, duck_block_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &id_vec = args.data[0];
-		    auto &class_vec = args.data[1];
-		    auto &children_vec = args.data[2];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto id = id_vec.GetValue(i);
-			    auto class_val = class_vec.GetValue(i);
-			    auto children_list = children_vec.GetValue(i);
-			    map<string, string> attrs;
-			    if (!id.IsNull()) {
-				    attrs["id"] = id.GetValue<string>();
-			    }
-			    if (!class_val.IsNull()) {
-				    attrs["class"] = class_val.GetValue<string>();
-			    }
-			    auto parent = BuilderFunctions::CreateBlockWithNullContent(BlockTypes::TYPE_DIV, BlockTypes::KIND_BLOCK,
-			                                                               Value(1), BlockTypes::ENCODING_TEXT, attrs);
-			    auto flattened = FlattenBlockWithChildren(parent, children_list, 1);
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
-		    }
-	    }));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_div", {LogicalType::VARCHAR, duck_block_list_type}, duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &id_vec = args.data[0];
+		                   auto &children_vec = args.data[1];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto id = id_vec.GetValue(i);
+			                   auto children_list = children_vec.GetValue(i);
+			                   map<string, string> attrs;
+			                   if (!id.IsNull()) {
+				                   attrs["id"] = id.GetValue<string>();
+			                   }
+			                   auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			                       BlockTypes::TYPE_DIV, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT,
+			                       attrs);
+			                   auto flattened = FlattenBlockWithChildren(parent, children_list, 1);
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		                   }
+	                   }),
+	    {"id", "children"}, "Build a generic div container block with ID attribute.",
+	    {"duck_block_div('main', [duck_block_text('Inside div')])"});
 
-	// duck_block_div(children LIST(LIST(duck_block))) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_div", {duck_block_nested_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &nested_vec = args.data[0];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto nested_list = nested_vec.GetValue(i);
-			    auto flat_children = FlattenNestedList(nested_list);
-			    auto parent = BuilderFunctions::CreateBlockWithNullContent(BlockTypes::TYPE_DIV, BlockTypes::KIND_BLOCK,
-			                                                               Value(1), BlockTypes::ENCODING_TEXT, {});
-			    auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
-		    }
-	    }));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction(
+	        "duck_block_div", {LogicalType::VARCHAR, LogicalType::VARCHAR, duck_block_list_type}, duck_block_list_type,
+	        [](DataChunk &args, ExpressionState &state, Vector &result) {
+		        auto &id_vec = args.data[0];
+		        auto &class_vec = args.data[1];
+		        auto &children_vec = args.data[2];
+		        auto count = args.size();
+		        for (idx_t i = 0; i < count; i++) {
+			        auto id = id_vec.GetValue(i);
+			        auto class_val = class_vec.GetValue(i);
+			        auto children_list = children_vec.GetValue(i);
+			        map<string, string> attrs;
+			        if (!id.IsNull()) {
+				        attrs["id"] = id.GetValue<string>();
+			        }
+			        if (!class_val.IsNull()) {
+				        attrs["class"] = class_val.GetValue<string>();
+			        }
+			        auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			            BlockTypes::TYPE_DIV, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT, attrs);
+			        auto flattened = FlattenBlockWithChildren(parent, children_list, 1);
+			        result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		        }
+	        }),
+	    {"id", "class", "children"}, "Build a generic div container block with ID and class attributes.",
+	    {"duck_block_div('main', 'container', [duck_block_text('Inside div')])"});
 
-	// duck_block_div(id VARCHAR, children LIST(LIST(duck_block))) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_div", {LogicalType::VARCHAR, duck_block_nested_list_type}, duck_block_list_type,
-	    [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &id_vec = args.data[0];
-		    auto &nested_vec = args.data[1];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto id = id_vec.GetValue(i);
-			    auto nested_list = nested_vec.GetValue(i);
-			    auto flat_children = FlattenNestedList(nested_list);
-			    map<string, string> attrs;
-			    if (!id.IsNull()) {
-				    attrs["id"] = id.GetValue<string>();
-			    }
-			    auto parent = BuilderFunctions::CreateBlockWithNullContent(BlockTypes::TYPE_DIV, BlockTypes::KIND_BLOCK,
-			                                                               Value(1), BlockTypes::ENCODING_TEXT, attrs);
-			    auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
-		    }
-	    }));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_div", {duck_block_nested_list_type}, duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &nested_vec = args.data[0];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto nested_list = nested_vec.GetValue(i);
+			                   auto flat_children = FlattenNestedList(nested_list);
+			                   auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			                       BlockTypes::TYPE_DIV, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT,
+			                       {});
+			                   auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		                   }
+	                   }),
+	    {"children_nested"}, "Build a div container block from nested element lists.",
+	    {"duck_block_div([duck_block_text('Inside div')])"});
 
-	// duck_block_div(id VARCHAR, class VARCHAR, children LIST(LIST(duck_block))) -> LIST(duck_block)
-	loader.RegisterFunction(ScalarFunction(
-	    "duck_block_div", {LogicalType::VARCHAR, LogicalType::VARCHAR, duck_block_nested_list_type},
-	    duck_block_list_type, [](DataChunk &args, ExpressionState &state, Vector &result) {
-		    auto &id_vec = args.data[0];
-		    auto &class_vec = args.data[1];
-		    auto &nested_vec = args.data[2];
-		    auto count = args.size();
-		    for (idx_t i = 0; i < count; i++) {
-			    auto id = id_vec.GetValue(i);
-			    auto class_val = class_vec.GetValue(i);
-			    auto nested_list = nested_vec.GetValue(i);
-			    auto flat_children = FlattenNestedList(nested_list);
-			    map<string, string> attrs;
-			    if (!id.IsNull()) {
-				    attrs["id"] = id.GetValue<string>();
-			    }
-			    if (!class_val.IsNull()) {
-				    attrs["class"] = class_val.GetValue<string>();
-			    }
-			    auto parent = BuilderFunctions::CreateBlockWithNullContent(BlockTypes::TYPE_DIV, BlockTypes::KIND_BLOCK,
-			                                                               Value(1), BlockTypes::ENCODING_TEXT, attrs);
-			    auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
-			    result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
-		    }
-	    }));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_div", {LogicalType::VARCHAR, duck_block_nested_list_type}, duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &id_vec = args.data[0];
+		                   auto &nested_vec = args.data[1];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto id = id_vec.GetValue(i);
+			                   auto nested_list = nested_vec.GetValue(i);
+			                   auto flat_children = FlattenNestedList(nested_list);
+			                   map<string, string> attrs;
+			                   if (!id.IsNull()) {
+				                   attrs["id"] = id.GetValue<string>();
+			                   }
+			                   auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			                       BlockTypes::TYPE_DIV, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT,
+			                       attrs);
+			                   auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		                   }
+	                   }),
+	    {"id", "children_nested"}, "Build a div container block with ID from nested lists.",
+	    {"duck_block_div('main', [duck_block_text('Inside div')])"});
+
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_div", {LogicalType::VARCHAR, LogicalType::VARCHAR, duck_block_nested_list_type},
+	                   duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
+		                   auto &id_vec = args.data[0];
+		                   auto &class_vec = args.data[1];
+		                   auto &nested_vec = args.data[2];
+		                   auto count = args.size();
+		                   for (idx_t i = 0; i < count; i++) {
+			                   auto id = id_vec.GetValue(i);
+			                   auto class_val = class_vec.GetValue(i);
+			                   auto nested_list = nested_vec.GetValue(i);
+			                   auto flat_children = FlattenNestedList(nested_list);
+			                   map<string, string> attrs;
+			                   if (!id.IsNull()) {
+				                   attrs["id"] = id.GetValue<string>();
+			                   }
+			                   if (!class_val.IsNull()) {
+				                   attrs["class"] = class_val.GetValue<string>();
+			                   }
+			                   auto parent = BuilderFunctions::CreateBlockWithNullContent(
+			                       BlockTypes::TYPE_DIV, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT,
+			                       attrs);
+			                   auto flattened = FlattenBlockWithChildren(parent, flat_children, 1);
+			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(flattened)));
+		                   }
+	                   }),
+	    {"id", "class", "children_nested"}, "Build a div container block with ID and class from nested lists.",
+	    {"duck_block_div('main', 'container', [duck_block_text('Inside div')])"});
 }
 
 } // namespace duckdb

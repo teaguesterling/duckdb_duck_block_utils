@@ -1,6 +1,7 @@
 #include "repair.hpp"
 #include "block_types.hpp"
 #include "duckdb_compat.hpp"
+#include "register_helper.hpp"
 #include "duckdb/common/types/value.hpp"
 
 namespace duckdb {
@@ -143,15 +144,19 @@ void WrapOrphans(vector<El> &els) {
 	els.swap(out);
 }
 
-// Pass 2 (L2): the shallowest element sits at 1, unless the document carries its
-// explicit root. A level-0 `document` block in first position is the one legal thing
-// shallower than the top (2026-09-16), so rebasing it would REMOVE the structure the
-// producer just declared -- repair would hand back a document whose root became an
-// ordinary top-level block and whose every other element sank a level.
+// Pass 2 (L2): the shallowest element sits at 1, unless the relation carries explicit
+// document roots. A level-0 `document` block is the one legal thing shallower than the
+// top (2026-09-16), and a relation may hold SEVERAL -- one per document -- so rebasing
+// would REMOVE the structure the producer just declared: every root would become an
+// ordinary top-level block and everything beneath it would sink a level.
 void Rebase(vector<El> &els) {
-	const bool has_document_root = !els.empty() && els.front().level == 0 &&
-	                               els.front().kind == BlockTypes::KIND_BLOCK &&
-	                               els.front().type == BlockTypes::TYPE_DOCUMENT;
+	bool has_document_root = false;
+	for (auto &e : els) {
+		if (e.level == 0 && e.kind == BlockTypes::KIND_BLOCK && e.type == BlockTypes::TYPE_DOCUMENT) {
+			has_document_root = true;
+			break;
+		}
+	}
 	if (has_document_root) {
 		return;
 	}
@@ -227,8 +232,11 @@ void RepairFunctions::DbBlocksRepairFun(DataChunk &args, ExpressionState &state,
 }
 
 void RepairFunctions::Register(ExtensionLoader &loader) {
-	loader.RegisterFunction(ScalarFunction("duck_blocks_repair", {BlockTypes::DuckBlockListType()},
-	                                       BlockTypes::DuckBlockListType(), DbBlocksRepairFun));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_blocks_repair", {BlockTypes::DuckBlockListType()},
+	                                      BlockTypes::DuckBlockListType(), DbBlocksRepairFun),
+	                       {"blocks"}, "Repair and normalize block structure and levels.",
+	                       {"duck_blocks_repair(blocks)"});
 }
 
 } // namespace duckdb

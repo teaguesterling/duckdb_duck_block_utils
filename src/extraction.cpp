@@ -1,6 +1,7 @@
 #include "extraction.hpp"
 #include "block_types.hpp"
 #include "pandoc_convert_util.hpp"
+#include "register_helper.hpp"
 #include "duckdb/common/types/value.hpp"
 
 #include <map>
@@ -923,12 +924,14 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	// duck_blocks_to_text(blocks LIST(duck_block), separator VARCHAR) -> VARCHAR
 	auto to_text_func = ScalarFunction("duck_blocks_to_text", {duck_block_list_type, LogicalType::VARCHAR},
 	                                   LogicalType::VARCHAR, DbBlocksToTextFun);
-	loader.RegisterFunction(to_text_func);
+	RegisterScalarWithDesc(loader, to_text_func, {"blocks", "separator"}, "Extract plain text content from blocks.",
+	                       {"duck_blocks_to_text(blocks, ' ')"});
 
 	// Single-arg version with default separator
 	auto to_text_func_simple = ScalarFunction("duck_blocks_to_text", {duck_block_list_type}, LogicalType::VARCHAR,
 	                                          DbBlocksToTextDefaultSeparatorFun);
-	loader.RegisterFunction(to_text_func_simple);
+	RegisterScalarWithDesc(loader, to_text_func_simple, {"blocks"},
+	                       "Extract plain text content with newline separator.", {"duck_blocks_to_text(blocks)"});
 
 	// Define return types for headings
 	child_list_t<LogicalType> heading_struct_children;
@@ -941,10 +944,14 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	// duck_blocks_headings(blocks LIST(duck_block)) -> LIST(STRUCT)
 	auto headings_func =
 	    ScalarFunction("duck_blocks_headings_structs", {duck_block_list_type}, heading_list_type, DbBlocksHeadingsFun);
-	loader.RegisterFunction(headings_func);
+	RegisterScalarWithDesc(loader, headings_func, {"blocks"}, "Extract headings as list of structs.",
+	                       {"duck_blocks_headings_structs(blocks)"});
+
 	// 6.5: the base name returns blocks; the projection above lives on as _structs.
-	loader.RegisterFunction(ScalarFunction("duck_blocks_headings", {duck_block_list_type}, duck_block_list_type,
-	                                       ExtractionFunctions::DbBlocksHeadingsBlocksFun));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_blocks_headings", {duck_block_list_type}, duck_block_list_type,
+	                                      ExtractionFunctions::DbBlocksHeadingsBlocksFun),
+	                       {"blocks"}, "Extract heading blocks from a block list.", {"duck_blocks_headings(blocks)"});
 
 	// Define return types for code blocks
 	child_list_t<LogicalType> code_struct_children;
@@ -956,10 +963,14 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	// duck_blocks_code_blocks(blocks LIST(duck_block)) -> LIST(STRUCT)
 	auto code_blocks_func = ScalarFunction("duck_blocks_code_blocks_structs", {duck_block_list_type}, code_list_type,
 	                                       DbBlocksCodeBlocksFun);
-	loader.RegisterFunction(code_blocks_func);
+	RegisterScalarWithDesc(loader, code_blocks_func, {"blocks"}, "Extract code blocks as list of structs.",
+	                       {"duck_blocks_code_blocks_structs(blocks)"});
+
 	// 6.5: the base name returns blocks; the projection above lives on as _structs.
-	loader.RegisterFunction(ScalarFunction("duck_blocks_code_blocks", {duck_block_list_type}, duck_block_list_type,
-	                                       ExtractionFunctions::DbBlocksCodeBlocksBlocksFun));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_blocks_code_blocks", {duck_block_list_type}, duck_block_list_type,
+	                                      ExtractionFunctions::DbBlocksCodeBlocksBlocksFun),
+	                       {"blocks"}, "Extract code blocks from a block list.", {"duck_blocks_code_blocks(blocks)"});
 
 	// Define return types for stats
 	child_list_t<LogicalType> stats_struct_children;
@@ -971,7 +982,8 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 
 	// duck_blocks_stats(blocks LIST(duck_block)) -> LIST(STRUCT)
 	auto stats_func = ScalarFunction("duck_blocks_stats", {duck_block_list_type}, stats_list_type, DbBlocksStatsFun);
-	loader.RegisterFunction(stats_func);
+	RegisterScalarWithDesc(loader, stats_func, {"blocks"}, "Compute summary statistics of elements in block list.",
+	                       {"duck_blocks_stats(blocks)"});
 
 	// Define return types for TOC
 	child_list_t<LogicalType> toc_struct_children;
@@ -984,10 +996,14 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 
 	// duck_blocks_toc(blocks LIST(duck_block)) -> LIST(STRUCT)
 	auto toc_func = ScalarFunction("duck_blocks_toc_structs", {duck_block_list_type}, toc_list_type, DbBlocksTocFun);
-	loader.RegisterFunction(toc_func);
+	RegisterScalarWithDesc(loader, toc_func, {"blocks"}, "Extract table of contents as list of structs.",
+	                       {"duck_blocks_toc_structs(blocks)"});
+
 	// 6.5: the base name returns blocks; the projection above lives on as _structs.
-	loader.RegisterFunction(ScalarFunction("duck_blocks_toc", {duck_block_list_type}, duck_block_list_type,
-	                                       ExtractionFunctions::DbBlocksTocBlocksFun));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_blocks_toc", {duck_block_list_type}, duck_block_list_type,
+	                                      ExtractionFunctions::DbBlocksTocBlocksFun),
+	                       {"blocks"}, "Extract table of contents as bullet list blocks.", {"duck_blocks_toc(blocks)"});
 
 	// Define return types for links
 	child_list_t<LogicalType> link_struct_children;
@@ -1000,10 +1016,14 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	// duck_blocks_links(blocks LIST(duck_block)) -> LIST(STRUCT)
 	auto links_func =
 	    ScalarFunction("duck_blocks_links_structs", {duck_block_list_type}, link_list_type, DbBlocksLinksFun);
-	loader.RegisterFunction(links_func);
+	RegisterScalarWithDesc(loader, links_func, {"blocks"}, "Extract links as list of structs.",
+	                       {"duck_blocks_links_structs(blocks)"});
+
 	// 6.5: the base name returns blocks; the projection above lives on as _structs.
-	loader.RegisterFunction(ScalarFunction("duck_blocks_links", {duck_block_list_type}, duck_block_list_type,
-	                                       ExtractionFunctions::DbBlocksLinksBlocksFun));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_blocks_links", {duck_block_list_type}, duck_block_list_type,
+	                                      ExtractionFunctions::DbBlocksLinksBlocksFun),
+	                       {"blocks"}, "Extract links from a block list.", {"duck_blocks_links(blocks)"});
 }
 
 } // namespace duckdb

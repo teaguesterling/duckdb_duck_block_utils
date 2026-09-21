@@ -1,6 +1,7 @@
 #include "type_functions.hpp"
 #include "duckdb_compat.hpp"
 #include "block_types.hpp"
+#include "register_helper.hpp"
 #include "duckdb/common/types/value.hpp"
 
 namespace duckdb {
@@ -355,59 +356,77 @@ void TypeFunctions::DuckBlockSetLevelFun(DataChunk &args, ExpressionState &state
 void TypeFunctions::Register(ExtensionLoader &loader) {
 	auto duck_block_type = BlockTypes::DuckBlockType();
 
-	// duck_block(block_type, content, level, encoding, attributes, block_order) -> duck_block
-	loader.RegisterFunction(
-	    ScalarFunction("duck_block",
-	                   {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::INTEGER, LogicalType::VARCHAR,
+	ScalarFunctionSet duck_block_set("duck_block");
+	duck_block_set.AddFunction(
+	    ScalarFunction({LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::INTEGER, LogicalType::VARCHAR,
 	                    LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR), LogicalType::INTEGER},
 	                   duck_block_type, DuckBlockFun));
+	duck_block_set.AddFunction(
+	    ScalarFunction({LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type, DuckBlockSimpleFun));
+	RegisterScalarSetWithDesc(loader, duck_block_set,
+	                          {"block_type", "content", "level", "encoding", "attributes", "block_order"},
+	                          "Construct a duck_block struct.",
+	                          {"duck_block('paragraph', 'Hello world')",
+	                           "duck_block('heading', 'Title', 1, 'text', MAP {'id': 'title'}, 1)"});
 
-	// duck_block(block_type, content) -> duck_block
-	loader.RegisterFunction(ScalarFunction("duck_block", {LogicalType::VARCHAR, LogicalType::VARCHAR}, duck_block_type,
-	                                       DuckBlockSimpleFun));
+	RegisterScalarWithDesc(loader, ScalarFunction("to_duck_block", {LogicalType::ANY}, duck_block_type, ToDuckBlockFun),
+	                       {"struct_val"}, "Convert a compatible struct to a duck_block struct.",
+	                       {"to_duck_block({'element_type': 'paragraph', 'content': 'Hello', 'level': 1, 'encoding': "
+	                        "'text', 'attributes': MAP {}, 'element_order': 1})"});
 
-	// to_duck_block(struct) -> duck_block
-	loader.RegisterFunction(ScalarFunction("to_duck_block", {LogicalType::ANY}, duck_block_type, ToDuckBlockFun));
+	RegisterScalarWithDesc(
+	    loader, ScalarFunction("duck_block_valid", {duck_block_type}, LogicalType::BOOLEAN, DuckBlockValidFun),
+	    {"block"}, "Check if a duck_block struct is valid according to the duck_blocks spec.",
+	    {"duck_block_valid(duck_block('paragraph', 'Hello'))"});
 
-	// duck_block_valid(element) -> BOOLEAN
-	loader.RegisterFunction(
-	    ScalarFunction("duck_block_valid", {duck_block_type}, LogicalType::BOOLEAN, DuckBlockValidFun));
+	RegisterScalarWithDesc(
+	    loader, ScalarFunction("duck_block_type", {duck_block_type}, LogicalType::VARCHAR, DuckBlockTypeFun), {"block"},
+	    "Get the element_type field of a duck_block struct.", {"duck_block_type(duck_block('paragraph', 'Hello'))"});
 
-	// duck_block_type(element) -> VARCHAR
-	loader.RegisterFunction(
-	    ScalarFunction("duck_block_type", {duck_block_type}, LogicalType::VARCHAR, DuckBlockTypeFun));
+	RegisterScalarWithDesc(
+	    loader, ScalarFunction("duck_block_content", {duck_block_type}, LogicalType::VARCHAR, DuckBlockContentFun),
+	    {"block"}, "Get the content field of a duck_block struct.",
+	    {"duck_block_content(duck_block('paragraph', 'Hello'))"});
 
-	// duck_block_content(element) -> VARCHAR
-	loader.RegisterFunction(
-	    ScalarFunction("duck_block_content", {duck_block_type}, LogicalType::VARCHAR, DuckBlockContentFun));
+	RegisterScalarWithDesc(
+	    loader, ScalarFunction("duck_block_level", {duck_block_type}, LogicalType::INTEGER, DuckBlockLevelFun),
+	    {"block"}, "Get the level field of a duck_block struct.",
+	    {"duck_block_level(duck_block('paragraph', 'Hello'))"});
 
-	// duck_block_level(element) -> INTEGER
-	loader.RegisterFunction(
-	    ScalarFunction("duck_block_level", {duck_block_type}, LogicalType::INTEGER, DuckBlockLevelFun));
+	RegisterScalarWithDesc(
+	    loader, ScalarFunction("duck_block_encoding", {duck_block_type}, LogicalType::VARCHAR, DuckBlockEncodingFun),
+	    {"block"}, "Get the encoding field of a duck_block struct.",
+	    {"duck_block_encoding(duck_block('paragraph', 'Hello'))"});
 
-	// duck_block_encoding(element) -> VARCHAR
-	loader.RegisterFunction(
-	    ScalarFunction("duck_block_encoding", {duck_block_type}, LogicalType::VARCHAR, DuckBlockEncodingFun));
+	RegisterScalarWithDesc(
+	    loader, ScalarFunction("duck_block_order", {duck_block_type}, LogicalType::INTEGER, DuckBlockOrderFun),
+	    {"block"}, "Get the element_order field of a duck_block struct.",
+	    {"duck_block_order(duck_block('paragraph', 'Hello'))"});
 
-	// duck_block_order(element) -> INTEGER
-	loader.RegisterFunction(
-	    ScalarFunction("duck_block_order", {duck_block_type}, LogicalType::INTEGER, DuckBlockOrderFun));
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_block_attr", {duck_block_type, LogicalType::VARCHAR}, LogicalType::VARCHAR,
+	                   DuckBlockAttrFun),
+	    {"block", "key"}, "Get an attribute value by key from a duck_block struct.",
+	    {"duck_block_attr(duck_block('heading', 'Title', 1, 'text', MAP {'id': 'title'}, 1), 'id')"});
 
-	// duck_block_attr(element, key) -> VARCHAR
-	loader.RegisterFunction(ScalarFunction("duck_block_attr", {duck_block_type, LogicalType::VARCHAR},
-	                                       LogicalType::VARCHAR, DuckBlockAttrFun));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_set_order", {duck_block_type, LogicalType::INTEGER},
+	                                      duck_block_type, DuckBlockSetOrderFun),
+	                       {"block", "new_order"}, "Return a copy of the duck_block struct with element_order updated.",
+	                       {"duck_block_set_order(duck_block('paragraph', 'Hello'), 2)"});
 
-	// duck_block_set_order(element, new_order) -> duck_block
-	loader.RegisterFunction(ScalarFunction("duck_block_set_order", {duck_block_type, LogicalType::INTEGER},
-	                                       duck_block_type, DuckBlockSetOrderFun));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_set_content", {duck_block_type, LogicalType::VARCHAR},
+	                                      duck_block_type, DuckBlockSetContentFun),
+	                       {"block", "new_content"}, "Return a copy of the duck_block struct with content updated.",
+	                       {"duck_block_set_content(duck_block('paragraph', 'Hello'), 'World')"});
 
-	// duck_block_set_content(element, new_content) -> duck_block
-	loader.RegisterFunction(ScalarFunction("duck_block_set_content", {duck_block_type, LogicalType::VARCHAR},
-	                                       duck_block_type, DuckBlockSetContentFun));
-
-	// duck_block_set_level(element, new_level) -> duck_block
-	loader.RegisterFunction(ScalarFunction("duck_block_set_level", {duck_block_type, LogicalType::INTEGER},
-	                                       duck_block_type, DuckBlockSetLevelFun));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_set_level", {duck_block_type, LogicalType::INTEGER},
+	                                      duck_block_type, DuckBlockSetLevelFun),
+	                       {"block", "new_level"}, "Return a copy of the duck_block struct with level updated.",
+	                       {"duck_block_set_level(duck_block('paragraph', 'Hello'), 2)"});
 }
 
 } // namespace duckdb

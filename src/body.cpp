@@ -1,5 +1,6 @@
 #include "body.hpp"
 #include "block_types.hpp"
+#include "register_helper.hpp"
 #include "duckdb/common/types/value.hpp"
 
 namespace duckdb {
@@ -60,8 +61,11 @@ void BodyFunctions::DbBlocksBodyFun(DataChunk &args, ExpressionState &state, Vec
 }
 
 void BodyFunctions::Register(ExtensionLoader &loader) {
-	loader.RegisterFunction(ScalarFunction("duck_blocks_body", {BlockTypes::DuckBlockListType()},
-	                                       BlockTypes::DuckBlockListType(), DbBlocksBodyFun));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_blocks_body", {BlockTypes::DuckBlockListType()},
+	                                      BlockTypes::DuckBlockListType(), DbBlocksBodyFun),
+	                       {"blocks"}, "Extract body blocks excluding non-body/metadata elements.",
+	                       {"duck_blocks_body(blocks)"});
 }
 
 } // namespace duckdb
