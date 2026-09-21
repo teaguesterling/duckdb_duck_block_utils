@@ -910,3 +910,43 @@ SELECT list_transform(duck_blocks_body([
 ]), lambda e: e.element_type);
 ----
 [document, paragraph]
+
+# A ROOT CARRIES NO CONTENT (Teague's ruling, 2026-09-21). It is structure; file-scoped
+# facts go in attributes. Measured before the rule: a root carrying text came back out of
+# duck_blocks_to_text and duck_blocks_render_ansi as document prose and as a body row, and
+# panduck's writer fabricated it as a Para (duckdb_panduck#81). Refusing it at the source
+# makes that unreachable in valid data.
+query I
+SELECT duck_blocks_validate([
+    {'kind':'block','element_type':'document','content':'LEAK','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'paragraph','content':'body','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block
+]).valid;
+----
+false
+
+# The refusal names where the facts belong, rather than only that content is not allowed
+query I
+SELECT duck_blocks_validate([
+    {'kind':'block','element_type':'document','content':'LEAK','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block
+]).errors[1].message LIKE '%put file-scoped facts in attributes%';
+----
+true
+
+# ATTRIBUTES ARE FINE: provenance on the root is the point of the rule, not collateral
+query I
+SELECT duck_blocks_validate([
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{'filename':'a.md','ordinal':'1'},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'paragraph','content':'body','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block
+]).valid;
+----
+true
+
+# DISCRIMINATING: an ordinary block at level 1 still carries content, so the rule is the
+# root's and not a blanket "blocks carry no content"
+query I
+SELECT duck_blocks_validate([
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'paragraph','content':'body','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block
+]).valid;
+----
+true

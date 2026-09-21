@@ -14,7 +14,8 @@ STRUCT(
     element_type VARCHAR,               -- Element type identifier
     content VARCHAR,                    -- Primary content
     level INTEGER,                      -- Structural depth, ALWAYS explicit; top level is 1, never NULL.
-                                        -- 0 is the OPTIONAL explicit document root: kind='block'
+                                        -- 0 is the OPTIONAL explicit document root, which carries NO
+                                        -- content (file-scoped facts go in attributes): kind='block'
                                         -- element_type='document' rows, several permitted (one per
                                         -- document), and nothing else may sit at level 0.
     encoding VARCHAR,                   -- Content encoding: 'text', 'json', 'yaml', 'html', 'xml'

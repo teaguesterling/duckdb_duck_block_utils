@@ -166,6 +166,27 @@ void ValidationFunctions::DbBlocksValidateFun(DataChunk &args, ExpressionState &
 						                               "so this element's parent is missing")));
 						errors.push_back(Value::STRUCT(std::move(error_values)));
 					}
+					// A document root is STRUCTURE, not prose: it carries no content. Teague's
+					// ruling, 2026-09-21. Provenance and file-scoped facts go in `attributes`
+					// (a filename, an ordinal, a byte offset), which is what a reader mapping
+					// one file to one document hangs its file-level facts on.
+					//
+					// Checked because the alternative leaks: measured on this build before the
+					// rule, a root carrying 'LEAKED ROOT TEXT' came back out of
+					// duck_blocks_to_text and duck_blocks_render_ansi as document prose, and as
+					// a body row from duck_blocks_body. panduck measured the same shape in their
+					// writer (duckdb_panduck#81), where it was fabricated as a Para. Refusing the
+					// content at the source makes all of that unreachable in valid data, which is
+					// cheaper than a skip in every reader.
+					if (is_document_root && !GetElementStringField(block, BlockTypes::CONTENT_IDX).empty()) {
+						child_list_t<Value> error_values;
+						error_values.push_back(make_pair("element_order", Value(element_order)));
+						error_values.push_back(make_pair("field", Value("content")));
+						error_values.push_back(make_pair(
+						    "message", Value("document root carries content; the root is structure and carries "
+						                     "none -- put file-scoped facts in attributes")));
+						errors.push_back(Value::STRUCT(std::move(error_values)));
+					}
 					prev_level = lvl;
 				}
 			}
