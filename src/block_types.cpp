@@ -1,5 +1,6 @@
 #include "block_types.hpp"
 #include "duckdb_compat.hpp"
+#include "register_helper.hpp"
 
 #include <algorithm>
 #include "duckdb/function/cast/default_casts.hpp"
@@ -303,18 +304,30 @@ void BlockTypes::Register(ExtensionLoader &loader) {
 	loader.RegisterType("duck_block_ext", DuckBlockExtType());
 
 	auto varchar_list = LogicalType::LIST(LogicalType::VARCHAR);
-	loader.RegisterFunction(ScalarFunction("duck_block_kind_names", {}, varchar_list, BlockKindsFun));
-	loader.RegisterFunction(ScalarFunction("duck_block_type_names", {}, varchar_list, BlockTypesFun));
-	loader.RegisterFunction(ScalarFunction("duck_block_encoding_names", {}, varchar_list, BlockEncodingsFun));
-	loader.RegisterFunction(ScalarFunction("duck_block_spec_version", {}, LogicalType::VARCHAR, SpecVersionFun));
-	loader.RegisterFunction(ScalarFunction("duck_block_implicit_parent", {LogicalType::VARCHAR, LogicalType::VARCHAR},
-	                                       LogicalType::VARCHAR, ImplicitParentFun));
-	loader.RegisterFunction(ScalarFunction("duck_block_is_body", {LogicalType::VARCHAR, LogicalType::VARCHAR},
-	                                       LogicalType::BOOLEAN, IsBodyFun));
-	loader.RegisterFunction(
-	    ScalarFunction("duck_blocks_stamp", {DuckBlockListType()}, DuckBlockListType(), BlocksStampFun));
-	loader.RegisterFunction(
-	    ScalarFunction("duck_blocks_version", {DuckBlockListType()}, LogicalType::VARCHAR, BlocksVersionFun));
+	RegisterScalarWithDesc(loader, ScalarFunction("duck_block_kind_names", {}, varchar_list, BlockKindsFun), {},
+	                       "Return the list of valid duck_block kind names.", {"duck_block_kind_names()"});
+	RegisterScalarWithDesc(loader, ScalarFunction("duck_block_type_names", {}, varchar_list, BlockTypesFun), {},
+	                       "Return the list of valid duck_block element type names.", {"duck_block_type_names()"});
+	RegisterScalarWithDesc(loader, ScalarFunction("duck_block_encoding_names", {}, varchar_list, BlockEncodingsFun), {},
+	                       "Return the list of valid duck_block encoding names.", {"duck_block_encoding_names()"});
+	RegisterScalarWithDesc(loader, ScalarFunction("duck_block_spec_version", {}, LogicalType::VARCHAR, SpecVersionFun),
+	                       {}, "Return the current duck_blocks specification version.", {"duck_block_spec_version()"});
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_implicit_parent", {LogicalType::VARCHAR, LogicalType::VARCHAR},
+	                                      LogicalType::VARCHAR, ImplicitParentFun),
+	                       {"kind", "type"}, "Return the implicit parent element type for an element type.",
+	                       {"duck_block_implicit_parent('block', 'paragraph')"});
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_block_is_body", {LogicalType::VARCHAR, LogicalType::VARCHAR},
+	                                      LogicalType::BOOLEAN, IsBodyFun),
+	                       {"kind", "type"}, "Return true if the element kind and type represent body content.",
+	                       {"duck_block_is_body('block', 'paragraph')"});
+	RegisterScalarWithDesc(
+	    loader, ScalarFunction("duck_blocks_stamp", {DuckBlockListType()}, DuckBlockListType(), BlocksStampFun),
+	    {"blocks"}, "Stamp duck_blocks list with current spec version metadata.", {"duck_blocks_stamp(blocks)"});
+	RegisterScalarWithDesc(
+	    loader, ScalarFunction("duck_blocks_version", {DuckBlockListType()}, LogicalType::VARCHAR, BlocksVersionFun),
+	    {"blocks"}, "Return the stamped spec version of a duck_blocks list.", {"duck_blocks_version(blocks)"});
 
 	// Register cast from VARCHAR to duck_block (creates text inline element)
 	// Using implicit_cast_cost = -1 means explicit cast only (not implicit)

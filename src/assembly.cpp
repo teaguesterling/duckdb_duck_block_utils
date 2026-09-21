@@ -1,6 +1,7 @@
 #include "assembly.hpp"
 #include "block_types.hpp"
 #include "pandoc_convert_util.hpp"
+#include "register_helper.hpp"
 #include "duckdb/common/types/value.hpp"
 
 namespace duckdb {
@@ -288,12 +289,14 @@ void AssemblyFunctions::Register(ExtensionLoader &loader) {
 	// duck_blocks_assemble(blocks LIST(duck_block)) -> LIST(duck_block)
 	auto assemble_func =
 	    ScalarFunction("duck_blocks_assemble", {duck_block_list_type}, duck_block_list_type, DbAssembleFun);
-	loader.RegisterFunction(assemble_func);
+	RegisterScalarWithDesc(loader, assemble_func, {"blocks"}, "Assemble a list of blocks with sequential ordering.",
+	                       {"duck_blocks_assemble([duck_block_paragraph('Hello')])"});
 
 	// Also register as duck_blocks_document (alias for clarity in document construction)
 	auto document_func =
 	    ScalarFunction("duck_blocks_document", {duck_block_list_type}, duck_block_list_type, DbAssembleFun);
-	loader.RegisterFunction(document_func);
+	RegisterScalarWithDesc(loader, document_func, {"blocks"}, "Assemble blocks into a document structure.",
+	                       {"duck_blocks_document([duck_block_paragraph('Hello')])"});
 
 	// V2 API: duck_blocks_assemble(LIST(LIST(duck_block))) -> LIST(duck_block)
 	// Flattens nested lists first, then assigns element_order
@@ -337,16 +340,25 @@ void AssemblyFunctions::Register(ExtensionLoader &loader) {
 		}
 	};
 
-	loader.RegisterFunction(ScalarFunction("duck_blocks_assemble", {duck_block_nested_list_type}, duck_block_list_type,
-	                                       assemble_nested_fun));
-	loader.RegisterFunction(ScalarFunction("duck_blocks_document", {duck_block_nested_list_type}, duck_block_list_type,
-	                                       assemble_nested_fun));
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_blocks_assemble", {duck_block_nested_list_type}, duck_block_list_type,
+	                                      assemble_nested_fun),
+	                       {"nested_blocks"}, "Assemble nested block lists into a single sequential list.",
+	                       {"duck_blocks_assemble([[duck_block_paragraph('Hello')]])"});
+
+	RegisterScalarWithDesc(loader,
+	                       ScalarFunction("duck_blocks_document", {duck_block_nested_list_type}, duck_block_list_type,
+	                                      assemble_nested_fun),
+	                       {"nested_blocks"}, "Assemble nested block lists into a document structure.",
+	                       {"duck_blocks_document([[duck_block_paragraph('Hello')]])"});
 
 	// duck_block_section(title VARCHAR, level INTEGER, children LIST(duck_block)) -> LIST(duck_block)
 	auto section_func =
 	    ScalarFunction("duck_block_section", {LogicalType::VARCHAR, LogicalType::INTEGER, duck_block_list_type},
 	                   duck_block_list_type, DbSectionFun);
-	loader.RegisterFunction(section_func);
+	RegisterScalarWithDesc(loader, section_func, {"title", "level", "children"},
+	                       "Build a section heading with children blocks.",
+	                       {"duck_block_section('Intro', 1, [duck_block_paragraph('Text')])"});
 
 	// Two-arg version: duck_block_section(title VARCHAR, level INTEGER) -> LIST(duck_block)
 	// Creates a section with just a heading (no children)
@@ -370,10 +382,12 @@ void AssemblyFunctions::Register(ExtensionLoader &loader) {
 			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(section_blocks)));
 		                   }
 	                   });
-	loader.RegisterFunction(section_func_2);
+	RegisterScalarWithDesc(loader, section_func_2, {"title", "level"}, "Build a section heading without children.",
+	                       {"duck_block_section('Intro', 1)"});
 
 	// V2 API: duck_block_section(level INTEGER, title VARCHAR) -> LIST(duck_block)
-	loader.RegisterFunction(
+	RegisterScalarWithDesc(
+	    loader,
 	    ScalarFunction("duck_block_section", {LogicalType::INTEGER, LogicalType::VARCHAR}, duck_block_list_type,
 	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
 		                   auto &level_vec = args.data[0];
@@ -388,11 +402,13 @@ void AssemblyFunctions::Register(ExtensionLoader &loader) {
 			                   section_blocks.push_back(CreateHeadingBlock(title_str, level_val, 0));
 			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(section_blocks)));
 		                   }
-	                   }));
+	                   }),
+	    {"level", "title"}, "Build a section heading (level, title).", {"duck_block_section(1, 'Intro')"});
 
 	// V2 API: duck_block_section(level INTEGER, inline_children LIST(LIST(duck_block))) -> LIST(duck_block)
 	// For headings with inline children (no body blocks)
-	loader.RegisterFunction(
+	RegisterScalarWithDesc(
+	    loader,
 	    ScalarFunction("duck_block_section", {LogicalType::INTEGER, duck_block_nested_list_type}, duck_block_list_type,
 	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
 		                   auto &level_vec = args.data[0];
@@ -440,12 +456,16 @@ void AssemblyFunctions::Register(ExtensionLoader &loader) {
 			                   }
 			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(section_blocks)));
 		                   }
-	                   }));
+	                   }),
+	    {"level", "inline_children"}, "Build a section heading with rich inline children.",
+	    {"duck_block_section(1, [duck_block_bold('Bold Title')])"});
 
 	// V2 API: duck_block_section(level INTEGER, title VARCHAR, children LIST(duck_block)) -> LIST(duck_block)
-	loader.RegisterFunction(
+	RegisterScalarWithDesc(
+	    loader,
 	    ScalarFunction("duck_block_section", {LogicalType::INTEGER, LogicalType::VARCHAR, duck_block_list_type},
-	                   duck_block_list_type, [](DataChunk &args, ExpressionState &state, Vector &result) {
+	                   duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
 		                   auto &level_vec = args.data[0];
 		                   auto &title_vec = args.data[1];
 		                   auto &children_vec = args.data[2];
@@ -472,12 +492,16 @@ void AssemblyFunctions::Register(ExtensionLoader &loader) {
 			                   }
 			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(section_blocks)));
 		                   }
-	                   }));
+	                   }),
+	    {"level", "title", "children"}, "Build a section heading with body blocks.",
+	    {"duck_block_section(1, 'Intro', [duck_block_paragraph('Text')])"});
 
 	// V2 API: duck_block_section(level INTEGER, title VARCHAR, children LIST(LIST(duck_block))) -> LIST(duck_block)
-	loader.RegisterFunction(
+	RegisterScalarWithDesc(
+	    loader,
 	    ScalarFunction("duck_block_section", {LogicalType::INTEGER, LogicalType::VARCHAR, duck_block_nested_list_type},
-	                   duck_block_list_type, [](DataChunk &args, ExpressionState &state, Vector &result) {
+	                   duck_block_list_type,
+	                   [](DataChunk &args, ExpressionState &state, Vector &result) {
 		                   auto &level_vec = args.data[0];
 		                   auto &title_vec = args.data[1];
 		                   auto &nested_vec = args.data[2];
@@ -512,17 +536,21 @@ void AssemblyFunctions::Register(ExtensionLoader &loader) {
 			                   }
 			                   result.SetValue(i, Value::LIST(BlockTypes::DuckBlockType(), std::move(section_blocks)));
 		                   }
-	                   }));
+	                   }),
+	    {"level", "title", "nested_children"}, "Build a section heading with nested children block lists.",
+	    {"duck_block_section(1, 'Intro', [duck_block_paragraph('Text')])"});
 
 	// duck_blocks_rebase_levels(blocks LIST(duck_block), offset INTEGER) -> LIST(duck_block)
 	auto rebase_func = ScalarFunction("duck_blocks_rebase_levels", {duck_block_list_type, LogicalType::INTEGER},
 	                                  duck_block_list_type, DbRebaseLevelsFun);
-	loader.RegisterFunction(rebase_func);
+	RegisterScalarWithDesc(loader, rebase_func, {"blocks", "offset"}, "Rebase hierarchy levels of a list of blocks.",
+	                       {"duck_blocks_rebase_levels(blocks, 1)"});
 
 	// duck_blocks_concat(blocks1 LIST(duck_block), blocks2 LIST(duck_block)) -> LIST(duck_block)
 	auto concat_func = ScalarFunction("duck_blocks_concat", {duck_block_list_type, duck_block_list_type},
 	                                  duck_block_list_type, DbConcatFun);
-	loader.RegisterFunction(concat_func);
+	RegisterScalarWithDesc(loader, concat_func, {"blocks1", "blocks2"}, "Concatenate two block lists.",
+	                       {"duck_blocks_concat(blocks1, blocks2)"});
 }
 
 } // namespace duckdb

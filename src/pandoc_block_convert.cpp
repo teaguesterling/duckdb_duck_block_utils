@@ -7,6 +7,7 @@
 #include "pandoc_inline_convert.hpp"
 #include "block_types.hpp"
 #include "duckdb_compat.hpp"
+#include "register_helper.hpp"
 #include "duckdb/common/types/value.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/function/table_function.hpp"
@@ -3026,68 +3027,41 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	// pandoc_ast_to_blocks(json VARCHAR) -> LIST(duck_block)
 	auto ast_to_blocks_func =
 	    ScalarFunction("pandoc_ast_to_blocks", {LogicalType::VARCHAR}, duck_block_list_type, PandocAstToBlocksFun);
-	// Fallible: every converter below can throw the Pandoc nesting-depth cap
-	// (CheckPandocDepth), and the file-backed ones can throw IOException. DuckDB
-	// v2.0 makes that a DECLARED property -- an undeclared throw becomes
-	// "INTERNAL Error: ... the function is not marked as fallible". SetFallible
-	// exists identically on the pin, so this needs no shim: the flag is already
-	// consulted there too -- v1.5's planner reads FunctionErrors via
-	// Expression::CanThrow() (expression_heuristics, pushdown_outer_join,
-	// pushdown_projection, pushdown_get, adaptive_filter, execute_function) to
-	// gate conjunct reordering and filter pushdown. v2.0 adds ENFORCEMENT of
-	// that existing contract; it does not introduce the contract itself.
 	ast_to_blocks_func.SetFallible();
-	loader.RegisterFunction(ast_to_blocks_func);
+	RegisterScalarWithDesc(loader, ast_to_blocks_func, {"json"}, "Parse Pandoc AST JSON into duck_blocks.",
+	                       {"pandoc_ast_to_blocks('{\"blocks\":[]}')"});
 
 	// duck_blocks_to_pandoc_blocks(blocks LIST(duck_block)) -> VARCHAR (JSON array of Pandoc blocks)
 	auto blocks_to_ast_func = ScalarFunction("duck_blocks_to_pandoc_blocks", {duck_block_list_type},
 	                                         LogicalType::VARCHAR, DuckBlocksToPandocBlocksFun);
 	blocks_to_ast_func.SetFallible();
-	loader.RegisterFunction(blocks_to_ast_func);
+	RegisterScalarWithDesc(loader, blocks_to_ast_func, {"blocks"}, "Convert duck_blocks to Pandoc blocks JSON string.",
+	                       {"duck_blocks_to_pandoc_blocks(blocks)"});
 
 	// read_pandoc_ast(file_path VARCHAR) -> LIST(duck_block)
-	//
-	// VOLATILE, and it is a correctness fix rather than a hint. A CONSISTENT scalar with
-	// a literal argument gets constant-folded, so the path was OPENED TWICE -- confirmed
-	// by strace: two opens of /dev/stdin for one call. Against a regular file that is
-	// merely wasteful; against a PIPE the first read drains it and the second returns
-	// nothing, so `cat doc.json | duckdb -c "... read_pandoc_ast('/dev/stdin')"` silently
-	// yielded ZERO BLOCKS. Silently: no error, an empty document.
-	//
-	// Reported as issue #18 by the duckeye session, who worked around it by routing
-	// stdin through read_text() and asked me to confirm the mechanism in the code rather
-	// than trust their inference from the registration line. Reproduced here before
-	// changing anything -- file gives 1 block, pipe gives 0.
-	//
-	// A function that reads a file is not consistent: the same argument can yield
-	// different results, which is the definition of the flag. Every other file-reading
-	// scalar here has the same property.
-	// SetStability rather than the constructor's positional tail: DuckDB v2.0
-	// removed the bind_scalar_function_extended_t parameter, so the nullptr run
-	// shifts and a nullptr lands on the LogicalType varargs slot.
 	auto read_pandoc_ast_func =
 	    ScalarFunction("read_pandoc_ast", {LogicalType::VARCHAR}, duck_block_list_type, ReadPandocAstFun);
 	read_pandoc_ast_func.SetStability(FunctionStability::VOLATILE);
 	read_pandoc_ast_func.SetFallible();
-	loader.RegisterFunction(read_pandoc_ast_func);
+	RegisterScalarWithDesc(loader, read_pandoc_ast_func, {"file_path"}, "Read Pandoc AST JSON file into duck_blocks.",
+	                       {"read_pandoc_ast('document.json')"});
 
 	// duck_blocks_to_pandoc_ast(blocks LIST(duck_block)) -> STRUCT(pandoc-api-version, meta, blocks)
 	// Creates complete Pandoc AST as a struct for proper JSON serialization
 	auto duck_blocks_to_ast_func = ScalarFunction("duck_blocks_to_pandoc_ast", {duck_block_list_type},
 	                                              GetPandocAstType(), DuckBlocksToPandocAstFun);
 	duck_blocks_to_ast_func.SetFallible();
-	loader.RegisterFunction(duck_blocks_to_ast_func);
+	RegisterScalarWithDesc(loader, duck_blocks_to_ast_func, {"blocks"},
+	                       "Convert duck_blocks to complete Pandoc AST struct.", {"duck_blocks_to_pandoc_ast(blocks)"});
 
 	// write_pandoc_ast(file_path VARCHAR, blocks LIST(duck_block)) -> BOOLEAN
 	// Writes duck_blocks directly to a file as Pandoc JSON AST
-	// VOLATILE for the same reason as read_pandoc_ast, pointed the other way: a
-	// constant-folded WRITE can run twice, or be hoisted out of the query it was meant
-	// to run inside. A function whose whole purpose is a side effect is not consistent.
 	auto write_pandoc_ast_func = ScalarFunction("write_pandoc_ast", {LogicalType::VARCHAR, duck_block_list_type},
 	                                            LogicalType::BOOLEAN, WritePandocAstFun);
 	write_pandoc_ast_func.SetStability(FunctionStability::VOLATILE);
 	write_pandoc_ast_func.SetFallible();
-	loader.RegisterFunction(write_pandoc_ast_func);
+	RegisterScalarWithDesc(loader, write_pandoc_ast_func, {"file_path", "blocks"},
+	                       "Write duck_blocks to file as Pandoc AST JSON.", {"write_pandoc_ast('out.json', blocks)"});
 
 	// pandoc_ast(blocks, meta := {}, api_version := [1,23,1]) -> TABLE(pandoc-api-version, meta, blocks)
 	// Table function for clean JSON output with COPY FORMAT JSON
@@ -3096,7 +3070,8 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	                                    PandocAstBind);
 	pandoc_ast_table_func.named_parameters["meta"] = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
 	pandoc_ast_table_func.named_parameters["api_version"] = LogicalType::LIST(LogicalType::INTEGER);
-	loader.RegisterFunction(pandoc_ast_table_func);
+	RegisterTableWithDesc(loader, pandoc_ast_table_func, {"blocks"}, "Table function returning Pandoc AST rows.",
+	                      {"SELECT * FROM pandoc_ast(blocks)"});
 }
 
 } // namespace duckdb
