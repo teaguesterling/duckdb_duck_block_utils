@@ -2479,3 +2479,86 @@ query I
 SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks('[{"t":"Table","c":[["",[],[]],[null,[]],[[{"t":"AlignRight"},{"t":"ColWidthDefault"}]],[["",[],[]],[[["",[],[]],[[["",[],[]],{"t":"AlignDefault"},1,1,[{"t":"Plain","c":[{"t":"Str","c":"h"}]}]]]]]],[[["",[],[]],0,[],[]]],[["",[],[]],[]]]}]'))::VARCHAR LIKE '%AlignRight%';
 ----
 true
+
+# ============================================================================
+# THE DOCUMENT ROOT IS NOT PROSE.
+#
+# `document` at level 0 is a container standing for the document itself; Pandoc has
+# no construct for it. It fell to the terminal Para fallback and became an EMPTY
+# PARAGRAPH -- one per root -- which real pandoc accepts and renders as a blank line,
+# so nothing failed loudly. Found by panduck measuring the same fallthrough in their
+# own writer (duckdb_panduck#81) after the level-0 amendment landed here.
+# ============================================================================
+
+# A root adds nothing: same output as the same document without one
+query I
+SELECT duck_blocks_to_pandoc_blocks([
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'heading','content':'H','level':1,'encoding':'text','attributes':MAP{'heading_level':'1'},'element_order':1}::duck_block
+]) = duck_blocks_to_pandoc_blocks([
+    {'kind':'block','element_type':'heading','content':'H','level':1,'encoding':'text','attributes':MAP{'heading_level':'1'},'element_order':0}::duck_block
+]);
+----
+true
+
+# DISCRIMINATING: the empty paragraph is gone, not merely equal on both sides
+query I
+SELECT duck_blocks_to_pandoc_blocks([
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'heading','content':'H','level':1,'encoding':'text','attributes':MAP{'heading_level':'1'},'element_order':1}::duck_block
+]);
+----
+[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"H"}]]}]
+
+# Several roots concatenate: two documents in, one Pandoc document out, no blanks
+query I
+SELECT duck_blocks_to_pandoc_blocks([
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'paragraph','content':'a','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block,
+    {'kind':'block','element_type':'paragraph','content':'bb','level':1,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block
+]);
+----
+[{"t":"Para","c":[{"t":"Str","c":"a"}]},{"t":"Para","c":[{"t":"Str","c":"bb"}]}]
+
+# A root carrying content is DROPPED, not emitted as prose: the root is structure,
+# and the fallback's failure mode was fabricating content the document never had.
+query I
+SELECT duck_blocks_to_pandoc_blocks([
+    {'kind':'block','element_type':'document','content':'LEAK','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'paragraph','content':'body','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block
+]) LIKE '%LEAK%';
+----
+false
+
+# The AST writer shares BuildBlocksJson, so it is fixed by the same skip
+query I
+SELECT (duck_blocks_to_pandoc_ast([
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'paragraph','content':'p','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block
+])).blocks::VARCHAR LIKE '%"c":""%';
+----
+false
+
+# to_text and render_ansi are correct with a root ONLY because a root's content is
+# empty -- neither knows the type. Pinned so a later change cannot silently start
+# leaking a content-carrying root as prose.
+query I
+SELECT duck_blocks_to_text([
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'paragraph','content':'p','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block
+]) = duck_blocks_to_text([
+    {'kind':'block','element_type':'paragraph','content':'p','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block
+]);
+----
+true
+
+query I
+SELECT duck_blocks_render_ansi([
+    {'kind':'block','element_type':'document','content':'','level':0,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+    {'kind':'block','element_type':'paragraph','content':'p','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block
+], 40) = duck_blocks_render_ansi([
+    {'kind':'block','element_type':'paragraph','content':'p','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block
+], 40);
+----
+true

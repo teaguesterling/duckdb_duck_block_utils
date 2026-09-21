@@ -2120,7 +2120,20 @@ static string BuildBlocksJson(const vector<Value> &blocks_in) {
 		auto element_type = GetElementStringField(block, BlockTypes::ELEMENT_TYPE_IDX);
 		auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
 
-		if (element_type == BlockTypes::TYPE_LIST_ITEM || element_type == BlockTypes::TYPE_METADATA) {
+		// `document` joins list_item and metadata here: it is the explicit document ROOT
+		// (level 0, spec 1.4 amended), a container standing for the document itself, and
+		// Pandoc has no construct for it. Without this skip it fell to the terminal Para
+		// fallback below and root became an empty paragraph -- one per document, which
+		// real pandoc accepts (exit 0) and renders as a blank line, so nothing failed
+		// loudly. That fallback has now swallowed four types this way; see the comment
+		// above it about a raw AST blob printed as visible prose.
+		//
+		// Several roots CONCATENATE rather than refuse (Teague's ruling, 2026-09-21): a
+		// file may hold more than one root document, and Pandoc JSON is one document, so
+		// the boundary is dropped here. That loss is in the OUTPUT FORMAT, not in the
+		// relation, which still carries every root.
+		if (element_type == BlockTypes::TYPE_LIST_ITEM || element_type == BlockTypes::TYPE_METADATA ||
+		    element_type == BlockTypes::TYPE_DOCUMENT) {
 			block_idx++;
 			continue;
 		}
