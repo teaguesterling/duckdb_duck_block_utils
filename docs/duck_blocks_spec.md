@@ -760,6 +760,15 @@ reason.
 standing for the document itself. It is optional: a document without it is unchanged and
 equally valid, which is every document written before this rule.
 
+**A root carries NO content.** It is structure, not prose (Teague's ruling, 2026-09-21),
+and `duck_blocks_validate()` rejects content on it. File-scoped facts — a filename, an
+ordinal, a byte offset distinguishing same-file documents — go in `attributes`, which is
+what a reader mapping one file to one document hangs its file-level facts on. The rule
+exists because the alternative leaks: a root carrying text came back out of
+`duck_blocks_to_text` and `duck_blocks_render_ansi` as document prose, and panduck's
+writer fabricated it as a paragraph. Refusing it at the source makes that unreachable in
+valid data, rather than asking every reader to defend itself.
+
 **A relation may carry SEVERAL roots.** One block list can hold many documents — that is
 what the `filename` provenance field is for — and each level-0 root opens the next one,
 so such a row is legal wherever it appears, not only in first position. What stays
