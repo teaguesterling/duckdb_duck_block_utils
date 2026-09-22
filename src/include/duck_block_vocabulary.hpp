@@ -1,4 +1,23 @@
 #pragma once
+// clang-format off
+//
+// THIS FILE IS NOT FORMATTED, deliberately. It is the one vendorable file four other
+// extensions copy byte-for-byte, and its provenance contract is that a copy stamped with
+// an upstream sha is byte-identical to this file at that sha. A formatter sweep breaks
+// that: panduck ran `format.py` over "all files" on 2026-09-21, which reflowed their
+// vendored copy's comments AND the provenance stamp itself, leaving their own
+// check-vocabulary red with "stamp malformed" while every constant still validated.
+// Constants-only drift checks cannot see it; only a byte-exact provenance arm can.
+//
+// extension-ci-tools runs `duckdb/scripts/format.py --directories src test`, and this
+// file lives in src/include/, so it IS in scope. format.py's ignore list lives inside the
+// duckdb submodule, where a consumer cannot durably add an entry -- so the marker travels
+// with the file instead, and every consumer inherits it on re-vendor rather than each
+// having to re-add an exclusion (markdown's suggestion, 2026-09-21; they verified the
+// markers affect neither their constant parsing nor their stamp regex).
+//
+// A consumer whose formatter ignores these markers still owes the exclusion; see the
+// vendoring section of docs/duck_blocks_spec.md.
 
 // ============================================================================
 // The duck_block vocabulary -- PUBLISHED INTERFACE.
@@ -744,3 +763,4 @@ struct DuckBlockVocabulary {
 };
 
 } // namespace duckdb
+// clang-format on
