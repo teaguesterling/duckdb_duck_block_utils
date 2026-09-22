@@ -1,5 +1,5 @@
-#pragma once
 // clang-format off
+#pragma once
 //
 // THIS FILE IS NOT FORMATTED, deliberately. It is the one vendorable file four other
 // extensions copy byte-for-byte, and its provenance contract is that a copy stamped with
@@ -18,6 +18,11 @@
 //
 // A consumer whose formatter ignores these markers still owes the exclusion; see the
 // vendoring section of docs/duck_blocks_spec.md.
+//
+// The marker sits ABOVE `#pragma once` on purpose. A consumer inserts its provenance
+// stamp at the TOP of its copy -- panduck's sits at line 3 -- and anything above the
+// marker is unguarded. Their sweep mangled the STAMP, not the vocabulary, which is the
+// failure this placement prevents (panduck's caveat, 2026-09-21).
 
 // ============================================================================
 // The duck_block vocabulary -- PUBLISHED INTERFACE.
