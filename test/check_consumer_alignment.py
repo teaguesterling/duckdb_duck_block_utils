@@ -86,6 +86,35 @@ def provenance(text):
     return (m.group(1), m.group(2)) if m else (None, None)
 
 
+def stamp_line(text):
+    """The whole line the stamp sits on, or None. The stamp is a SINGLE LINE by
+    construction, so the line is the unit to judge -- not the regex match, which stops at
+    the version and cannot see that the rest of the line was carried away."""
+    m = re.search(PROVENANCE, text)
+    if m is None:
+        return None
+    start = text.rfind("\n", 0, m.start()) + 1
+    end = text.find("\n", m.start())
+    return text[start:] if end == -1 else text[start:end]
+
+
+def unclosed_delimiter(line):
+    """The first delimiter pair the line opens and does not close, or None.
+
+    THIS IS THE SEVERED-STAMP TEST, and it is deliberately not a canonical-form match.
+    Trailing annotation is LEGITIMATE and the fleet uses it: sitting_duck's stamp ends
+    ", synced 2026-09-14." and webbed's carries a 20-line provenance block around it. What
+    is not legitimate is a line that opens a bracket whose other half is on the next line,
+    which is exactly what a formatter reflow produces -- panduck's read
+    "... (SPEC_VERSION 1.4)  [duck_block_utils" with "// v3.3.0]" wrapped below (2026-09-21).
+    Balance separates the annotated from the truncated; "ends after the version" would
+    reject sitting_duck, a conforming copy, to catch panduck, a damaged one."""
+    for opener, closer in (("(", ")"), ("[", "]"), ("{", "}")):
+        if line.count(opener) != line.count(closer):
+            return opener + closer
+    return None
+
+
 def body(text):
     """The header from its own title line onward: what every vendored copy shares once its
     preamble (a stamp line, or webbed's 20-line provenance block, which has a `// ====`
@@ -131,6 +160,17 @@ def provenance_problems(text, got, v, superseded):
     differs from the copy (STALE STAMP -- compared as TEXT from the body onward, because a
     comment-only edit is exactly what a name-and-value comparison cannot see)."""
     sha, claimed = provenance(text)
+    line = stamp_line(text)
+    if line is not None:
+        pair = unclosed_delimiter(line)
+        if pair is not None:
+            return [
+                f"provenance stamp is TRUNCATED: its line opens `{pair[0]}` and never closes it,"
+                f" so the stamp was wrapped or cut -- a formatter sweep reflowing a vendored file"
+                f" does exactly this (panduck, 2026-09-21). A stamp exists to be compared"
+                f" byte-exactly; recovering a sha from a line whose own structure shows it is"
+                f" incomplete is a way of not checking it. The line: {line.strip()[:100]}"
+            ]
     if sha is None:
         if STAMP_WORDS.search(text):
             return [
