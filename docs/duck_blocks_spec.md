@@ -760,6 +760,24 @@ reason.
 standing for the document itself. It is optional: a document without it is unchanged and
 equally valid, which is every document written before this rule.
 
+**A vendored copy must be excluded from formatter sweeps.** The header carries
+`// clang-format off` / `// clang-format on` from 2026-09-21, placed above `#pragma once` so
+that a consumer's provenance stamp — inserted at the top of its copy — sits inside the
+guarded region. That is a courtesy, not a guarantee, and a consumer still owes the
+exclusion for two reasons. First, the markers bind only tools that honour them: a sweep
+that is not plain clang-format, an editor-on-save, or a `sed`-based normaliser reflows
+straight through. Second, `duckdb/scripts/format.py` contains a branch for
+`src/include/*.hpp` that replaces a header's entire leading comment run with a DuckDB
+banner — which would eat the stamp *regardless of the markers*, because it runs outside
+clang-format. On pin `d8cdaa33fd` that branch is dead (the buffer it builds is never
+returned, verified statically and by `--check` reporting no difference for this file), but
+it is one `return` away from live, in a file no consumer controls.
+
+The failure this prevents is not hypothetical: panduck ran `format.py` over "all files" on
+2026-09-21, which reflowed their vendored copy's comments and wrapped the provenance stamp
+onto a second line. Every constant still validated; only their byte-exact provenance arm
+caught it, reporting the stamp malformed.
+
 **A root carries NO content.** It is structure, not prose (Teague's ruling, 2026-09-21),
 and `duck_blocks_validate()` rejects content on it. File-scoped facts — a filename, an
 ordinal, a byte offset distinguishing same-file documents — go in `attributes`, which is
