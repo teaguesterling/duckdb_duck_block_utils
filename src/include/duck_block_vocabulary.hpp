@@ -17,7 +17,7 @@
 // markers affect neither their constant parsing nor their stamp regex).
 //
 // A consumer whose formatter ignores these markers still owes the exclusion; see the
-// vendoring section of docs/duck_blocks_spec.md.
+// "VENDORING THIS FILE" block below, which is where that guidance lives.
 //
 // The marker sits ABOVE `#pragma once` on purpose. A consumer inserts its provenance
 // stamp at the TOP of its copy -- panduck's sits at line 3 -- and anything above the
@@ -116,7 +116,23 @@
 //          duckdb_duck_block_utils/<sha>/src/include/duck_block_vocabulary.hpp
 //
 //      Print the sha alongside the verdict, so the output says what it actually
-//      compared against. And when the sha lookup fails -- rate limit, outage,
+//      compared against. And NAME THE REFERENCE YOU TRACK, because the fleet
+//      splits here and both halves are conforming: duckdb_markdown's check resolves
+//      upstream MAIN, while panduck's and this repo's compare against the latest
+//      RELEASE TAG with the same SPEC_VERSION major. Tracking main sees an addition
+//      the moment it merges -- including one later reverted that never ships;
+//      tracking releases sees only what is installable, and so stays quiet while
+//      main is ahead. The example below resolves `commits/main` because that is the
+//      fetch mechanics, NOT a recommendation to compare against main. Say which you
+//      used in the verdict, or a reader cannot tell a quiet check from a check that
+//      is looking somewhere else -- the same defect as printing OK from a fetch you
+//      could not date, which this section already refuses. (markdown measured the
+//      asymmetry on 2026-09-24, after I told them their own checker compared against
+//      the release when it does not.)
+//
+//      Under EITHER reference, a copy missing only additive constants at the same or
+//      an older minor is BEHIND, not drift: it reports and passes. Re-vendor when you
+//      need something a later minor added, or on a MAJOR change. And when the sha lookup fails -- rate limit, outage,
 //      offline -- falling back to the branch url is fine, but that path must NEVER
 //      print OK: "no drift seen" from a copy you could not date is not a clean
 //      bill of health, and reporting it as one is the same defect again.
