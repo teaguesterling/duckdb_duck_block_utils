@@ -950,3 +950,69 @@ SELECT duck_blocks_validate([
 ]).valid;
 ----
 true
+
+# ============================================================================
+# A NOTE'S BODY IS A DEFINITION, NOT A CHILD -- as a LINT, not a refusal.
+#
+# A block whose nearest shallower row is an inline is pandoc's `Note [Block]`
+# transcribed literally. It VALIDATES today, which is the problem: IsBody does not
+# distinguish containment direction, so duck_blocks_body returns the note body and
+# duck_blocks_to_text renders it into the main flow -- the text appears twice and the
+# duplication reads as correct output.
+#
+# Teague's call is advisory rather than a validation refusal: panduck measured zero
+# occurrences across all eleven of their readers, so a refusal would break only an
+# emitter nobody has found, while an advisory names the rule for the reader who would
+# otherwise rediscover it as a footnote appearing twice.
+# ============================================================================
+
+# The excluded shape warns, and the message names the remedy
+query II
+SELECT severity, element_order FROM (SELECT unnest(duck_blocks_lint([
+  {'kind':'block','element_type':'paragraph','content':'Main text.','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'inline','element_type':'note','content':'','level':2,'encoding':'text','attributes':MAP{'id':'fn1'},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'FOOTNOTE BODY.','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+])) AS w);
+----
+warning	2
+
+query I
+SELECT (duck_blocks_lint([
+  {'kind':'block','element_type':'paragraph','content':'Main text.','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'inline','element_type':'note','content':'','level':2,'encoding':'text','attributes':MAP{'id':'fn1'},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'FOOTNOTE BODY.','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+]))[1].message LIKE '%anchor carries attributes%body sits at document level%';
+----
+true
+
+# CONTROL: the same document without the nested block -- silence, so the warning above
+# is the nesting rather than anything else in the rows
+query I
+SELECT len(duck_blocks_lint([
+  {'kind':'block','element_type':'paragraph','content':'Main text.','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'inline','element_type':'note','content':'','level':2,'encoding':'text','attributes':MAP{'id':'fn1'},'element_order':1}::duck_block
+]));
+----
+0
+
+# CONTROL: the CONFORMING shape -- anchor with an id, body at document level bearing the
+# matching id -- is silent. A lint that fired on the recommended shape would be worse
+# than no lint.
+query I
+SELECT len(duck_blocks_lint([
+  {'kind':'block','element_type':'paragraph','content':'Main text.','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'inline','element_type':'note','content':'','level':2,'encoding':'text','attributes':MAP{'id':'fn1'},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'FOOTNOTE BODY.','level':1,'encoding':'text','attributes':MAP{'id':'fn1'},'element_order':2}::duck_block
+]));
+----
+0
+
+# DISCRIMINATING: an inline nested under a block is the NORMAL direction and must stay
+# silent -- the rule is about direction, not about inlines and blocks coexisting
+query I
+SELECT len(duck_blocks_lint([
+  {'kind':'block','element_type':'paragraph','content':'','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'inline','element_type':'text','content':'plain prose','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block
+]));
+----
+0

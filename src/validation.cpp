@@ -492,6 +492,56 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				// content. A lint that encodes a superseded rule reports correct data as
 				// broken -- the same defect as the "level should be NULL on headings"
 				// warning removed in 3.0, and the test suite caught it the same way.
+				// A NOTE'S BODY IS A DEFINITION, NOT A CHILD (spec, Teague's ruling 2026-09-24).
+				// A block whose nearest SHALLOWER row is an inline is the excluded shape:
+				// pandoc's `Note [Block]` transcribed literally. It validates today, and that
+				// is the problem -- IsBody is `kind IN (block, inline) AND element_type <>
+				// metadata` and the subtree walk excludes only value and metadata ancestors,
+				// so NEITHER DISTINGUISHES CONTAINMENT DIRECTION. Measured on the served
+				// build: duck_blocks_body returns the note body, duck_blocks_to_text renders
+				// it into the main flow, duck_blocks_validate says valid. The footnote's text
+				// appears TWICE and the duplication reads as correct output.
+				//
+				// LINT rather than a validation refusal: Teague's call, and panduck measured
+				// zero occurrences across all eleven of their readers, so nothing in the fleet
+				// emits it today -- a refusal would break only an emitter nobody has found,
+				// while an advisory names the rule for the reader who would otherwise
+				// rediscover it as a footnote appearing twice.
+				//
+				// The container tracker above is block-only (open_container_* is set inside
+				// this same KIND_BLOCK branch and reset for any non-container block), so an
+				// inline never opens a container and this cannot double-report with the
+				// "owns no children" warning.
+				for (idx_t k = j; k > 0; k--) {
+					auto &prev = blocks_list[k - 1];
+					if (prev.IsNull()) {
+						continue;
+					}
+					auto &prev_children = StructValue::GetChildren(prev);
+					const bool prev_null =
+					    BlockTypes::LEVEL_IDX >= prev_children.size() || prev_children[BlockTypes::LEVEL_IDX].IsNull();
+					const int32_t prev_depth = prev_null ? 1 : GetElementIntField(prev, BlockTypes::LEVEL_IDX, 1);
+					if (prev_depth >= depth) {
+						continue;
+					}
+					if (GetElementStringField(prev, BlockTypes::KIND_IDX) == BlockTypes::KIND_INLINE) {
+						const string prev_type = GetElementStringField(prev, BlockTypes::ELEMENT_TYPE_IDX);
+						child_list_t<Value> warning_values;
+						warning_values.push_back(make_pair("severity", Value("warning")));
+						warning_values.push_back(make_pair(
+						    "message",
+						    Value(element_type + " at depth " + std::to_string(depth) + " is nested under the inline " +
+						          prev_type + " at depth " + std::to_string(prev_depth) +
+						          ": a block's container is a block or a value, never an inline. If this is a note "
+						          "body, the anchor carries attributes['id'] and the body sits at document level "
+						          "bearing the matching id. As written, duck_blocks_body returns this block and "
+						          "duck_blocks_to_text renders it into the main flow, so its text appears twice.")));
+						warning_values.push_back(make_pair("element_order", Value(element_order)));
+						warnings.push_back(Value::STRUCT(std::move(warning_values)));
+					}
+					break;
+				}
+
 				const bool is_container =
 				    content.empty() &&
 				    (element_type == BlockTypes::TYPE_DIV || element_type == BlockTypes::TYPE_SECTION ||
