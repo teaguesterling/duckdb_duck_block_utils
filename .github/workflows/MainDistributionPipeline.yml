@@ -60,14 +60,14 @@ jobs:
       extension_name: duck_block_utils
 
   # Shippable build. The submodules are pinned at the v1.5-variegata branch tip
-  # (see .gitmodules), but the extension is BUILT against the v1.5.5 release tag
+  # (see .gitmodules), but the extension is BUILT against the v1.5.6 release tag
   # so the produced binary is a proper release (loadable by released DuckDB),
   # not a `-dev` build.
   duckdb-stable-build:
     name: Build extension binaries
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v1.5-variegata
     with:
-      duckdb_version: v1.5.5
+      duckdb_version: v1.5.6
       ci_tools_version: v1.5-variegata
       extension_name: duck_block_utils
       # Windows re-excluded: the windows_amd64 (vs2019comp) leg compiles the
@@ -81,7 +81,7 @@ jobs:
     name: Code Quality Check
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_code_quality.yml@v1.5-variegata
     with:
-      duckdb_version: v1.5.5
+      duckdb_version: v1.5.6
       ci_tools_version: v1.5-variegata
       extension_name: duck_block_utils
       format_checks: 'format;tidy'
@@ -104,7 +104,7 @@ jobs:
     # required-check configuration may key on this job name.
     runs-on: ubuntu-latest
     env:
-      DUCKDB_VERSION: v1.5.5
+      DUCKDB_VERSION: v1.5.6
       DUCKDB_NEXT: v2.0-cyanoptera
       # Flip day (spec §3 step 3) keeps a duckdb-legacy-build at the outgoing version
       # for one release; set this to that version then so the stray-literal scan below
