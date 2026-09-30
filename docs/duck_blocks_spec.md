@@ -480,7 +480,7 @@ For heading elements, the semantic heading level (h1-h6) is stored in `attribute
 | `quoted` | Quoted text | See below | `quote_type`: single/double |
 | `span` | Generic container | See below | `id`, `class` |
 | `cite` | Citation | Key | `key`, `prefix`, `suffix` |
-| `note` | Footnote | Content | - |
+| `note` | Footnote ANCHOR — the body lives elsewhere, see "A note's body is a definition" | Content (the marker, if the source has one) | `id` (joins the anchor to its body) |
 | `generic` | Type not in this vocabulary | Empty; children follow | `source_type` |
 
 
@@ -1382,6 +1382,42 @@ A duck_block is **canonical** if:
 5. For headings: `attributes['heading_level']` is '1'-'6'
 6. `encoding` matches content format
 7. `attributes` keys are valid identifiers
+
+**A note's body is a definition, not a child.** Pandoc's `Note` holds `[Block]`: a
+footnote body is one or more paragraphs. duck_block does NOT model that by nesting blocks
+under the inline. The inline `note` is an **anchor** carrying `attributes['id']`; the body
+is an ordinary block subtree at document level bearing the matching id. Teague's ruling,
+2026-09-24, on panduck's proposal.
+
+The alternative — `kind='block'` rows nested beneath a `kind='inline'` row, matching
+pandoc's shape — is excluded by consequence rather than by taste, and the consequence is
+measurable. `IsBody` is `kind IN (block, inline) AND element_type <> metadata`, and the
+subtree walk excludes only value and metadata ancestors; **neither distinguishes
+containment direction**. So a block parked under an inline is body by definition. Measured
+on the served build (39941a7), for rows `paragraph@1 "Main text."`, `note@2 (id=fn1)`,
+`paragraph@3 "FOOTNOTE BODY."`:
+
+```
+duck_blocks_body     -> ['paragraph:Main text.', 'note:', 'paragraph:FOOTNOTE BODY.']
+duck_blocks_to_text  -> "Main text.\n\nFOOTNOTE BODY."
+duck_blocks_validate -> valid
+```
+
+The note's text renders into the main flow, `doc_section` returns it, a word-loss guard
+counts it, and nothing objects — the text appears twice and the duplication reads as
+correct output, which is the failure shape that hides longest. Legalising the nested form
+would need a direction rule that *every* consumer of the body predicate has to learn, for a
+construct every reader currently flattens.
+
+Reference-and-definition is also the shape the ecosystem already uses: `attributes['id']`
+is the anchor convention in the textile, rst and mediawiki readers, docutils and HTML use
+it for footnotes, and pandoc itself uses it for citations (`Link` plus a `Div` bearing the
+id, rather than an inline carrying blocks). panduck's `mediawiki_reader.cpp` makes the case
+for keeping the name: pandoc discards it, so *a consumer cannot join a reuse back to its
+definition*.
+
+A reader that cannot recover a body — because the source has none, or because it flattens —
+emits the anchor alone. That is lossy and legal, exactly as flattening is today.
 
 ### Inline Validation (kind='inline')
 
