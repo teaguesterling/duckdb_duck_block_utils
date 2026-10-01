@@ -967,14 +967,14 @@ true
 # ============================================================================
 
 # The excluded shape warns, and the message names the remedy
-query II
-SELECT severity, element_order FROM (SELECT unnest(duck_blocks_lint([
+query III
+SELECT len(w), w[1].severity, w[1].element_order FROM (SELECT duck_blocks_lint([
   {'kind':'block','element_type':'paragraph','content':'Main text.','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
   {'kind':'inline','element_type':'note','content':'','level':2,'encoding':'text','attributes':MAP{'id':'fn1'},'element_order':1}::duck_block,
   {'kind':'block','element_type':'paragraph','content':'FOOTNOTE BODY.','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
-])) AS w);
+]) AS w);
 ----
-warning	2
+1	warning	2
 
 query I
 SELECT (duck_blocks_lint([
