@@ -1018,6 +1018,35 @@ SELECT len(list_filter(duck_blocks_lint([
 ----
 0
 
+# DISCRIMINATING FOR THE IMPLEMENTATION: the nearest shallower row is found with a
+# monotonic stack, so the case that matters is one where the stack must POP an inline
+# before answering. Here list_item@2's nearest shallower row is the LIST at depth 1 -- a
+# block -- and the inline text@2 beside it must not be mistaken for its container. An
+# implementation that read the stack's top without popping to the current depth would warn
+# here, and every other lint case in this file would still pass.
+query I
+SELECT len(list_filter(duck_blocks_lint([
+  {'kind':'block','element_type':'list','content':'','level':1,'encoding':'text','attributes':MAP{'list_type':'bullet'},'element_order':0}::duck_block,
+  {'kind':'inline','element_type':'text','content':'intro','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'list_item','content':'item','level':2,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+]), lambda x: x.message LIKE '%nested under the inline%'));
+----
+0
+
+# ...and only the BOUNDARY warns, not every descendant of the note body. paragraph@3 sits
+# under the inline note@2 and is reported; paragraph@4 sits under paragraph@3, a block, so
+# it is silent. One violation, one warning -- a rule that fired per descendant would make
+# a deep body look like many faults.
+query I
+SELECT len(list_filter(duck_blocks_lint([
+  {'kind':'block','element_type':'paragraph','content':'Main text.','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'inline','element_type':'note','content':'','level':2,'encoding':'text','attributes':MAP{'id':'fn1'},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'BODY.','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'DEEPER.','level':4,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block
+]), lambda x: x.message LIKE '%nested under the inline%'));
+----
+1
+
 # DISCRIMINATING: an inline under a block is the NORMAL direction and must stay silent --
 # the rule is about direction, not about inlines and blocks coexisting.
 query I
