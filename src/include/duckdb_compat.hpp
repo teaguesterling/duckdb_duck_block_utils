@@ -415,8 +415,7 @@ struct FunctionWithNamedParametersOnly {
 	int named_parameters;
 };
 static_assert(CompatHasGetSignature<FunctionWithSignature>::value, "must detect GetSignature (v2.0 shape)");
-static_assert(!CompatHasGetSignature<FunctionWithNamedParametersOnly>::value,
-              "must not fire without it (v1.5 shape)");
+static_assert(!CompatHasGetSignature<FunctionWithNamedParametersOnly>::value, "must not fire without it (v1.5 shape)");
 } // namespace compat_detail
 
 } // namespace duckdb
