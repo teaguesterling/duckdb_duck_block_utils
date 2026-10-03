@@ -417,6 +417,25 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 		string open_container_type;
 		int32_t open_container_order = 0;
 
+		// NEAREST STRICTLY-SHALLOWER PRECEDING ROW, as a monotonic stack of
+		// (depth, kind, element_type). Replaces a backward scan from j to 0, which was
+		// QUADRATIC in the common case rather than a rare one: the scan stopped at the
+		// first shallower row, and in a flat document -- a long run of level-1 siblings,
+		// which is what most markdown is -- no row is EVER shallower, so every block
+		// walked back to row 0. N paragraphs cost N^2/2 iterations, each one a
+		// StructValue::GetChildren plus a field extract.
+		//
+		// Same answer, by the monotonic-stack argument: popping only removes entries at
+		// depth >= the current row, so a row SHALLOWER than the current one can never be
+		// popped by a deeper one, and the nearest such row is always what back() holds.
+		// NULL rows are skipped before the push, exactly as the scan skipped them.
+		struct LintAncestor {
+			int32_t depth;
+			string kind;
+			string element_type;
+		};
+		vector<LintAncestor> ancestors;
+
 		// A held "empty content" candidate, cancelled if the next element is deeper.
 		string pending_empty_type;
 		int32_t pending_empty_order = 0;
@@ -435,6 +454,22 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 			auto content = GetElementStringField(block, BlockTypes::CONTENT_IDX);
 			auto element_order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
 			auto block_kind = GetElementStringField(block, BlockTypes::KIND_IDX);
+
+			// Popped, READ, then pushed -- in that order, and immediately, so that a
+			// `continue` later in this body cannot leave the stack describing a row that
+			// was never pushed. nearest_* is a copy for the same reason.
+			auto &row_children = StructValue::GetChildren(block);
+			const bool row_level_null =
+			    BlockTypes::LEVEL_IDX >= row_children.size() || row_children[BlockTypes::LEVEL_IDX].IsNull();
+			const int32_t row_depth = row_level_null ? 1 : GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
+			while (!ancestors.empty() && ancestors.back().depth >= row_depth) {
+				ancestors.pop_back();
+			}
+			const bool has_nearest = !ancestors.empty();
+			const int32_t nearest_depth = has_nearest ? ancestors.back().depth : 0;
+			const string nearest_kind = has_nearest ? ancestors.back().kind : string();
+			const string nearest_type = has_nearest ? ancestors.back().element_type : string();
+			ancestors.push_back(LintAncestor {row_depth, block_kind, element_type});
 
 			if (!pending_empty_type.empty()) {
 				auto &cur_children = StructValue::GetChildren(block);
@@ -512,34 +547,19 @@ void ValidationFunctions::DbBlocksLintFun(DataChunk &args, ExpressionState &stat
 				// this same KIND_BLOCK branch and reset for any non-container block), so an
 				// inline never opens a container and this cannot double-report with the
 				// "owns no children" warning.
-				for (idx_t k = j; k > 0; k--) {
-					auto &prev = blocks_list[k - 1];
-					if (prev.IsNull()) {
-						continue;
-					}
-					auto &prev_children = StructValue::GetChildren(prev);
-					const bool prev_null =
-					    BlockTypes::LEVEL_IDX >= prev_children.size() || prev_children[BlockTypes::LEVEL_IDX].IsNull();
-					const int32_t prev_depth = prev_null ? 1 : GetElementIntField(prev, BlockTypes::LEVEL_IDX, 1);
-					if (prev_depth >= depth) {
-						continue;
-					}
-					if (GetElementStringField(prev, BlockTypes::KIND_IDX) == BlockTypes::KIND_INLINE) {
-						const string prev_type = GetElementStringField(prev, BlockTypes::ELEMENT_TYPE_IDX);
-						child_list_t<Value> warning_values;
-						warning_values.push_back(make_pair("severity", Value("warning")));
-						warning_values.push_back(make_pair(
-						    "message",
-						    Value(element_type + " at depth " + std::to_string(depth) + " is nested under the inline " +
-						          prev_type + " at depth " + std::to_string(prev_depth) +
-						          ": a block's container is a block or a value, never an inline. If this is a note "
-						          "body, the anchor carries attributes['id'] and the body sits at document level "
-						          "bearing the matching id. As written, duck_blocks_body returns this block and "
-						          "duck_blocks_to_text renders it into the main flow, so its text appears twice.")));
-						warning_values.push_back(make_pair("element_order", Value(element_order)));
-						warnings.push_back(Value::STRUCT(std::move(warning_values)));
-					}
-					break;
+				if (has_nearest && nearest_kind == BlockTypes::KIND_INLINE) {
+					child_list_t<Value> warning_values;
+					warning_values.push_back(make_pair("severity", Value("warning")));
+					warning_values.push_back(make_pair(
+					    "message",
+					    Value(element_type + " at depth " + std::to_string(depth) + " is nested under the inline " +
+					          nearest_type + " at depth " + std::to_string(nearest_depth) +
+					          ": a block's container is a block or a value, never an inline. If this is a note "
+					          "body, the anchor carries attributes['id'] and the body sits at document level "
+					          "bearing the matching id. As written, duck_blocks_body returns this block and "
+					          "duck_blocks_to_text renders it into the main flow, so its text appears twice.")));
+					warning_values.push_back(make_pair("element_order", Value(element_order)));
+					warnings.push_back(Value::STRUCT(std::move(warning_values)));
 				}
 
 				const bool is_container =
