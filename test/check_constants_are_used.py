@@ -35,6 +35,14 @@ SRC = REPO / "src"
 # constant name -> why its literal may still appear in src/
 EXEMPT = {
     # Values that are also ordinary English words or JSON keys in unrelated positions.
+    "ATTR_ID": "'id' names three different things in src/, and only one of them is a "
+    "duck_block attribute. The 14 ATTRIBUTE sites now use the constant. The other 13 are "
+    "a RESULT-COLUMN name in the duck_blocks_headings/toc structs (make_pair(\"id\", ...)) "
+    "and a SQL NAMED-PARAMETER name in the div/span builders ({\"id\", \"children\"}) -- "
+    "converting either would rename public API, which is worse than pedantic. The cost of "
+    "this exemption, stated rather than hidden: it also stops the scan policing the "
+    "attribute sites, so a future bare attrs[\"id\"] will not be flagged here. Same "
+    "trade ATTR_KEY already makes.",
     "ATTR_KEY": "'key' is also a yyjson object key and a MAP column name in contexts that "
     "have nothing to do with a duck_block attribute; converting those would be "
     "wrong rather than pedantic.",

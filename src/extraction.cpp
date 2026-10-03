@@ -384,7 +384,7 @@ void ExtractionFunctions::DbBlocksHeadingsFun(DataChunk &args, ExpressionState &
 				// Fall back to level field (for backward compatibility)
 				level = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
 			}
-			auto id = GetElementAttribute(block, "id");
+			auto id = GetElementAttribute(block, BlockTypes::ATTR_ID);
 			auto element_order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
 			// Title is the literal content when populated, otherwise the text of
 			// the heading's structured inline children (issue #20). Advances `bi`
@@ -530,7 +530,7 @@ void ExtractionFunctions::DbBlocksTocFun(DataChunk &args, ExpressionState &state
 			} else {
 				level = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
 			}
-			auto id = GetElementAttribute(block, "id");
+			auto id = GetElementAttribute(block, BlockTypes::ATTR_ID);
 			auto element_order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
 			// Same content-or-inline-children rule as duck_blocks_headings (issue #20)
 			auto title = BlockText(blocks_list, bi);
@@ -745,7 +745,7 @@ static vector<HeadingInfo> CollectHeadings(const vector<Value> &blocks_list) {
 		auto heading_level_str = GetElementAttribute(block, BlockTypes::ATTR_HEADING_LEVEL);
 		auto fallback = GetElementIntField(block, BlockTypes::LEVEL_IDX, 1);
 		h.level = heading_level_str.empty() ? fallback : ParseInt32OrDefault(heading_level_str, fallback);
-		h.id = GetElementAttribute(block, "id");
+		h.id = GetElementAttribute(block, BlockTypes::ATTR_ID);
 		h.order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
 		h.title = BlockText(blocks_list, bi); // advances bi past the inline run
 		out.push_back(std::move(h));

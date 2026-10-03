@@ -1383,6 +1383,27 @@ A duck_block is **canonical** if:
 6. `encoding` matches content format
 7. `attributes` keys are valid identifiers
 
+**`id` is the document fragment locator.** Teague's ruling, 2026-10-02. It addresses a
+fragment *within* a document, exactly as an HTML fragment anchor does, and it may be
+either **minted by the reader** or **provided by the source** — both are `id`, because the
+field says how to address the fragment, not where the string came from. A minted id must
+be:
+
+- **unique** within its document;
+- **programmatically and deterministically** created, so that re-reading the same source
+  yields the same id and a diff of two reads shows real changes only;
+- **semantic in location and value** — it says where the fragment is and what it is,
+  rather than being an opaque counter.
+
+`attributes['name']` is a **different** field: what the source called the thing, which is
+provenance rather than an address. mediawiki's `<ref name="a">` supplies one; docx, odt,
+latex and rst do not. Where no `id` is supplied, a `name` may serve as the id, or the id
+may be computed from it. Pandoc discards names, which is why a consumer handed pandoc's
+output cannot join a reuse back to its definition — so a reader that has a name keeps it.
+
+Both are declared in the vendorable header as `ATTR_ID` and `ATTR_NAME`, so a consumer
+compares them by name and value rather than spelling the strings itself.
+
 **A note's body is a definition, not a child.** Pandoc's `Note` holds `[Block]`: a
 footnote body is one or more paragraphs. duck_block does NOT model that by nesting blocks
 under the inline. The inline `note` is an **anchor** carrying `attributes['id']`; the body
