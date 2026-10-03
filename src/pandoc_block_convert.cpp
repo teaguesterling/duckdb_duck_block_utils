@@ -127,7 +127,7 @@ static void ParsePandocAttrVal(yyjson_val *attr_val, PandocAttr &attr) {
 }
 
 static bool IsReservedAttrKey(const string &key) {
-	return key == "id" || key == "class" || key == BlockTypes::ATTR_HEADING_LEVEL || key == "language" ||
+	return key == BlockTypes::ATTR_ID || key == "class" || key == BlockTypes::ATTR_HEADING_LEVEL || key == "language" ||
 	       key == BlockTypes::ATTR_LIST_TYPE || key == "format" || key == "src" || key == "alt" || key == "title" ||
 	       key == "href" || key == "quote_type" || key == "display";
 }
@@ -1073,7 +1073,7 @@ static void ProcessPandocMetaVal(const string &key, yyjson_val *val, int32_t &or
 
 	map<string, string> attrs;
 	if (!key.empty()) {
-		attrs["key"] = key;
+		attrs[BlockTypes::ATTR_KEY] = key;
 	}
 
 	if (strcmp(mt, "MetaString") == 0) {
@@ -2711,7 +2711,7 @@ static yyjson_mut_val *BuildMetaValueJson(yyjson_mut_doc *doc, const vector<Valu
 			i++;
 			continue;
 		}
-		string key = GetElementAttribute(child, "key");
+		string key = GetElementAttribute(child, BlockTypes::ATTR_KEY);
 		yyjson_mut_val *v = BuildMetaValueJson(doc, blocks_list, i, child_level, depth + 1);
 		if (!v) {
 			continue;
@@ -2742,7 +2742,7 @@ static string BuildMetaJson(const vector<Value> &blocks_list) {
 			i++;
 			continue;
 		}
-		string key = GetElementAttribute(el, "key");
+		string key = GetElementAttribute(el, BlockTypes::ATTR_KEY);
 		yyjson_mut_val *v = BuildMetaValueJson(doc, blocks_list, i, 1, 1);
 		if (v && !key.empty()) {
 			yyjson_mut_obj_add(root, yyjson_mut_strncpy(doc, key.data(), key.size()), v);

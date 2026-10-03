@@ -319,7 +319,7 @@ void InlineBuilderFunctions::DbCiteFun(DataChunk &args, ExpressionState &state, 
 
 		map<string, string> attrs;
 		if (!key.IsNull())
-			attrs["key"] = key.GetValue<string>();
+			attrs[BlockTypes::ATTR_KEY] = key.GetValue<string>();
 		if (has_prefix) {
 			auto prefix = args.data[1].GetValue(i);
 			if (!prefix.IsNull())
@@ -1276,7 +1276,7 @@ void InlineBuilderFunctions::Register(ExtensionLoader &loader) {
 			                   auto key = key_vec.GetValue(i);
 			                   map<string, string> attrs;
 			                   if (!key.IsNull())
-				                   attrs["key"] = key.GetValue<string>();
+				                   attrs[BlockTypes::ATTR_KEY] = key.GetValue<string>();
 			                   string content = key.IsNull() ? "" : key.GetValue<string>();
 			                   auto element =
 			                       InlineBuilderFunctions::CreateInline(BlockTypes::INLINE_CITE, content, attrs, 1, 0);
