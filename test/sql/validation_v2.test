@@ -964,55 +964,66 @@ true
 # occurrences across all eleven of their readers, so a refusal would break only an
 # emitter nobody has found, while an advisory names the rule for the reader who would
 # otherwise rediscover it as a footnote appearing twice.
+#
+# EVERY ASSERTION HERE FILTERS ON THIS RULE'S MESSAGE rather than counting the whole
+# lint result, and the reason is a bug CI caught in the first version: two controls
+# asserted len(...) = 0 on documents that legitimately produce ONE pre-existing `info`
+# ("Empty note element: no content and no children"), because an empty note anchor is
+# exactly what the reference-and-definition shape has. A bare count makes an unrelated
+# rule's output look like this rule firing -- and would break again the next time any
+# lint is added. Measured on the served build 39941a7 before rewriting these.
 # ============================================================================
 
-# The excluded shape warns, and the message names the remedy
+# The excluded shape warns exactly once, at the offending block
 query III
-SELECT len(w), w[1].severity, w[1].element_order FROM (SELECT duck_blocks_lint([
+SELECT len(f), f[1].severity, f[1].element_order FROM (SELECT list_filter(duck_blocks_lint([
   {'kind':'block','element_type':'paragraph','content':'Main text.','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
   {'kind':'inline','element_type':'note','content':'','level':2,'encoding':'text','attributes':MAP{'id':'fn1'},'element_order':1}::duck_block,
   {'kind':'block','element_type':'paragraph','content':'FOOTNOTE BODY.','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
-]) AS w);
+]), lambda x: x.message LIKE '%nested under the inline%') AS f);
 ----
 1	warning	2
 
+# ...and the message names the remedy, not just the fault
 query I
-SELECT (duck_blocks_lint([
+SELECT f[1].message LIKE '%anchor carries attributes%body sits at document level%' FROM (SELECT list_filter(duck_blocks_lint([
   {'kind':'block','element_type':'paragraph','content':'Main text.','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
   {'kind':'inline','element_type':'note','content':'','level':2,'encoding':'text','attributes':MAP{'id':'fn1'},'element_order':1}::duck_block,
   {'kind':'block','element_type':'paragraph','content':'FOOTNOTE BODY.','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
-]))[1].message LIKE '%anchor carries attributes%body sits at document level%';
+]), lambda x: x.message LIKE '%nested under the inline%') AS f);
 ----
 true
 
-# CONTROL: the same document without the nested block -- silence, so the warning above
-# is the nesting rather than anything else in the rows
-query I
-SELECT len(duck_blocks_lint([
+# CONTROL: the same document WITHOUT the nested block. This rule is silent, and the
+# second column states what else the document legitimately reports rather than
+# pretending it is silent -- the empty-note advisory belongs to another rule.
+query II
+SELECT len(list_filter(w, lambda x: x.message LIKE '%nested under the inline%')),
+       len(list_filter(w, lambda x: x.message LIKE '%Empty note element%'))
+FROM (SELECT duck_blocks_lint([
   {'kind':'block','element_type':'paragraph','content':'Main text.','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
   {'kind':'inline','element_type':'note','content':'','level':2,'encoding':'text','attributes':MAP{'id':'fn1'},'element_order':1}::duck_block
-]));
+]) AS w);
 ----
-0
+0	1
 
 # CONTROL: the CONFORMING shape -- anchor with an id, body at document level bearing the
-# matching id -- is silent. A lint that fired on the recommended shape would be worse
-# than no lint.
+# matching id. A lint that fired on the recommended shape would be worse than no lint.
 query I
-SELECT len(duck_blocks_lint([
+SELECT len(list_filter(duck_blocks_lint([
   {'kind':'block','element_type':'paragraph','content':'Main text.','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
   {'kind':'inline','element_type':'note','content':'','level':2,'encoding':'text','attributes':MAP{'id':'fn1'},'element_order':1}::duck_block,
   {'kind':'block','element_type':'paragraph','content':'FOOTNOTE BODY.','level':1,'encoding':'text','attributes':MAP{'id':'fn1'},'element_order':2}::duck_block
-]));
+]), lambda x: x.message LIKE '%nested under the inline%'));
 ----
 0
 
-# DISCRIMINATING: an inline nested under a block is the NORMAL direction and must stay
-# silent -- the rule is about direction, not about inlines and blocks coexisting
+# DISCRIMINATING: an inline under a block is the NORMAL direction and must stay silent --
+# the rule is about direction, not about inlines and blocks coexisting.
 query I
-SELECT len(duck_blocks_lint([
+SELECT len(list_filter(duck_blocks_lint([
   {'kind':'block','element_type':'paragraph','content':'','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
   {'kind':'inline','element_type':'text','content':'plain prose','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block
-]));
+]), lambda x: x.message LIKE '%nested under the inline%'));
 ----
 0
