@@ -181,6 +181,10 @@ CONTENT_EXEMPT = {
     "tables round-trip through the preserved pandoc_ast tuple and are tested in "
     "pandoc_blocks_v2.test.",
     "metadata": "kind='value', not a block -- it lands in the document's `meta`, not in `blocks`.",
+    "document": "The level-0 document ROOT, which spec 1.4 rules carries NO content -- "
+    "duck_blocks_validate REJECTS a root with content (#47), so the probe builds a "
+    "document the format forbids. The writer also drops roots by design (#46): the "
+    "root is structure, and file-scoped facts go in attributes.",
 }
 
 
@@ -212,6 +216,9 @@ RENDER_EXEMPT = {
     "raw": "DELIBERATE, and only in to_text: raw markup is omitted so that searching for "
     "`script` does not match `<script>`. Investigated when the agreement guard "
     "first flagged it; it renders fine, which is the half that matters on screen.",
+    "document": "Same rule as the export arm: a root carrying content is invalid per spec "
+    "1.4, so there is no text for the renderer to project. Exempting it here is not "
+    "a gap -- a root with content never reaches a reader.",
 }
 
 

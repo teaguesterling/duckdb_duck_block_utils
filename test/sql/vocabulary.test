@@ -152,6 +152,18 @@ WHERE (t).title = 'LEAK';
 # truth in an attribute while the type says something false.
 # ============================================================================
 
+# `document` -- the level-0 root -- must be ENUMERATED, not merely accepted. It was
+# declared in the header, accepted by the validator, exempted by repair and dropped by
+# the writer from spec 1.4 (#41) onward while this list omitted it for two weeks, so a
+# consumer asking the build what types exist was told `document` does not exist. Five
+# sibling extensions branch on this list; it is the only machine-readable answer to that
+# question, and nothing in CI compared it against the header (check_vocabulary_header.py
+# could only ask a BUILD, and the job that runs it checks out without submodules).
+query I
+SELECT list_contains(duck_block_type_names(), 'document');
+----
+true
+
 query I
 SELECT list_contains(duck_block_type_names(), 'section');
 ----

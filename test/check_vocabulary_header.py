@@ -142,7 +142,18 @@ def main() -> int:
     #    that do not exist. A measurement can be wrong the same way a check can.
     duckdb, ext = repo_duckdb()
     if duckdb is None:
-        print("  (skipping the build comparison: no duckdb binary)")
+        # NOT routed through skip(), deliberately -- and that needs saying, because it
+        # looks exactly like the bug. DUCK_BLOCK_CHECKS_STRICT=1 exists to turn a skipped
+        # check into a failed one, and this skip slips past it: it prints and carries on.
+        # That is correct here, because the CI job which runs this file checks out with
+        # submodules: false BY DESIGN, so there is never a binary and failing would fail
+        # the job forever. What was wrong is that it was SILENT -- one parenthetical among
+        # passing output, with nothing saying the strongest arm had not run. `document`
+        # was missing from the enumeration for two weeks behind this line.
+        print("  NOTE: the build comparison did NOT run (no duckdb binary present).")
+        print("        Arm 4 below is the coverage in this environment. The build arm is")
+        print("        measured only where a built extension exists -- a developer's tree")
+        print("        or a job that builds; STRICT=1 cannot make it run.")
     else:
         pat = re.compile(r'^\s*static constexpr const char \*((?:TYPE|INLINE|VALUE)_[A-Z_]+)\s*=\s*"([^"]+)"')
         declared = {m.group(2) for m in (pat.match(l) for l in VOCAB.read_text().splitlines()) if m}
@@ -184,6 +195,60 @@ def main() -> int:
                 print("      len() then reads the wrong vocabulary size and any join double-counts.")
             elif not failed:
                 print(f"  {len(declared)} type names declared and enumerated, no duplicates")
+
+    # 4. The SAME agreement, read from SOURCE instead of from a build -- and the reason
+    #    this arm exists at all. `document` was declared in the header by #41 and used by
+    #    validation, repair and the writer for two weeks while AllTypeNames() never listed
+    #    it, so duck_block_type_names() denied a type the header offers. Check 3 catches
+    #    exactly that, and CI NEVER RAN IT: the freestanding job checks out without
+    #    submodules, so there is no duckdb binary and the comparison printed "(skipping)".
+    #    A guard that only fires on a developer's box is not protecting the consumers.
+    #
+    #    This arm compares the header's DECLARATIONS against the initializer list in
+    #    block_types.cpp textually, so it needs no compiler, no duckdb and no build. It is
+    #    strictly weaker than check 3 -- it reads what the source says rather than what the
+    #    build answers, and cannot see the deduplication or a registration that never
+    #    happened -- which is the point: it runs where the strong arm cannot.
+    types_cpp = REPO / "src" / "block_types.cpp"
+    if not types_cpp.exists():
+        failed = True
+        print(f"FAIL: {types_cpp} is missing, so the source comparison checked nothing.")
+    else:
+        # Compared by VALUE, like check 3 and like a consumer, NOT by constant name.
+        # The name-level version of this arm reported INLINE_GENERIC as a second defect:
+        # it is genuinely absent from the list, and harmless, because TYPE_GENERIC carries
+        # the same value "generic" -- one of the five names living on two constants that
+        # the list's own comment records. Five names would have read as five bugs. A check
+        # must measure the thing that matters downstream, and what a consumer receives is
+        # the set of type NAMES.
+        name_pat = re.compile(r'^\s*static constexpr const char \*((?:TYPE|INLINE|VALUE)_[A-Z_]+)\s*=\s*"([^"]+)"')
+        values = {m.group(1): m.group(2) for m in (name_pat.match(l) for l in text.splitlines()) if m}
+        declared_consts = set(values.values())
+        body = re.search(r"AllTypeNames\(\)[^{]*\{.*?names\s*=\s*\{(.*?)\n\s*\};", types_cpp.read_text(), re.S)
+        listed_consts = (
+            set(re.findall(r"BlockTypes::((?:TYPE|INLINE|VALUE)_[A-Z_]+)", body.group(1))) if body else set()
+        )
+        listed = {values[c] for c in listed_consts if c in values}
+        # A silent empty set would agree with nothing and PASS, which is how a regex-based
+        # check stops checking after an unrelated refactor. Both sides must be non-empty.
+        if not declared_consts or not listed:
+            failed = True
+            print(
+                "FAIL: the source comparison parsed nothing "
+                f"(header: {len(declared_consts)} type names, AllTypeNames(): {len(listed)})."
+            )
+            print("      Its regexes no longer match the source; fix them rather than the count.")
+        else:
+            if declared_consts - listed:
+                failed = True
+                print(f"FAIL: declared in the header, absent from AllTypeNames(): {sorted(declared_consts - listed)}")
+                print("      src/block_types.cpp must list every type constant the header declares,")
+                print("      or duck_block_type_names() denies a type this repo already emits.")
+            if listed - declared_consts:
+                failed = True
+                print(f"FAIL: listed in AllTypeNames(), not declared in the header: {sorted(listed - declared_consts)}")
+            if not failed:
+                print(f"  {len(declared_consts)} type names declared and listed in AllTypeNames() (source-level)")
 
     if failed:
         return 1
