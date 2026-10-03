@@ -35,17 +35,6 @@ SRC = REPO / "src"
 # constant name -> why its literal may still appear in src/
 EXEMPT = {
     # Values that are also ordinary English words or JSON keys in unrelated positions.
-    "ATTR_ID": "'id' names three different things in src/, and only one of them is a "
-    "duck_block attribute. The 14 ATTRIBUTE sites now use the constant. The other 13 are "
-    "a RESULT-COLUMN name in the duck_blocks_headings/toc structs (make_pair(\"id\", ...)) "
-    "and a SQL NAMED-PARAMETER name in the div/span builders ({\"id\", \"children\"}) -- "
-    "converting either would rename public API, which is worse than pedantic. The cost of "
-    "this exemption, stated rather than hidden: it also stops the scan policing the "
-    "attribute sites, so a future bare attrs[\"id\"] will not be flagged here. Same "
-    "trade ATTR_KEY already makes.",
-    "ATTR_KEY": "'key' is also a yyjson object key and a MAP column name in contexts that "
-    "have nothing to do with a duck_block attribute; converting those would be "
-    "wrong rather than pedantic.",
     "ROLE_SECTION": "'section' is also the element_type TYPE_SECTION's own value, so the "
     "literal legitimately appears where the TYPE is meant.",
     "ROLE_HEADER": "'header' appears as a Pandoc/HTML construct name unrelated to the role.",
@@ -116,7 +105,56 @@ def main() -> int:
         text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
         return re.sub(r"//[^\n]*", "", text)
 
-    sources = {f: strip_comments(f.read_text()) for f in sorted(SRC.glob("*.cpp"))}
+    # REGISTRATION POSITIONS MASKED BEFORE THE SCAN. The scan is a substring test, and
+    # `"id"` names three different things in src/: a duck_block ATTRIBUTE key
+    # (attrs["id"], the only one this check is about), a SQL PARAMETER name in a
+    # function registration ({"id", "children"}), and a RESULT-COLUMN name in a returned
+    # struct (make_pair("id", ...)). The last two are PUBLIC API: converting them to a
+    # vocabulary constant would couple a SQL signature or a row schema to a value that is
+    # allowed to change for attribute reasons, which is worse than pedantic.
+    #
+    # Before this, the only way to silence them was an EXEMPT entry per constant -- and
+    # an exemption is per CONSTANT, not per site, so it also stopped the scan policing
+    # the genuine attribute sites. ATTR_ID bought silence on 13 registration literals by
+    # going blind to 14 attribute ones; ATTR_ORDERED_LEGACY and LIST_TYPE_ORDERED would
+    # have bought silence on 8 registration literals by going blind to 20+ real uses.
+    # That is the trade this file's own comments warn about: "the way a phantom gets
+    # silenced is an EXEMPT entry with a plausible reason -- and that entry then excuses
+    # the real instance when it arrives."
+    #
+    # Masking is per SITE, so the real instances stay visible. Three shapes, all of them
+    # positions where a string is an API NAME rather than a duck_block value:
+    def mask_registration(text):
+        # {"a", "b"}, "Build ..." -- a braced list of string literals IMMEDIATELY FOLLOWED
+        # BY a comma and another string: the parameter-name list and then the description
+        # argument of this codebase's registration helpers.
+        #
+        # ONE element counts: `{"key"}, "Build citation inline element (V2)."` is as much a
+        # parameter list as `{"key", "prefix"}, "..."`. The discriminator is the trailing
+        # DOCSTRING, not the element count -- I required two at first and the check
+        # reported the single-element registration as a shadowing, which is the right
+        # answer to the wrong rule.
+        #
+        # The trailing-string lookahead is load-bearing, and the check told me so. Masking
+        # every braced list of two-or-more strings ALSO ate
+        #   static const std::set<string> SECTIONING_ROLES = {"section", "article", ...}
+        # which is a genuine VALUE SET, and six ROLE_* exemptions immediately reported
+        # that they now excuse nothing -- the staleness arm catching a false negative I
+        # had just introduced. A value set closes with `};`, a parameter list with `}, "`.
+        # Without that arm this would have shipped as silent blindness to the role
+        # vocabulary; see the note on EXEMPT staleness below.
+        text = re.sub(
+            r'\{\s*"(?:[^"\\]|\\.)*"(?:\s*,\s*"(?:[^"\\]|\\.)*")*\s*,?\s*\}(?=\s*,\s*")',
+            "{REGISTRATION_PARAMS}",
+            text,
+        )
+        # make_pair("name", ...) -- the first argument names a struct FIELD
+        text = re.sub(r'make_pair\(\s*"(?:[^"\\]|\\.)*"', "make_pair(RESULT_COLUMN", text)
+        # named_parameters["name"] -- a SQL named parameter
+        text = re.sub(r'named_parameters\[\s*"(?:[^"\\]|\\.)*"\s*\]', "named_parameters[NAMED_PARAM]", text)
+        return text
+
+    sources = {f: mask_registration(strip_comments(f.read_text())) for f in sorted(SRC.glob("*.cpp"))}
 
     shadowed = []
     for name, value in sorted(consts.items()):
