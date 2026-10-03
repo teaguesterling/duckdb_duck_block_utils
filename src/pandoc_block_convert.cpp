@@ -3081,8 +3081,9 @@ void PandocBlockConvert::Register(ExtensionLoader &loader) {
 	// meta is MAP(VARCHAR, VARCHAR) - simple key-value pairs converted to Pandoc MetaInlines
 	TableFunction pandoc_ast_table_func(BlockTypes::ATTR_PANDOC_AST, {duck_block_list_type}, PandocAstFunction,
 	                                    PandocAstBind);
-	pandoc_ast_table_func.named_parameters["meta"] = LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR);
-	pandoc_ast_table_func.named_parameters["api_version"] = LogicalType::LIST(LogicalType::INTEGER);
+	CompatAddNamedParameter(pandoc_ast_table_func, "meta",
+	                        LogicalType::MAP(LogicalType::VARCHAR, LogicalType::VARCHAR));
+	CompatAddNamedParameter(pandoc_ast_table_func, "api_version", LogicalType::LIST(LogicalType::INTEGER));
 	RegisterTableWithDesc(loader, pandoc_ast_table_func, {"blocks"}, "Table function returning Pandoc AST rows.",
 	                      {"SELECT * FROM pandoc_ast(blocks)"});
 }
