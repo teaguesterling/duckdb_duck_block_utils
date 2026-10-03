@@ -142,7 +142,18 @@ def main() -> int:
     #    that do not exist. A measurement can be wrong the same way a check can.
     duckdb, ext = repo_duckdb()
     if duckdb is None:
-        print("  (skipping the build comparison: no duckdb binary)")
+        # NOT routed through skip(), deliberately -- and that needs saying, because it
+        # looks exactly like the bug. DUCK_BLOCK_CHECKS_STRICT=1 exists to turn a skipped
+        # check into a failed one, and this skip slips past it: it prints and carries on.
+        # That is correct here, because the CI job which runs this file checks out with
+        # submodules: false BY DESIGN, so there is never a binary and failing would fail
+        # the job forever. What was wrong is that it was SILENT -- one parenthetical among
+        # passing output, with nothing saying the strongest arm had not run. `document`
+        # was missing from the enumeration for two weeks behind this line.
+        print("  NOTE: the build comparison did NOT run (no duckdb binary present).")
+        print("        Arm 4 below is the coverage in this environment. The build arm is")
+        print("        measured only where a built extension exists -- a developer's tree")
+        print("        or a job that builds; STRICT=1 cannot make it run.")
     else:
         pat = re.compile(r'^\s*static constexpr const char \*((?:TYPE|INLINE|VALUE)_[A-Z_]+)\s*=\s*"([^"]+)"')
         declared = {m.group(2) for m in (pat.match(l) for l in VOCAB.read_text().splitlines()) if m}
