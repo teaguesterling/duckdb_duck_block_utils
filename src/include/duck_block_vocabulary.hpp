@@ -701,6 +701,29 @@ struct DuckBlockVocabulary {
 	// `metadata`+role over minting a `frontmatter` type in the first place: if the ROLE
 	// carries the meaning, the role needs the enforcement the type has.
 	// ========================================================================
+	// THE DOCUMENT FRAGMENT LOCATOR. Teague's ruling, 2026-10-02. `id` locates a fragment
+	// WITHIN a document, exactly as an HTML fragment anchor does, and it may be either
+	// MINTED by the reader or PROVIDED by the source -- both are `id`, because what the
+	// field means is "how you address this fragment", not where the string came from.
+	// A minted id must be:
+	//   UNIQUE within its document;
+	//   PROGRAMMATICALLY and DETERMINISTICALLY created, so a re-read of the same source
+	//     yields the same id and a diff of two reads shows real changes only;
+	//   SEMANTIC in location and value -- it says where the fragment is and what it is,
+	//     rather than being an opaque counter.
+	// It is load-bearing from spec 1.4: a note ANCHOR carries it and the body sits at
+	// document level bearing the matching id (see "A note's body is a definition" in the
+	// spec). Five element types are documented as carrying it -- div, section, figure,
+	// span, note.
+	static constexpr const char *ATTR_ID = "id";
+	// What the SOURCE called this thing, which is a different question from how to
+	// address it. mediawiki's `<ref name="a">` supplies one; docx, odt, latex and rst do
+	// not. Kept because pandoc DISCARDS it, and without it a consumer cannot join a reuse
+	// back to its definition (panduck's mediawiki_reader.cpp argues the case). Where no
+	// `id` is supplied, a `name` may serve as the id, or the id may be computed from it --
+	// so `name` is provenance and `id` is the address, and the two coincide often enough
+	// that conflating them looks harmless until a source names something twice.
+	static constexpr const char *ATTR_NAME = "name";
 	static constexpr const char *ATTR_ROLE = "role";
 	static constexpr const char *ATTR_KEY = "key";
 	static constexpr const char *ATTR_HEADING_LEVEL = "heading_level";

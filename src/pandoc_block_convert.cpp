@@ -134,7 +134,7 @@ static bool IsReservedAttrKey(const string &key) {
 
 static void StorePandocAttr(const PandocAttr &attr, map<string, string> &attrs) {
 	if (!attr.id.empty()) {
-		attrs["id"] = attr.id;
+		attrs[BlockTypes::ATTR_ID] = attr.id;
 	}
 	if (!attr.classes.empty()) {
 		string joined;
@@ -1242,7 +1242,7 @@ static int32_t GetElementLevel(const Value &element) {
 }
 
 static yyjson_mut_val *CreatePandocAttrVal(yyjson_mut_doc *doc, const Value &element, const string &fallback_class) {
-	auto id = GetElementAttribute(element, "id");
+	auto id = GetElementAttribute(element, BlockTypes::ATTR_ID);
 	auto classes = GetElementAttribute(element, "class");
 	if (classes.empty()) {
 		classes = fallback_class;

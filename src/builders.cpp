@@ -1583,7 +1583,7 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 			                   auto children_list = children_vec.GetValue(i);
 			                   map<string, string> attrs;
 			                   if (!id.IsNull()) {
-				                   attrs["id"] = id.GetValue<string>();
+				                   attrs[BlockTypes::ATTR_ID] = id.GetValue<string>();
 			                   }
 			                   auto parent = BuilderFunctions::CreateBlockWithNullContent(
 			                       BlockTypes::TYPE_DIV, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT,
@@ -1610,7 +1610,7 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 			        auto children_list = children_vec.GetValue(i);
 			        map<string, string> attrs;
 			        if (!id.IsNull()) {
-				        attrs["id"] = id.GetValue<string>();
+				        attrs[BlockTypes::ATTR_ID] = id.GetValue<string>();
 			        }
 			        if (!class_val.IsNull()) {
 				        attrs["class"] = class_val.GetValue<string>();
@@ -1656,7 +1656,7 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 			                   auto flat_children = FlattenNestedList(nested_list);
 			                   map<string, string> attrs;
 			                   if (!id.IsNull()) {
-				                   attrs["id"] = id.GetValue<string>();
+				                   attrs[BlockTypes::ATTR_ID] = id.GetValue<string>();
 			                   }
 			                   auto parent = BuilderFunctions::CreateBlockWithNullContent(
 			                       BlockTypes::TYPE_DIV, BlockTypes::KIND_BLOCK, Value(1), BlockTypes::ENCODING_TEXT,
@@ -1684,7 +1684,7 @@ void BuilderFunctions::Register(ExtensionLoader &loader) {
 			                   auto flat_children = FlattenNestedList(nested_list);
 			                   map<string, string> attrs;
 			                   if (!id.IsNull()) {
-				                   attrs["id"] = id.GetValue<string>();
+				                   attrs[BlockTypes::ATTR_ID] = id.GetValue<string>();
 			                   }
 			                   if (!class_val.IsNull()) {
 				                   attrs["class"] = class_val.GetValue<string>();

@@ -358,7 +358,7 @@ void InlineBuilderFunctions::DbSpanFun(DataChunk &args, ExpressionState &state, 
 		if (has_id) {
 			auto id = args.data[1].GetValue(i);
 			if (!id.IsNull())
-				attrs["id"] = id.GetValue<string>();
+				attrs[BlockTypes::ATTR_ID] = id.GetValue<string>();
 		}
 		if (has_classes) {
 			auto classes = args.data[2].GetValue(i);
@@ -607,7 +607,7 @@ void InlineBuilderFunctions::DbSpanFlattenFun(DataChunk &args, ExpressionState &
 		if (has_id) {
 			auto id = args.data[1].GetValue(i);
 			if (!id.IsNull())
-				attrs["id"] = id.GetValue<string>();
+				attrs[BlockTypes::ATTR_ID] = id.GetValue<string>();
 		}
 		if (has_classes) {
 			auto classes = args.data[2].GetValue(i);
@@ -907,7 +907,7 @@ void InlineBuilderFunctions::Register(ExtensionLoader &loader) {
 
 			        map<string, string> attrs;
 			        if (!id.IsNull())
-				        attrs["id"] = id.GetValue<string>();
+				        attrs[BlockTypes::ATTR_ID] = id.GetValue<string>();
 			        auto parent =
 			            InlineBuilderFunctions::CreateInlineWithNullContent(BlockTypes::INLINE_SPAN, attrs, 1, 0);
 
@@ -1311,7 +1311,7 @@ void InlineBuilderFunctions::Register(ExtensionLoader &loader) {
 			                   auto content = content_vec.GetValue(i);
 			                   map<string, string> attrs;
 			                   if (!id.IsNull())
-				                   attrs["id"] = id.GetValue<string>();
+				                   attrs[BlockTypes::ATTR_ID] = id.GetValue<string>();
 			                   auto element = InlineBuilderFunctions::CreateInline(
 			                       BlockTypes::INLINE_SPAN, content.IsNull() ? "" : content.GetValue<string>(), attrs,
 			                       1, 0);
@@ -1338,7 +1338,7 @@ void InlineBuilderFunctions::Register(ExtensionLoader &loader) {
 			        auto content = content_vec.GetValue(i);
 			        map<string, string> attrs;
 			        if (!id.IsNull())
-				        attrs["id"] = id.GetValue<string>();
+				        attrs[BlockTypes::ATTR_ID] = id.GetValue<string>();
 			        if (!cls.IsNull())
 				        attrs["class"] = cls.GetValue<string>();
 			        auto element = InlineBuilderFunctions::CreateInline(
