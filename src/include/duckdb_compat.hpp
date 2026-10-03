@@ -321,6 +321,68 @@ inline VALUE *CompatFlatDataMutable(Vector &vec) {
 	return CompatFlatDataMutableImpl<VALUE, FV>(vec, CompatHasFlatGetDataMutable<FV>());
 }
 
+// --- Table-function named parameters (change class 22) -------------------------
+// v1.5: TableFunction derives from SimpleNamedParameterFunction, which carries a
+//       named_parameters map:  fn.named_parameters["opt"] = type;
+// v2.0: SimpleNamedParameterFunction was DELETED (upstream, 2026-09-25) and
+//       TableFunction re-based onto BaseTableFunction + SimpleFunction. Neither
+//       carries the map, so every declaration site is a compile error:
+//         'class duckdb::TableFunction' has no member named 'named_parameters'
+//
+// The replacement is a typed "**kwargs" bag on the signature -- how upstream
+// migrated its own read_csv. Probed on GetSignature(), the member that arrived
+// with it: absent on v1.5, present on v2.0.
+//
+// NOT AddKeywordOnly, which is the reading that looks right. A parameter with no
+// default is REQUIRED on v2.0 -- function_binder.cpp throws "Missing value for
+// parameter %s in function call to %s" -- so that port makes every named option
+// MANDATORY and breaks every existing caller, while compiling clean and passing
+// every build check. A typed kwargs bag is optional by construction, is typed
+// ANY so overload selection cannot reject the value, and still arrives as
+// input.named_parameters["opt"] -- bind code and caller syntax both unchanged.
+//
+// The callback must never NAME TypedKwargs: a non-dependent absent name is a
+// hard error even in an untaken template branch, the same reason count_t stays
+// behind an include guard above. A generic lambda would do it, but `auto` lambda
+// parameters are C++14, so this is a functor with a TEMPLATE operator() -- the
+// same property, valid at C++11 and C++17 alike.
+struct CompatKwargsAdder {
+	const char *name;
+	LogicalType type;
+	template <class KWARGS>
+	void operator()(KWARGS &kwargs) const {
+		kwargs.Add(name, type);
+	}
+};
+
+template <class T, class = void>
+struct CompatHasGetSignature : std::false_type {};
+template <class T>
+struct CompatHasGetSignature<T, decltype(void(std::declval<T &>().GetSignature()))> : std::true_type {};
+
+template <class FUNC>
+inline void CompatAddNamedParameterImpl(FUNC &fn, const char *name, LogicalType type, std::true_type) {
+	// Held by value: the callback is stored as a std::function and may outlive
+	// this call.
+	CompatKwargsAdder configure {name, std::move(type)};
+	auto &signature = fn.GetSignature();
+	if (signature.GetTypedKwargs()) {
+		// A second WithTypedKwargs REPLACES the first bag, and ExtendTypedKwargs
+		// throws when there is none yet -- so a function declaring more than one
+		// option has to branch here. pandoc_ast declares two.
+		signature.ExtendTypedKwargs(configure);
+	} else {
+		signature.WithTypedKwargs("options", configure);
+	}
+}
+template <class FUNC>
+inline void CompatAddNamedParameterImpl(FUNC &fn, const char *name, LogicalType type, std::false_type) {
+	fn.named_parameters[name] = std::move(type);
+}
+inline void CompatAddNamedParameter(TableFunction &fn, const char *name, LogicalType type) {
+	CompatAddNamedParameterImpl(fn, name, std::move(type), CompatHasGetSignature<TableFunction>());
+}
+
 // BOTH ANSWERS PINNED. A detector tested only on the line we build against is
 // half-checked: it would pass identically if it always returned the answer v1.5
 // wants. These cost nothing at run time and fail the build the day a probe stops
@@ -346,6 +408,15 @@ static_assert(CompatHasReferenceValueOnly<VectorWithValueOnlyReference>::value,
               "must detect Reference(const Value &) (v1.5 shape)");
 static_assert(!CompatHasReferenceValueOnly<VectorWithCountedReference>::value,
               "must not fire when only the counted form exists (v2.0 shape)");
+struct FunctionWithSignature {
+	int GetSignature();
+};
+struct FunctionWithNamedParametersOnly {
+	int named_parameters;
+};
+static_assert(CompatHasGetSignature<FunctionWithSignature>::value, "must detect GetSignature (v2.0 shape)");
+static_assert(!CompatHasGetSignature<FunctionWithNamedParametersOnly>::value,
+              "must not fire without it (v1.5 shape)");
 } // namespace compat_detail
 
 } // namespace duckdb
