@@ -236,3 +236,34 @@ jobs:
         env:
           DUCK_BLOCK_CHECKS_STRICT: '1'
         run: python3 test/check_vocabulary_header.py
+
+  # THE HEADER AND THE CONFORMANCE MACROS ARE TWO ENCODINGS OF ONE VOCABULARY, and
+  # until now nothing in CI compared them. They disagreed for three releases:
+  # TYPE_DOCUMENT landed in the header with the 1.4 amendment of 2026-09-16 and was
+  # never added to duck_block_declared_types(), so a producer emitting the document
+  # root the spec had just legalised was reported as using an undeclared name. A
+  # CONSUMER found it (duckdb_markdown, while re-vendoring), which is the wrong way
+  # round for a defect in two files that both live here.
+  #
+  # check_conformance_macro.py is the better comparison -- it runs the real extension
+  # against the real macros, so it sees RULE divergence and not just missing names --
+  # but it needs a built extension and is one of the guards #58 reports as unrun. This
+  # one needs no build, no network and no DuckDB: two text files and a set comparison.
+  # There is no reason for it not to run on every push, which is the whole argument.
+  #
+  # BOTH ANSWERS PINNED before wiring it: --self-test mutates the pair in memory three
+  # ways (a dropped name, an invented name, a truncated scrape) and requires all three
+  # to be detected; and the guard was run against the PRE-FIX macros, where it reports
+  # the real historical 'document' gap and exits 1. A detector exercised only on the
+  # passing side is half-checked.
+  conformance-types:
+    name: Header and conformance macros declare the same names
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: The guard can fail
+        run: python3 test/check_conformance_types.py --self-test
+      - name: Header and macros agree
+        run: python3 test/check_conformance_types.py
