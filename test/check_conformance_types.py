@@ -189,8 +189,7 @@ def main() -> int:
         for problem in problems:
             print(f"  {problem}")
         print(
-            "\nBoth are published artifacts consumers copy, so a disagreement here "
-            "ships to every consumer at once."
+            "\nBoth are published artifacts consumers copy, so a disagreement here " "ships to every consumer at once."
         )
         return 1
 
