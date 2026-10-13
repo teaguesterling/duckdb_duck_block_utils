@@ -1191,8 +1191,24 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 		}
 
 		// Close any list whose scope this block has left.
-		while (!list_stack.empty() && GetDepth(block) <= list_stack.back().level &&
-		       element_type != BlockTypes::TYPE_LIST_ITEM) {
+		//
+		// A list_item CLOSES lists too, and excluding it here was a bug: after a nested
+		// sublist, the next item of the OUTER list stayed indented at the inner depth,
+		// because the inner list was never popped. Indentation is `list_stack.size() - 1`
+		// below, so the stack being one too deep put a top-level item under its own
+		// sibling's children:
+		//
+		//     - alpha            •  alpha
+		//       - nested one       •  nested one
+		//     - beta               •  beta      <-- rendered as a child of alpha
+		//
+		// The level test already excludes an item's OWN list, so no guard is needed for
+		// it: a container always has a lower level than the items it holds (a `list` at
+		// level 1 holds `list_item`s at level 2), so `GetDepth(item) <= back().level` is
+		// false for the list the item belongs to and true only for lists it has left.
+		// The parse was right all along -- `beta` comes back at level 2, a sibling of
+		// `alpha` -- so this was purely the renderer losing track.
+		while (!list_stack.empty() && GetDepth(block) <= list_stack.back().level) {
 			list_stack.pop_back();
 		}
 

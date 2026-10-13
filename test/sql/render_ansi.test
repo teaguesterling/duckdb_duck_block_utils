@@ -16,6 +16,14 @@ CREATE MACRO tb(t, c, a) AS
   {kind: 'block', element_type: t, content: c, level: 1, encoding: 'text',
    attributes: a, element_order: 1}::duck_block;
 
+# tb with an explicit level, for the container-shaped list tests below: a
+# contentless `list` opens a scope and its `list_item` children carry the words,
+# so the LEVEL is the structure and cannot be left at tb's constant 1.
+statement ok
+CREATE MACRO lvb(t, c, lv) AS
+  {kind: 'block', element_type: t, content: c, level: lv, encoding: 'text',
+   attributes: MAP{}, element_order: 1}::duck_block;
+
 # ============================================================================
 # duck_block_terminal_width
 # ============================================================================
@@ -162,6 +170,66 @@ SELECT r LIKE '%1.%' AND r LIKE '%2.%'
 FROM (SELECT duck_blocks_render_ansi([tb('list', '["first", "second"]', MAP {'ordered': 'true'})], 60) AS r);
 ----
 true
+
+# ----------------------------------------------------------------------------
+# A nested sublist must not swallow the items after it.
+#
+# The renderer takes a list_item's indent from `list_stack.size() - 1`, and the
+# loop that closes a list whose scope a block has left used to EXCLUDE
+# list_item -- so an item could never pop a list. After a sublist, the outer
+# list's next item therefore kept the inner depth and rendered as a child of
+# its own sibling:
+#
+#     - alpha            •  alpha
+#       - nested one       •  nested one
+#     - beta               •  beta      <-- wrong, one level too deep
+#
+# The parse was never at fault: `beta` comes back at level 2, a sibling of
+# `alpha`. The level test alone is the right rule, because a container always
+# has a LOWER level than the items it holds (a `list` at 1 holds items at 2),
+# so `GetDepth(item) <= back().level` is false for an item's own list and true
+# only for lists it has left. Found downstream in duckeye, where a two-item
+# list with one sublist rendered three bullets at two indents instead of three.
+#
+# Asserted as exact indent strings rather than a LIKE, because the bug moved an
+# indent by exactly two columns and a prefix match would have passed on both.
+# ----------------------------------------------------------------------------
+
+query I
+SELECT regexp_replace(l, chr(27) || '\[[0-9;]*m', '', 'g') AS line FROM (
+  SELECT unnest(string_split(duck_blocks_render_ansi([
+    lvb('list', '', 1),
+    lvb('list_item', 'alpha', 2),
+    lvb('list', '', 3),
+    lvb('list_item', 'nested one', 4),
+    lvb('list_item', 'beta', 2)
+  ], 60), chr(10))) AS l
+);
+----
+  • alpha
+    • nested one
+  • beta
+
+# Two levels deep, popping TWO lists at once: `d` leaves both the level-5 and
+# the level-3 list. A fix that popped only the innermost would render `d` at
+# `nested one`'s depth and pass the three-line case above.
+query I
+SELECT regexp_replace(l, chr(27) || '\[[0-9;]*m', '', 'g') AS line FROM (
+  SELECT unnest(string_split(duck_blocks_render_ansi([
+    lvb('list', '', 1),
+    lvb('list_item', 'a', 2),
+    lvb('list', '', 3),
+    lvb('list_item', 'b', 4),
+    lvb('list', '', 5),
+    lvb('list_item', 'c', 6),
+    lvb('list_item', 'd', 2)
+  ], 60), chr(10))) AS l
+);
+----
+  • a
+    • b
+      • c
+  • d
 
 # wrapped continuation lines of a bullet item are indented past the bullet
 query I
