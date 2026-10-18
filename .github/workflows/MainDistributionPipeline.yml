@@ -43,6 +43,18 @@ jobs:
       duckdb_version: v2.0-cyanoptera
       ci_tools_version: main
       extension_name: duck_block_utils
+      # Make a skipped test run FAIL on this leg. `T` is the test pattern ci-tools
+      # passes to run_tests.py (`T ?=` in duckdb_extension.Makefile, so an env var
+      # wins), and test_env_variables is handed to `make test_release` by
+      # ci_phase.py. `--require duck_block_utils` turns "could not load" into
+      # `require duck_block_utils: FAILED` instead of a silent skip.
+      # Verified on this leg's ci-tools (main) against b15358c371d:
+      #   extension present -> exit 0, "16 passed, 2 skipped"
+      #   extension hidden  -> exit 2, "0 passed, 18 failed, 0 skipped"
+      # Only this leg: ci-tools v1.5-variegata has no TEST_RUNNER and no `T`, so the
+      # same variable there is silently ignored -- see `make test-require` for the
+      # portable form.
+      test_config: '{"test_env_variables": {"T": "--test-flags \"--require duck_block_utils\" \"test/*\""}}'
 
   # ADVISORY canary on DuckDB main, the line beyond 2.0. Pushes to main and on
   # demand only: a push and a pull_request both fire on the same commit and a PR's

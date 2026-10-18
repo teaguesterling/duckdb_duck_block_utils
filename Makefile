@@ -62,3 +62,32 @@ check:
 
 check-strict:
 	DUCK_BLOCK_CHECKS_STRICT=1 $(MAKE) check
+
+.PHONY: test-require
+# A TEST RUN THAT SKIPPED REPORTS SUCCESS, which is how 680 tests across this fleet
+# went unrun behind 12 green registry checks in October 2026
+# (duckdb/community-extensions#3086). `require duck_block_utils` in a .test file means
+# "skip unless available", so when the extension cannot be loaded EVERY file skips and
+# the harness still prints "all tests passed".
+#
+# `--require <ext>` makes a MISSING require a hard failure instead: see
+# sqllogic_test_runner.cpp, where IsRequired(param) turns it into
+# parser.Fail("require %s: FAILED"). It is SCOPED to the named extension, so files that
+# skip for other reasons still skip. That scoping is why this is used rather than
+# run_tests.py's --fail-require-skip, which cannot tell an unloadable extension from a
+# deliberate platform gate -- and which is a no-op anyway, because it searches stdout
+# while the summary is written to stderr (duckdb/duckdb#27413).
+#
+# WATCHED IT FAIL BOTH WAYS before being trusted, on DuckDB 2.0 (b15358c371d), by moving
+# the built extension aside:
+#     make test-require, present : exit 0, "2 skipped tests, 813 assertions in 16 cases"
+#     make test-require, hidden  : exit 2, "require duck_block_utils: FAILED"
+#     make test     , hidden     : exit 0, "ran tests: 0 passed, 18 skipped"   <-- the bug
+# The present-case's 2 legitimate skips passing is the proof that the scoping works.
+#
+# INERT ON THE v1.5.6 LINE, where `require` cannot fail: hiding the artifact changes
+# nothing (measured on markdown and yaml -- identical assertion counts all three ways).
+# Harmless there, load-bearing on the 2.0 line. Report the ASSERTION count this prints,
+# never `make test`'s file count.
+test-require:
+	./build/release/test/unittest --require $(EXT_NAME) "$(TESTS_BASE_DIRECTORY)*"
