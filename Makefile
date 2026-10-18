@@ -85,9 +85,15 @@ check-strict:
 #     make test     , hidden     : exit 0, "ran tests: 0 passed, 18 skipped"   <-- the bug
 # The present-case's 2 legitimate skips passing is the proof that the scoping works.
 #
+# THE NAME IS WRITTEN OUT, not $(EXT_NAME), because the two are not always the same:
+# sitting_duck sets EXT_NAME=duckdb_ast while its tests say `require sitting_duck`, so
+# $(EXT_NAME) there would match no token and make this guard a silent no-op -- the exact
+# failure class it exists to catch. Found while rolling this out across the fleet; here
+# the two happen to coincide, which is precisely why relying on it is a trap.
+#
 # INERT ON THE v1.5.6 LINE, where `require` cannot fail: hiding the artifact changes
 # nothing (measured on markdown and yaml -- identical assertion counts all three ways).
 # Harmless there, load-bearing on the 2.0 line. Report the ASSERTION count this prints,
 # never `make test`'s file count.
 test-require:
-	./build/release/test/unittest --require $(EXT_NAME) "$(TESTS_BASE_DIRECTORY)*"
+	./build/release/test/unittest --require duck_block_utils "$(TESTS_BASE_DIRECTORY)*"
