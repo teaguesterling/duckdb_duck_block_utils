@@ -45,20 +45,40 @@ jobs:
   # with no PR open, which gets its first next-line build when the PR opens.
   duckdb-next-build:
     name: Build extension binaries (duckdb next, v2.0 line)
-    uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@main
+    # A RELEASE VERSION PLUS AN EXPLICIT COMMIT, not the branch name. ci_phase.py
+    # (duckdb/extension-ci-tools, scripts/ci_phase.py:408-411 at
+    # 2de802913caf5c9bba0ef267658b20f3cc0486c3) checks duckdb_version against a
+    # semver pattern; the branch name `v2.0-cyanoptera` fails it, so the script
+    # resolved the branch's staged version (v2.0.1-alpha50125) for the download URL
+    # ONLY and never wrote it back to DUCKDB_VERSION. CMake therefore stamped the
+    # extension `v2.0-cyanoptera` while the library it links reported
+    # v2.0.1-alpha50125; DuckDB refuses to load a stamp that differs from its own
+    # version, so every test failed at its `require` line. `v2.0.0` matches the
+    # pattern, so nothing is overridden, and duckdb_commit selects the checkout.
+    # The commit is upstream's v2.0.0 release tag and the registry's default build
+    # commit (DUCKDB_REGISTRY_COMMIT in duckdb-pin below; the two must match).
+    # The `uses:` ref and ci_tools_version below are the extension-ci-tools BRANCH
+    # v2.0-cyanoptera -- unrelated to the DuckDB branch of the same name.
+    uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v2.0-cyanoptera
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     with:
-      duckdb_version: v2.0-cyanoptera
-      ci_tools_version: main
+      duckdb_version: v2.0.0
+      duckdb_commit: d54cbbe3df17e8e5ce68312f483b4155836112aa
+      ci_tools_version: v2.0-cyanoptera
       extension_name: duck_block_utils
       # Make a skipped test run FAIL on this leg. `T` is the test pattern ci-tools
       # passes to run_tests.py (`T ?=` in duckdb_extension.Makefile, so an env var
       # wins), and test_env_variables is handed to `make test_release` by
       # ci_phase.py. `--require duck_block_utils` turns "could not load" into
       # `require duck_block_utils: FAILED` instead of a silent skip.
-      # Verified on this leg's ci-tools (main) against b15358c371d:
+      # Verified against b15358c371d while this leg was on ci-tools main:
       #   extension present -> exit 0, "16 passed, 2 skipped"
       #   extension hidden  -> exit 2, "0 passed, 18 failed, 0 skipped"
+      # The guard survives the move to ci-tools v2.0-cyanoptera: duckdb_webbed's
+      # job with this same combination reported "ran tests: 130 passed, 0 skipped"
+      # (run 40212298187, linux_amd64, measured 2026-10-25). READ THAT COUNT in
+      # this leg's log too -- a green Test step over "0 passed, N skipped" is the
+      # failure this configuration exists to eliminate, not a pass.
       # Only this leg: ci-tools v1.5-variegata has no TEST_RUNNER and no `T`, so the
       # same variable there is silently ignored -- see `make test-require` for the
       # portable form.
@@ -126,15 +146,21 @@ jobs:
     env:
       # What this repo pins, ships, and tests against.
       DUCKDB_VERSION: v1.5.6
-      # The next line this workflow builds, for compile-compat and for the
-      # test-coverage leg. BRANCH name, not the registry's commit -- see
-      # duckdb-v2-test-coverage below for why that distinction is load-bearing.
-      DUCKDB_NEXT: v2.0-cyanoptera
-      # What the community registry builds by default, as of #3079. Recorded so
-      # that the registry moving again is a FAILURE here rather than a surprise
-      # in a release. DUCKDB_REGISTRY_TAG is not an upstream tag: ci-tools tags
-      # the commit with it locally so the built extension reports a version.
-      DUCKDB_REGISTRY_COMMIT: b15358c371daf10dad799a43b6167f6ccdce84d8
+      # The next line this workflow builds, for compile-compat and for test
+      # coverage. A RELEASE VERSION, no longer the `v2.0-cyanoptera` branch name:
+      # ci_phase.py silently overrides a duckdb_version that fails its semver
+      # check, which stamped the extension with a version the linked library did
+      # not report and made every `require` fail. See duckdb-next-build above.
+      DUCKDB_NEXT: v2.0.0
+      # What the community registry builds by default. Recorded so that the
+      # registry moving again is a FAILURE here rather than a surprise in a
+      # release. DUCKDB_REGISTRY_TAG is not an upstream tag: ci-tools tags the
+      # commit with it locally so the built extension reports a version.
+      # Moved from b15358c371da (the #3079 default) to the v2.0.0 release commit;
+      # measured against the registry at f13027e511 on 2026-10-25. This is also
+      # the commit duckdb-next-build passes as duckdb_commit, which is why the
+      # 40-hex scan below accepts that line.
+      DUCKDB_REGISTRY_COMMIT: d54cbbe3df17e8e5ce68312f483b4155836112aa
       DUCKDB_REGISTRY_TAG: v2.0.0-alpha46057
       DUCKDB_REGISTRY_TOOLS: v2.0-cyanoptera
       # scripts/build.py routes a v1.5.6 build to each descriptor's `variegata`
