@@ -33,19 +33,13 @@ VOCAB = REPO / "src" / "include" / "duck_block_vocabulary.hpp"
 SRC = REPO / "src"
 
 # constant name -> why its literal may still appear in src/
-EXEMPT = {
-    # Values that are also ordinary English words or JSON keys in unrelated positions.
-    "ROLE_SECTION": "'section' is also the element_type TYPE_SECTION's own value, so the "
-    "literal legitimately appears where the TYPE is meant.",
-    "ROLE_HEADER": "'header' appears as a Pandoc/HTML construct name unrelated to the role.",
-    "ROLE_PAGE": "'page' is the class written into exported Pandoc Divs for TYPE_PAGE, which "
-    "is the marker's serialisation rather than a role attribute.",
-    "ROLE_ARTICLE": "part of the section role set, matched via a list rather than singly.",
-    "ROLE_ASIDE": "as ROLE_ARTICLE.",
-    "ROLE_NAV": "as ROLE_ARTICLE.",
-    "ROLE_FOOTER": "as ROLE_ARTICLE.",
-    "ROLE_MAIN": "as ROLE_ARTICLE.",
-}
+#
+# EMPTY since the Pandoc converter moved to panduck (2026-10-30). All eight entries here
+# (ROLE_SECTION, ROLE_HEADER, ROLE_PAGE, ROLE_ARTICLE, ROLE_ASIDE, ROLE_NAV, ROLE_FOOTER,
+# ROLE_MAIN) excused literals in src/pandoc_block_convert.cpp -- the section-role
+# class set and the `page` Div class -- and the check reported every one as excusing
+# nothing once that file was gone. Deleted rather than reworded, as the check asks.
+EXEMPT: dict[str, str] = {}
 
 
 # ROLE_DOCUMENT and ROLE_FRONTMATTER were EXEMPT here and are not any more. Both
