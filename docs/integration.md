@@ -155,7 +155,7 @@ The `duck_block` structure is designed to be compatible with Pandoc's AST. Here'
 ### Converting Pandoc JSON
 
 ```sql
--- Assuming Pandoc JSON AST structure
+-- Assuming Pandoc JSON AST structure. pandoc_inlines_to_text is panduck's: LOAD panduck.
 SELECT duck_blocks_assemble(list(
     CASE block->>'t'
         WHEN 'Header' THEN duck_block_heading(

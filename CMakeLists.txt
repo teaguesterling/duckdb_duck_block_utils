@@ -21,14 +21,12 @@ set(EXTENSION_SOURCES
     src/manipulation.cpp
     src/builders.cpp
     src/inline_builders.cpp
-    src/pandoc_inline_convert.cpp
     src/assembly.cpp
     src/extraction.cpp
     src/validation.cpp
     src/normalize.cpp
     src/repair.cpp
     src/body.cpp
-    src/pandoc_block_convert.cpp
     src/pragma_aliases.cpp
     src/render_macros.cpp
     src/render_ansi.cpp

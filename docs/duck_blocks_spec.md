@@ -178,7 +178,7 @@ The implicit parents are declared once, in the vocabulary header, as
 | anything else | nothing | none: legal at the top level |
 
 A run of consecutive orphans at one level gets ONE wrapper, at the level above them;
-`duck_blocks_repair` does exactly this, and `duck_blocks_to_pandoc_ast` applies it before
+`duck_blocks_repair` does exactly this, and panduck's `duck_blocks_to_pandoc_ast` applies it before
 exporting. **An implicit parent is synthetic: it carries no attributes.** A `list` it
 invents is a bullet list with no start number; the real `list` had `list_type` and
 maybe `start`. So a consumer that KNOWS the real ancestors — a selector that walked to
@@ -839,7 +839,7 @@ remain rejected outright.
 
 **A document with NO blocks at all is conformant.** A `.toml` or `.yaml` file read as a
 document is entirely metadata; a bare `kind='value'` tree with nothing of `kind='block'`
-in it is valid, lints clean, and is what `pandoc_ast_to_blocks` itself emits for a
+in it is valid, lints clean, and is what `pandoc_ast_to_blocks` (now panduck's) emits for a
 document with metadata and an empty body. Asked by the panduck session, who noted that
 "nothing objects" was reasoning they had twice had to retract that day — correctly, so
 this is stated rather than left to be inferred from silence.
@@ -1031,8 +1031,8 @@ elements, because their shape has no flat text rendering. **Decoding them is the
 consumer's obligation.** A consumer that renders `content` directly puts raw AST on
 the screen; one that ignores it renders nothing at all.
 
-Which types carry it depends on the producer, and **the two producers in this repo
-emit incompatible schemas for the same `element_type`**:
+Which types carry it depends on the producer, and **the two producers that lived in this repo
+emit incompatible schemas for the same `element_type`** (the Pandoc reader is panduck's now):
 
 | | `duck_block_list(['a','b'])` | `pandoc_ast_to_blocks(...)` |
 |---|---|---|
@@ -1264,7 +1264,7 @@ All of these produce exactly that shape:
 ```sql
 duck_block_list(['a'])            duck_block_list_block(['a'])
 duck_block_list(false, ['a'])     duck_block_list_block([duck_block_list_item('a')])
-pandoc_ast_to_blocks(...)         duck_block_list_item('a')   -- item + paragraph
+pandoc_ast_to_blocks(...)  [panduck]  duck_block_list_item('a')   -- item + paragraph
 ```
 
 **Migrating from 1.x.** `list` no longer carries `encoding='json'` with its items
@@ -1947,6 +1947,13 @@ relocation resolves it by panduck registering NEW names (`read_pandoc_blocks`,
 `read_pandoc_blocks_string`, table functions it wanted anyway) while
 `pandoc_ast_to_blocks` and friends stay here until this repo's release cycle retires
 them. No two-copy collision, and no hard cutover needed.
+
+**Superseded 2026-10-30: the names moved.** "duck_block_utils is only utility macros", so the
+converter's nine canonical names (`pandoc_ast_to_blocks`, `read_pandoc_ast`,
+`write_pandoc_ast`, `duck_blocks_to_pandoc_ast`, `duck_blocks_to_pandoc_blocks`, `pandoc_ast`,
+`pandoc_inlines_to_db_inlines`, `pandoc_inlines_to_text`, `duck_blocks_inlines_to_pandoc`) are
+now registered by panduck and no longer by duck_block_utils. The rule above still holds: each
+name has one owner, and the two releases ship together so no build of either registers them twice.
 
 **What is measured, and what is not.** duck_block_utils (91 registered names) against
 panduck (36): **zero shared**, with a positive control confirming the comparison can

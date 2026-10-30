@@ -1,5 +1,9 @@
 # Pandoc AST Conversion Specification
 
+> **The converter this document specifies moved to [panduck](https://github.com/teaguesterling/duckdb_panduck)**
+> on 2026-10-30, under the same function names. `LOAD panduck` to use it. duck_block_utils
+> no longer registers these functions; this file is kept as the record of the mapping rules.
+
 This document specifies the bidirectional conversion between [Pandoc's JSON AST](https://hackage.haskell.org/package/pandoc-types) and the [Document Block Specification](https://github.com/teaguesterling/duckdb_markdown/blob/main/docs/doc_block_spec.md).
 
 The `duck_block_utils` extension provides these conversions without requiring Pandoc itself - enabling interoperability with any tool that produces or consumes Pandoc-format JSON.

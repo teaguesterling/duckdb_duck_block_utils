@@ -43,8 +43,8 @@ expected 'WRONG', got 'Just one paragraph.'` line per producer; restore it. Veri
 
 **Adding a construct.** A directory with `source.md` (and `source.html`, hand-written
 where pandoc's HTML writer adds wrappers, e.g. code), `expected.blocks.json` derived
-from the spec, and a check of that expectation against this repo's own pandoc reader
-(`pandoc -t json | pandoc_ast_to_blocks`) as an oracle before committing.
+from the spec, and a check of that expectation against the pandoc reader
+(`pandoc -t json | pandoc_ast_to_blocks`, panduck's since the converter moved) as an oracle before committing.
 `--write-expected <producer>` regenerates every `expected` from one producer and
 records its version in `manifest.yaml`; review the result against the spec before
 committing, because a producer's output is what is being judged, not the judge.

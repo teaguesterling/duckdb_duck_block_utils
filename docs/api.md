@@ -800,53 +800,12 @@ Return document summary (block counts, heading levels, etc.).
 
 ## Pandoc Conversion Functions
 
-### pandoc_ast_to_blocks
-
-```sql
-pandoc_ast_to_blocks(json VARCHAR) → LIST(duck_block)
-```
-
-Convert Pandoc JSON AST to duck_blocks.
-
----
-
-### duck_blocks_to_pandoc_blocks
-
-```sql
-duck_blocks_to_pandoc_blocks(blocks LIST(duck_block)) → VARCHAR
-```
-
-Convert duck_blocks to Pandoc JSON AST.
-
----
-
-### pandoc_inlines_to_db_inlines
-
-```sql
-pandoc_inlines_to_db_inlines(json_inlines VARCHAR) → LIST(duck_block)
-```
-
-Convert Pandoc inline JSON array to duck_block inlines.
-
----
-
-### pandoc_inlines_to_text
-
-```sql
-pandoc_inlines_to_text(json_inlines VARCHAR, mode VARCHAR) → VARCHAR
-```
-
-Convert Pandoc inline JSON to text ('text' or 'markdown' mode).
-
----
-
-### duck_blocks_inlines_to_pandoc
-
-```sql
-duck_blocks_inlines_to_pandoc(inlines LIST(duck_block)) → VARCHAR
-```
-
-Convert duck_block inlines to Pandoc JSON.
+Moved to [panduck](https://github.com/teaguesterling/duckdb_panduck) with the rest of the
+Pandoc converter. `LOAD panduck` for `pandoc_ast_to_blocks`, `read_pandoc_ast`,
+`write_pandoc_ast`, `duck_blocks_to_pandoc_ast`, `duck_blocks_to_pandoc_blocks`, `pandoc_ast`,
+`pandoc_inlines_to_db_inlines`, `pandoc_inlines_to_text` and
+`duck_blocks_inlines_to_pandoc`, under the same names. duck_block_utils no longer
+registers any of them.
 
 ---
 

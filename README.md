@@ -14,19 +14,18 @@ This extension complements format-specific document extensions (markdown, HTML, 
 - **Block manipulation**: Filter, transform, merge, and reorder elements
 - **Content extraction**: Extract plain text, headings, and generate TOCs
 - **Validation**: Check schema compliance and lint for common issues
-- **Pandoc AST conversion**: Bidirectional JSON AST ↔ duck_blocks (no Pandoc required) — complete coverage of pandoc-types 1.23, including document metadata, verified against a real pandoc by `test/pandoc/check_pandoc_alignment.py`
+- **Pandoc AST conversion**: moved to [panduck](https://github.com/teaguesterling/duckdb_panduck) — `LOAD panduck`; same function names (see below)
 - **Conversion helpers**: Normalize blocks and track provenance
 - **ANSI terminal rendering**: `PRAGMA duck_block_render` — render documents and query results as styled terminal output, glow-style ([docs](docs/rendering.md))
 - **Page composition & query tables**: `duck_blocks_page`, `duck_blocks_query_table`, `duck_blocks_table` — assemble dashboards that embed live query results as rendered tables
 - **Vocabulary introspection**: `duck_block_kind_names`, `duck_block_type_names`, `duck_block_encoding_names`, `duck_block_spec_version` — so sibling extensions can *assert* they agree with the vocabulary rather than mirroring a header
-> **DEPRECATED — the Pandoc converter moves to [panduck](https://github.com/teaguesterling/duckdb_panduck).**
-> `pandoc_ast_to_blocks`, `duck_blocks_to_pandoc_blocks`, `duck_blocks_to_pandoc_ast`,
-> `read_pandoc_ast`, `write_pandoc_ast`, `pandoc_inlines_to_db_inlines`,
-> `duck_blocks_inlines_to_pandoc` and `pandoc_inlines_to_text` all still work and now
-> print a one-time notice to stderr. panduck owns format knowledge; this library is
-> utilities over the `duck_block` vocabulary and the spec it validates. They will be
-> removed in a later release, once panduck's converter is installable — not before,
-> because deleting them first would leave a window with the converter in neither.
+> **MOVED — the Pandoc converter lives in [panduck](https://github.com/teaguesterling/duckdb_panduck).**
+> `LOAD panduck`; the names are the same:
+> `pandoc_ast_to_blocks`, `read_pandoc_ast`, `write_pandoc_ast`, `duck_blocks_to_pandoc_ast`,
+> `duck_blocks_to_pandoc_blocks`, `pandoc_ast` (table function), `pandoc_inlines_to_db_inlines`,
+> `pandoc_inlines_to_text` and `duck_blocks_inlines_to_pandoc`.
+> duck_block_utils no longer registers any of them. panduck owns format knowledge; this
+> library is utilities over the `duck_block` vocabulary and the spec it validates.
 
 - **Document queries over blocks**: `duck_blocks_toc_rows`, `duck_blocks_get_section`, `duck_blocks_sections_like`, and on the separate page axis `duck_blocks_page_rows` (which carries each page's `blocks`), `duck_blocks_get_pages` — these take `LIST(duck_block)`, not file paths
   - The extractors — `duck_blocks_get_section`, `duck_blocks_get_pages`, `duck_blocks_sections_like`, `duck_blocks_page_rows` — **return `duck_block`s, not text.** The text they used to return is one rename away: `duck_blocks_get_section_text`, `duck_blocks_get_pages_text`, `duck_blocks_sections_like_text`.
@@ -34,7 +33,7 @@ This extension complements format-specific document extensions (markdown, HTML, 
     They took an `output_format` that could not work: a macro has one return type, so every
     branch — `'blocks'` included — had to collapse to `VARCHAR`, and `'blocks'` handed back
     `to_json(...)::VARCHAR`. Blocks in, blocks out; render with `duck_blocks_to_text`,
-    `duck_blocks_render_ansi`, `duck_blocks_to_md`, or `duck_blocks_to_pandoc_ast`.
+    `duck_blocks_render_ansi`, `duck_blocks_to_md`, or panduck's `duck_blocks_to_pandoc_ast`.
 - **Comparing and reviewing documents**: `duck_blocks_diff` (what changed between two versions, as ADDED/REMOVED/MOVED) and `duck_blocks_quality` (document-quality rules that are NOT spec conformance — empty sections, duplicate headings, links with no text)
 
 ## Naming
@@ -45,7 +44,6 @@ Every function is prefixed by what it operates on:
 |---|---|---|
 | `duck_block_*` | one element — accessing **or** constructing it | `duck_block_content`, `duck_block_paragraph`, `duck_block_bold` |
 | `duck_blocks_*` | a collection | `duck_blocks_to_text`, `duck_blocks_body`, `duck_blocks_toc`, `duck_blocks_validate` |
-| `pandoc_*` | Pandoc AST conversion | `pandoc_ast_to_blocks` |
 
 These were `db_*` until v1.1. `db_` reads as *database* everywhere else in SQL, and
 `duck_block_*`/`duck_blocks_*` was already the convention for the accessors and for the
@@ -72,7 +70,8 @@ sibling document-format one.
 | path → blocks (any format) | `panduck` — `read_panduck_doc`, `panduck_read_blocks` |
 | blocks → markdown | `duckdb_markdown` — `duck_blocks_to_md` |
 | blocks → HTML | `duckdb_webbed` — `duck_blocks_to_html` |
-| blocks → text / ANSI / Pandoc AST | here |
+| blocks → text / ANSI | here |
+| Pandoc AST ↔ blocks | `panduck` — `pandoc_ast_to_blocks`, `duck_blocks_to_pandoc_ast`, ... |
 
 There is no general `render(blocks, format)` entry point: format-specific writers are
 composed directly, so this extension never has to know they exist.
@@ -335,17 +334,10 @@ These overloads accept a list of children and return a flattened list with paren
 
 ### Pandoc AST Conversion
 
-| Function | Description |
-|----------|-------------|
-| `read_pandoc_ast(file_path)` | Read Pandoc JSON file and convert to duck_blocks |
-| `pandoc_ast_to_blocks(json)` | Convert Pandoc JSON AST string to duck_blocks |
-| `duck_blocks_to_pandoc_blocks(blocks)` | Convert duck_blocks to Pandoc JSON blocks array |
-| `duck_blocks_to_pandoc_ast(blocks)` | Convert to complete Pandoc AST struct |
-| `pandoc_ast(blocks, meta, api_version)` | Table function for JSON file output |
-| `write_pandoc_ast(path, blocks)` | Write duck_blocks directly to Pandoc JSON file |
-| `pandoc_inlines_to_text(inlines)` | Convert inline elements to text |
-| `pandoc_inlines_to_db_inlines(inlines)` | Convert Pandoc inlines to duck_block inlines |
-| `duck_blocks_inlines_to_pandoc(inlines)` | Convert duck_block inlines to Pandoc JSON |
+Moved to [panduck](https://github.com/teaguesterling/duckdb_panduck). `LOAD panduck` for
+`read_pandoc_ast`, `pandoc_ast_to_blocks`, `duck_blocks_to_pandoc_blocks`,
+`duck_blocks_to_pandoc_ast`, `pandoc_ast`, `write_pandoc_ast`, `pandoc_inlines_to_text`,
+`pandoc_inlines_to_db_inlines` and `duck_blocks_inlines_to_pandoc`, under the same names.
 
 ## Examples
 
@@ -419,9 +411,11 @@ SELECT duck_block_paragraph([
 ]);
 ```
 
-### Convert Pandoc JSON to Blocks
+### Convert Pandoc JSON to Blocks (with panduck)
 
 ```sql
+LOAD panduck;  -- the Pandoc converter lives in panduck
+
 -- Read Pandoc JSON file directly (simplest approach)
 SELECT * FROM unnest(read_pandoc_ast('exported_from_pandoc.json'));
 
@@ -431,10 +425,11 @@ SELECT unnest(pandoc_ast_to_blocks(
 ));
 ```
 
-### Export to Pandoc JSON (for PDF, Word, etc.)
+### Export to Pandoc JSON (for PDF, Word, etc.; with panduck)
 
 ```sql
-LOAD json;  -- Required for COPY FORMAT JSON
+LOAD panduck;  -- the Pandoc converter lives in panduck
+LOAD json;     -- Required for COPY FORMAT JSON
 
 -- Basic export - creates Pandoc-compatible JSON
 COPY (
@@ -576,7 +571,7 @@ This extension is part of the DuckDB document processing ecosystem:
 | [duckdb_webbed](https://github.com/teaguesterling/duckdb_webbed) | HTML/XML parsing |
 | [duckdb_yaml](https://github.com/teaguesterling/duckdb_yaml) | YAML document parsing |
 | [textplot](https://community-extensions.duckdb.org/extensions/textplot.html) | Text-based charts/sparklines (compose into rendered pages) |
-| [panduck](https://github.com/teaguesterling/panduck) | Pandoc integration (planned) |
+| [panduck](https://github.com/teaguesterling/duckdb_panduck) | Format readers and the Pandoc AST converter |
 
 ## Documentation
 
@@ -586,7 +581,7 @@ This extension is part of the DuckDB document processing ecosystem:
 - [Block Builders](docs/block_builders.md) - Declarative document construction
 - [Inline Builders](docs/inline_builders.md) - Rich text inline elements
 - [Duck Blocks Spec](docs/duck_blocks_spec.md) - Unified duck_block type specification
-- [Pandoc AST Spec](docs/pandoc_ast_spec.md) - Pandoc JSON conversion rules
+- [Pandoc AST Spec](docs/pandoc_ast_spec.md) - Pandoc JSON conversion rules (the converter now lives in panduck)
 - [Terminal Rendering](docs/rendering.md) - ANSI output, word wrapping, pretty query tables
 - [Terminal Graphics (Notes)](docs/terminal_graphics.md) - Bitmap-graphics landscape and roadmap
 
