@@ -584,17 +584,6 @@ SELECT list_transform(duck_blocks_validate([{'kind':'block','element_type':'list
 ----
 ['list: list_item at 0 has no list ancestor']
 
-# ...and `list` is the documented exception, for a reason that follows from the
-# rule rather than qualifying it: a list's children are list_items, never text, so
-# it can never HAVE a single text child. Asserted so the exception cannot quietly
-# become general -- I widened the spec text to all seven containers before
-# measuring, and this is the case that would have caught it.
-query II
-SELECT duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'div','content':'CARRIED','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block])::VARCHAR LIKE '%CARRIED%',
-       duck_blocks_to_pandoc_blocks([{'kind':'block','element_type':'list','content':'CARRIED','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block])::VARCHAR LIKE '%CARRIED%';
-----
-true	false
-
 # ============================================================================
 # AN element_type OUTSIDE THE VOCABULARY WAS INVISIBLE.
 #

@@ -182,30 +182,6 @@ SELECT max(end_order) FROM duck_blocks_page_rows((SELECT b FROM pages));
 ----
 2147483647
 
-# #22: the stamp pandoc 3.x accepts
-query I
-SELECT (duck_blocks_to_pandoc_ast(duck_block_paragraph('x')))['pandoc-api-version'];
-----
-[1, 23, 1]
-
-# #23: Table is pandoc's array constructor, not the native {headers, rows} object
-# (checked as text so the test needs no json extension: the constructor's `c` opens an array)
-query I
-SELECT (duck_blocks_to_pandoc_ast([
-  struct_pack(kind := 'block', element_type := 'table', content := '{"headers":["a","b"],"rows":[["1","2"]]}',
-              level := 1, encoding := 'json', attributes := MAP{}::MAP(VARCHAR, VARCHAR), element_order := 0)
-]::duck_block[])).blocks::VARCHAR LIKE '[{"t":"Table","c":[%';
-----
-true
-
-# #21: Code and Math carry a bare string in `c`; their text must survive
-query I
-SELECT list(e.element_type || '=' || e.content ORDER BY e.element_order)
-FROM (SELECT unnest(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a"},{"t":"Space"},{"t":"Code","c":[["",[],[]],"code_here"]},{"t":"Space"},{"t":"Math","c":[{"t":"InlineMath"},"x^2"]}]}]}')) AS e)
-WHERE e.element_type IN ('code', 'math');
-----
-['code=code_here', 'math=x^2']
-
 # ---------------------------------------------------------------------------
 # 8. the two to_text jobs have two names: render joins with a blank line, MATCH
 #    flattens with a space. A search predicate on the render form misses phrases

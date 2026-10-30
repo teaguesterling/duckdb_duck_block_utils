@@ -51,34 +51,8 @@ FROM block_type_fixtures
 WHERE expected_html IS NOT NULL;
 */
 
--- ============================================================================
--- PANDOC JSON TESTS (tests duck_blocks_to_pandoc_ast)
--- ============================================================================
-
--- Test Pandoc block conversion
-SELECT
-    name,
-    CASE
-        WHEN duck_blocks_to_pandoc_ast(blocks) LIKE '%' || expected_pandoc_json || '%' THEN 'PASS'
-        ELSE 'FAIL'
-    END as result
-FROM pandoc_block_expectations
-LIMIT 5;  -- Sample test
-
--- ============================================================================
--- ROUND-TRIP TESTS
--- ============================================================================
-
--- Test that blocks survive a round-trip through Pandoc JSON
--- (Requires both directions of conversion to be implemented)
-/*
-SELECT
-    name,
-    blocks as original,
-    pandoc_ast_to_duck_blocks(duck_blocks_to_pandoc_ast(blocks)) as round_tripped
-FROM block_type_fixtures
-WHERE name = 'paragraph_simple';
-*/
+-- Pandoc JSON and round-trip tests moved to panduck with the Pandoc converter;
+-- pandoc_*_expectations (04_pandoc_expectations.sql) stay here as data.
 
 -- ============================================================================
 -- VALIDATION TESTS

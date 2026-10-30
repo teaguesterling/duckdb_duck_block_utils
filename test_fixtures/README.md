@@ -91,10 +91,10 @@ SELECT
 FROM block_type_fixtures
 WHERE expected_html IS NOT NULL;
 
--- Test Pandoc JSON output
+-- Test Pandoc JSON output (the Pandoc writer lives in panduck: LOAD panduck)
 SELECT
     name,
-    CASE WHEN duck_blocks_to_pandoc_ast(blocks) LIKE '%' || expected_pandoc_json || '%'
+    CASE WHEN your_pandoc_writer(blocks) LIKE '%' || expected_pandoc_json || '%'
          THEN 'PASS' ELSE 'FAIL' END as result
 FROM pandoc_block_expectations;
 ```

@@ -46,46 +46,6 @@ SELECT try_cast(split_part(duck_block_spec_version(), '.', 1) AS INTEGER) IS NOT
 ----
 true	true
 
-# every kind a converter emits is in the declared set -- the assertion panduck
-# and webbed can run against this rather than a hardcoded list.
-#
-# NOTE WHICH DIRECTION THIS IS. It tests emitted-is-a-subset-of-declared. The
-# CONVERSE is asserted below and is the half that matters more, because a kind can
-# be declared and produced by nothing -- which is exactly the state webbed and
-# panduck are in for `value`: the vocabulary offers it, their readers emit none,
-# and every document's title is discarded.
-#
-# duckdb_markdown's framing, after finding both shapes in their own repo: "which
-# kinds EXIST" and "what this reader EMITS" are different claims that happen to
-# coincide, and calling the second one "valid" is the invitation to copy it as a
-# conformance rule. That is how this repo's published macro became a validator
-# that rejected the correct fix.
-query I
-SELECT count(*) FROM (
-  SELECT unnest(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaBool","c":true}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"x"}]}]}')) AS b
-) WHERE NOT list_contains(duck_block_kind_names(), b.kind);
-----
-0
-
-
-# THE CONVERSE: every DECLARED kind must actually be emitted by something.
-#
-# A declared-but-unreachable kind is the `UNREACHABLE` failure one level up -- the
-# vocabulary offers a slot that no producer fills, so consumers never learn it
-# exists and the data that belongs there is silently dropped. That is not
-# hypothetical: two of three consuming extensions currently emit no `value` at all.
-#
-# Driven from duck_block_kind_names(), so a kind added later must be REACHABLE
-# rather than merely declared.
-query I
-WITH emitted AS (
-  SELECT list_distinct(list(b.kind)) AS ks
-  FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a "},{"t":"Strong","c":[{"t":"Str","c":"b"}]}]}]}')) AS b)
-)
-SELECT list_filter(duck_block_kind_names(), lambda k: NOT list_contains(ks, k)) FROM emitted;
-----
-[]
-
 # ============================================================================
 # Version marker
 # ============================================================================
@@ -112,12 +72,6 @@ query I
 SELECT duck_blocks_to_text(duck_blocks_stamp(duck_block_paragraph([duck_block_text('x')])));
 ----
 x
-
-# and it does NOT leak into pandoc document metadata
-query I
-SELECT duck_blocks_to_pandoc_ast(duck_blocks_stamp(duck_block_paragraph([duck_block_text('x')]))).meta::VARCHAR;
-----
-{}
 
 # ============================================================================
 # Regression: document metadata must not leak into extracted body text.
@@ -174,39 +128,6 @@ true
 
 query I
 SELECT list_contains(duck_block_type_names(), 'section');
-----
-true
-
-# a section round-trips to pandoc as a Div carrying its role as a class,
-# which is pandoc's nearest honest equivalent -- it has no Section constructor
-query I
-SELECT duck_blocks_to_pandoc_blocks([
-  {'kind':'block','element_type':'section','content':'','level':1,'encoding':'text',
-   'attributes':MAP{'role':'article','id':'a1'},'element_order':0}::duck_block,
-  {'kind':'block','element_type':'paragraph','content':'Body','level':2,'encoding':'text',
-   'attributes':MAP{},'element_order':1}::duck_block
-]) LIKE '%"t":"Div"%';
-----
-true
-
-query I
-SELECT duck_blocks_to_pandoc_blocks([
-  {'kind':'block','element_type':'section','content':'','level':1,'encoding':'text',
-   'attributes':MAP{'role':'article','id':'a1'},'element_order':0}::duck_block,
-  {'kind':'block','element_type':'paragraph','content':'Body','level':2,'encoding':'text',
-   'attributes':MAP{},'element_order':1}::duck_block
-]) LIKE '%article%';
-----
-true
-
-# children are preserved, not dropped
-query I
-SELECT duck_blocks_to_pandoc_blocks([
-  {'kind':'block','element_type':'section','content':'','level':1,'encoding':'text',
-   'attributes':MAP{'role':'section'},'element_order':0}::duck_block,
-  {'kind':'block','element_type':'paragraph','content':'Body','level':2,'encoding':'text',
-   'attributes':MAP{},'element_order':1}::duck_block
-]) LIKE '%Body%';
 ----
 true
 
@@ -307,7 +228,8 @@ SELECT (duck_blocks_validate([
 true
 
 # ============================================================================
-# The builders and the Pandoc converter must agree on `level`.
+# The builders and the Pandoc converter must agree on `level`. (The converter half
+# of this agreement moved to panduck with the converter; the builder half stays.)
 #
 # They did not: pandoc_ast_to_blocks() emitted top-level blocks with level=NULL
 # per the spec, while FlattenBlockWithChildren() stamped level=1 on every
@@ -327,22 +249,6 @@ query I
 SELECT duck_block_paragraph([duck_block_text('a'), duck_block_bold('b')])[2].level;
 ----
 2
-
-# builder and converter agree on the CONTAINER's level and its children's depth.
-# They differ below that, legitimately: duck_block_bold('b') puts the text in the bold
-# element's content, while the converter emits bold plus a text child at 3 --
-# the spec's "content is populated iff the container has a single text child".
-query I
-SELECT duck_block_paragraph([duck_block_text('a'), duck_block_bold('b')])[1].level = 1
-   AND pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"a"}]}]')[1].level = 1;
-----
-true
-
-query I
-SELECT duck_block_paragraph([duck_block_text('a'), duck_block_bold('b')])[2].level
-     = pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"a"},{"t":"Code","c":[["",[],[]],"x"]}]}]')[2].level;
-----
-true
 
 # headings: NULL level, h1-h6 in the attribute, and no lint warning
 query I
@@ -480,22 +386,6 @@ SELECT duck_blocks_to_text([
 ----
 Body
 
-# Pandoc has no page constructor, so it exports as a Div carrying the number --
-# its nearest honest equivalent, and what a `page` class means to a reader
-query I
-SELECT duck_blocks_to_pandoc_blocks([
-  {'kind':'block','element_type':'page_break','content':'','level':1,'encoding':'text',
-   'attributes':MAP{'page_number':'7'},'element_order':0}::duck_block]) LIKE '%"t":"Div"%';
-----
-true
-
-query I
-SELECT duck_blocks_to_pandoc_blocks([
-  {'kind':'block','element_type':'page_break','content':'','level':1,'encoding':'text',
-   'attributes':MAP{'page_number':'7'},'element_order':0}::duck_block]) LIKE '%page%';
-----
-true
-
 # ============================================================================
 # Inline `generic` passes its children through. This is deliberate, not luck.
 #
@@ -547,32 +437,6 @@ SELECT duck_blocks_render_ansi([
 ----
 true
 
-# the TRANSPORT keeps what the renderings drop -- BOTH the text and the identity
-query I
-SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks(
-  '[{"t":"Para","c":[{"t":"Bogus","c":[{"t":"Str","c":"KEPT"}]}]}]')) LIKE '%KEPT%';
-----
-true
-
-query I
-SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks(
-  '[{"t":"Para","c":[{"t":"Bogus","c":[{"t":"Str","c":"KEPT"}]}]}]')) LIKE '%Bogus%';
-----
-true
-
-# and no placeholder survives anywhere
-query I
-SELECT duck_blocks_to_pandoc_blocks(pandoc_ast_to_blocks(
-  '[{"t":"Para","c":[{"t":"Bogus","c":[{"t":"Str","c":"KEPT"}]}]}]')) LIKE '%[generic]%';
-----
-false
-
-# BLOCK generic is the loud case -- its content has nowhere else to live
-query I
-SELECT pandoc_ast_to_blocks('[{"t":"FutureThing","c":[1,2]}]')[1].attributes['source_type'];
-----
-FutureThing
-
 # ============================================================================
 # THE PUBLISHED CONFORMANCE MACRO MUST ACCEPT EVERY KIND THIS BUILD EMITS.
 #
@@ -610,17 +474,6 @@ FROM (SELECT unnest(duck_block_kind_names()) AS k);
 ----
 true
 
-# DISCRIMINATING, against a real reader emission rather than a synthetic struct:
-# a document with metadata produces a `value` element, and the macro must accept it.
-# Asserting only over the NAMES would pass for a build that declares `value` and
-# never emits one.
-query II
-SELECT count(*) FILTER (WHERE b.kind = 'value'),
-       bool_and(duck_block_is_valid(b))
-FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"body"}]}]}')) AS b);
-----
-1	true
-
 # ============================================================================
 # THE `metadata` ROW SAID LEVEL 0, WHICH THE VALIDATOR REJECTS.
 #
@@ -636,14 +489,8 @@ FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaString","c"
 # content rule and the two-kind `kind` definition.
 # ============================================================================
 
-query II
-SELECT (SELECT b.level FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaString","c":"T"}},"blocks":[]}')) AS b) WHERE b.kind = 'value'),
-       duck_blocks_validate(pandoc_ast_to_blocks('{"meta":{"title":{"t":"MetaString","c":"T"}},"blocks":[]}')).valid;
-----
-1	true
-
-# DISCRIMINATING: the level the table USED to document must actually fail, or
-# "the table was fine" would be an equally good reading of the assertion above.
+# The level the table USED to document must fail. (The positive half -- a reader's
+# `value` emitted at level 1 and valid -- moved to panduck with the converter.)
 query I
 SELECT duck_blocks_validate([{'kind':'value','element_type':'metadata','content':'t','level':0,'encoding':'yaml','attributes':MAP{},'element_order':0}::duck_block]).valid;
 ----
@@ -655,30 +502,17 @@ false
 # A .toml or .yaml file read as a document is entirely metadata -- no body, no
 # blocks. Asked by panduck, who flagged that "nothing objects" was reasoning they
 # had twice had to retract that day.
-#
-# It is more than unobjected-to: `pandoc_ast_to_blocks` itself emits exactly this
-# for a document with metadata and an empty body, so the shape is one this repo
-# produces rather than merely tolerates.
 # ============================================================================
 
-query III
+query II
 SELECT duck_blocks_validate([
   {'kind':'value','element_type':'map','content':NULL,'level':1,'encoding':'text','attributes':MAP{'source_type':'toml'},'element_order':0}::duck_block,
   {'kind':'value','element_type':'string','content':'en','level':2,'encoding':'text','attributes':MAP{'key':'lang'},'element_order':1}::duck_block]).valid,
        len(duck_blocks_lint([
   {'kind':'value','element_type':'map','content':NULL,'level':1,'encoding':'text','attributes':MAP{'source_type':'toml'},'element_order':0}::duck_block,
-  {'kind':'value','element_type':'string','content':'en','level':2,'encoding':'text','attributes':MAP{'key':'lang'},'element_order':1}::duck_block])),
-       (SELECT count(*) FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaString","c":"T"}},"blocks":[]}')) AS b) WHERE b.kind = 'block');
+  {'kind':'value','element_type':'string','content':'en','level':2,'encoding':'text','attributes':MAP{'key':'lang'},'element_order':1}::duck_block]))
 ----
-true	0	0
-
-# ORDERING IS A CONTRACT as of 6.2: value elements come AFTER the blocks. Two
-# producers asked where they go, which is a question a convenience cannot answer.
-query I
-SELECT list_position(list_transform(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a"}]}]}'), lambda e: e.kind), 'value')
-     > list_position(list_transform(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a"}]}]}'), lambda e: e.kind), 'block');
-----
-true
+true	0
 
 # ============================================================================
 # ATTRIBUTE NAMES AND ROLE VALUES ARE CONSTANTS NOW, AND toml IS AN ENCODING.
@@ -729,10 +563,8 @@ true
 # attributes['heading_level'] -- two different measurements sharing a column name.
 # ============================================================================
 
-query IIII
-SELECT (SELECT b.level FROM (SELECT unnest(pandoc_ast_to_blocks('{"meta":{"t":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"p"}]}]}')) AS b) WHERE b.kind = 'value'),
-       (SELECT b.level FROM (SELECT unnest(pandoc_ast_to_blocks('[{"t":"HorizontalRule"}]')) AS b)),
-       duck_block_metadata('t: 1')[1].level,
+query II
+SELECT duck_block_metadata('t: 1')[1].level,
        duck_blocks_validate([{'kind':'block','element_type':'metadata','content':'x','level':0,'encoding':'yaml','attributes':MAP{'role':'frontmatter'},'element_order':0}::duck_block]).valid;
 ----
-1	1	1	false
+1	false
