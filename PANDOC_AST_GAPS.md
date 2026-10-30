@@ -1,5 +1,8 @@
 # Pandoc AST conversion gaps in `duck_block_utils`
 
+> **Historical.** The converter moved to panduck on 2026-10-30; duck_block_utils no longer
+> has `pandoc_ast_to_blocks` or its siblings. Kept as the record of what was found.
+
 > **For review by whoever owns this repo.**
 > Found on 2026-08-31 while building `panduck`'s Pandoc AST alignment test. Every claim
 > below was **reproduced against the built binary**, not inferred from reading code.

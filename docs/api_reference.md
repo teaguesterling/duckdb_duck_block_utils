@@ -533,7 +533,7 @@ collapses level jumps, and renumbers
 existing element's `content`, `attributes` or `element_type` and never removes one; a
 per-element error (unknown kind, empty element_type, unknown encoding) is left for
 `duck_blocks_validate` to report. Composes with the content rule:
-`duck_blocks_repair(duck_blocks_normalize(b))`. `duck_blocks_to_pandoc_ast` applies it
+`duck_blocks_repair(duck_blocks_normalize(b))`. panduck's `duck_blocks_to_pandoc_ast` applies it
 before exporting, so a fragment exports instead of vanishing.
 
 ```sql
@@ -800,7 +800,7 @@ duck_blocks_stats(blocks LIST(duck_block)) → LIST(STRUCT(element_type, count, 
 The wrapper a fragment of this element gets when it has no required ancestor, from the
 vocabulary header's `ImplicitParentOf`. `list_item` → `list`, `caption` → `figure`, any
 `inline` → `plain`; NULL for everything else, which is legal at the top level. Read by
-`duck_blocks_repair` and by `duck_blocks_to_pandoc_ast`, and vendored by sibling
+`duck_blocks_repair` and by panduck's `duck_blocks_to_pandoc_ast`, and vendored by sibling
 extensions with the header, so the three cannot disagree.
 
 ```sql
@@ -852,55 +852,12 @@ See [Type Functions](type_functions.md) for complete documentation.
 
 ## Pandoc Conversion Functions
 
-### pandoc_inlines_to_db_inlines
-
-Convert Pandoc inline JSON to duck_block inlines.
-
-```sql
-pandoc_inlines_to_db_inlines(inlines VARCHAR) → LIST(duck_block)
-```
-
-**Example:**
-```sql
-SELECT pandoc_inlines_to_db_inlines('[{"t":"Str","c":"Hello"},{"t":"Space"},{"t":"Strong","c":[{"t":"Str","c":"world"}]}]');
--- Returns list of duck_block inlines
-```
-
----
-
-### duck_blocks_inlines_to_pandoc
-
-Convert duck_block inlines to Pandoc JSON.
-
-```sql
-duck_blocks_inlines_to_pandoc(inlines LIST(duck_block)) → VARCHAR
-```
-
-**Example:**
-```sql
-SELECT duck_blocks_inlines_to_pandoc([duck_block_text('Hello')]);
--- Returns: '[{"t":"Str","c":"Hello"}]'
-```
-
----
-
-### pandoc_inlines_to_text
-
-Convert Pandoc inline JSON to text.
-
-```sql
-pandoc_inlines_to_text(inlines VARCHAR, mode VARCHAR) → VARCHAR
-```
-
-**Parameters:**
-- `inlines`: Pandoc inline JSON
-- `mode`: 'text' for plain text, 'markdown' for formatted
-
-**Example:**
-```sql
-SELECT pandoc_inlines_to_text('[{"t":"Str","c":"Hello"},{"t":"Space"},{"t":"Strong","c":[{"t":"Str","c":"world"}]}]', 'markdown');
--- Returns: 'Hello **world**'
-```
+Moved to [panduck](https://github.com/teaguesterling/duckdb_panduck) with the rest of the
+Pandoc converter. `LOAD panduck` for `pandoc_ast_to_blocks`, `read_pandoc_ast`,
+`write_pandoc_ast`, `duck_blocks_to_pandoc_ast`, `duck_blocks_to_pandoc_blocks`, `pandoc_ast`,
+`pandoc_inlines_to_db_inlines`, `pandoc_inlines_to_text` and
+`duck_blocks_inlines_to_pandoc`, under the same names. duck_block_utils no longer
+registers any of them.
 
 ---
 

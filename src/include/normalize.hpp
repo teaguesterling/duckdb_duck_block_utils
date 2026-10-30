@@ -9,8 +9,8 @@ namespace duckdb {
 // Vocabulary-level normalisation: shape fixes every PRODUCER needs, in one place,
 // so four extensions do not each write their own and diverge.
 //
-// This deliberately does NOT live in pandoc_block_convert.cpp. That file is
-// format-specific and is being handed to duckdb_panduck; these rules are the
+// This deliberately did NOT live in pandoc_block_convert.cpp, which was
+// format-specific and has moved to duckdb_panduck; these rules are the
 // vocabulary's, and belong to whoever owns the spec.
 class NormalizeFunctions {
 public:
@@ -26,7 +26,7 @@ public:
 	// grows its own lookahead".
 	//
 	// A producer can therefore emit the naive shape (always a `plain` child) and run
-	// this afterwards, which is exactly what this repo's own Pandoc reader does. One
+	// this afterwards, which is exactly what the Pandoc reader (now panduck's) does. One
 	// implementation of the rule instead of N, which is the same argument that put
 	// tight-vs-loose in the vocabulary rather than in each reader.
 	static void CollapseLonePlainIntoParent(vector<Value> &blocks);

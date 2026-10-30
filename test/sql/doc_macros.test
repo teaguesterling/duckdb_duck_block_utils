@@ -97,8 +97,9 @@ true
 # BLOCKS, NOT TEXT. sections_like hands back the duck_blocks of each hit; rendering
 # is the caller's job through the existing verbs, so there is no output_format left to
 # silently degrade -- which is how it used to return JSON-as-text for 'blocks'.
+# (The verb here was duck_blocks_to_pandoc_ast until the converter moved to panduck.)
 query I
-SELECT to_json(duck_blocks_to_pandoc_ast(blocks))::VARCHAR LIKE '%pandoc-api-version%'
+SELECT duck_blocks_to_text(blocks) LIKE '%findme%'
 FROM duck_blocks_sections_like(parse_markdown_to_duck_blocks(
   '# A' || chr(10) || chr(10) || 'findme'), 'findme') LIMIT 1;
 ----
@@ -145,10 +146,11 @@ SELECT duck_blocks_render_ansi(duck_block_paragraph('T')) LIKE '%T%';
 true
 
 # the section macros keep output_format, with the CASE inlined
+# (The verb here was duck_blocks_to_pandoc_ast until the converter moved to panduck.)
 query I
-SELECT to_json(duck_blocks_to_pandoc_ast(duck_blocks_get_section(parse_markdown_to_duck_blocks(
-  '# A' || chr(10) || chr(10) || 'body a'), 'A')))::VARCHAR
-  LIKE '%pandoc-api-version%';
+SELECT duck_blocks_to_text(duck_blocks_get_section(parse_markdown_to_duck_blocks(
+  '# A' || chr(10) || chr(10) || 'body a'), 'A'))
+  LIKE '%body a%';
 ----
 true
 
@@ -254,8 +256,13 @@ true
 statement ok
 PRAGMA duck_block_doc_macros;
 
+# Input inlined from pandoc_ast_to_blocks('[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"H"}]]},{"t":"Para","c":[{"t":"Str","c":"here"}]},{"t":"Para","c":[{"t":"Str","c":"second"}]}]') (the converter moved to panduck).
 statement ok
-CREATE TEMP TABLE sepdoc AS SELECT pandoc_ast_to_blocks('[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"H"}]]},{"t":"Para","c":[{"t":"Str","c":"here"}]},{"t":"Para","c":[{"t":"Str","c":"second"}]}]') AS b;
+CREATE TEMP TABLE sepdoc AS SELECT [
+  {'kind':'block','element_type':'heading','content':'H','level':1,'encoding':'text','attributes':MAP{'heading_level': '1'},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'here','level':1,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'second','level':1,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+] AS b;
 
 # A phrase across a block boundary matches, and one inside a block still does.
 query II

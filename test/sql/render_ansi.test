@@ -355,24 +355,44 @@ true
 # from the prose around it. Without this a caption renders as ordinary body text.
 # ============================================================================
 
+# Input inlined from pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]') (the converter moved to panduck).
 query I
-SELECT duck_blocks_render_ansi(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]')) LIKE '%bodyword%';
+SELECT duck_blocks_render_ansi([
+  {'kind':'block','element_type':'figure','content':'','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'bodyword','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'caption','content':'capword','level':2,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+]) LIKE '%bodyword%';
 ----
 true
 
+# Input inlined from pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]') (the converter moved to panduck).
 query I
-SELECT duck_blocks_render_ansi(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]')) LIKE '%capword%';
+SELECT duck_blocks_render_ansi([
+  {'kind':'block','element_type':'figure','content':'','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'bodyword','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'caption','content':'capword','level':2,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+]) LIKE '%capword%';
 ----
 true
 
 # the caption is dimmed (SGR 2); the body paragraph is not
+# Input inlined from pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]') (the converter moved to panduck).
 query I
-SELECT duck_blocks_render_ansi(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]')) LIKE '%' || chr(27) || '[2m%capword%';
+SELECT duck_blocks_render_ansi([
+  {'kind':'block','element_type':'figure','content':'','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'bodyword','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'caption','content':'capword','level':2,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+]) LIKE '%' || chr(27) || '[2m%capword%';
 ----
 true
 
+# Input inlined from pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]') (the converter moved to panduck).
 query I
-SELECT duck_blocks_render_ansi(pandoc_ast_to_blocks('[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"capword"}]}]],[{"t":"Para","c":[{"t":"Str","c":"bodyword"}]}]]}]')) LIKE '%' || chr(27) || '[2m%bodyword%';
+SELECT duck_blocks_render_ansi([
+  {'kind':'block','element_type':'figure','content':'','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'bodyword','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'caption','content':'capword','level':2,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+]) LIKE '%' || chr(27) || '[2m%bodyword%';
 ----
 false
 
@@ -408,18 +428,25 @@ false
 # Document metadata must not render as body content. Skipping only the value
 # MARKER is insufficient: a MetaBlocks value has kind='block' CHILDREN, which
 # then rendered as prose -- an abstract appearing in the rendered document.
+# Input inlined from pandoc_ast_to_blocks( '{"meta":{"abstract":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"BLOCKLEAK"}]}]}, "title":{"t":"MetaInlines","c":[{"t":"Str","c":"INLEAK"}]}}, "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}') (the converter moved to panduck).
 query I
-SELECT duck_blocks_render_ansi(pandoc_ast_to_blocks(
-  '{"meta":{"abstract":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"BLOCKLEAK"}]}]},
-            "title":{"t":"MetaInlines","c":[{"t":"Str","c":"INLEAK"}]}},
-    "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}')) LIKE '%LEAK%';
+SELECT duck_blocks_render_ansi([
+  {'kind':'block','element_type':'paragraph','content':'REALBODY','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'value','element_type':'blocks','content':'','level':1,'encoding':'text','attributes':MAP{'key': 'abstract'},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'BLOCKLEAK','level':2,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block,
+  {'kind':'value','element_type':'inlines','content':'','level':1,'encoding':'text','attributes':MAP{'key': 'title'},'element_order':3}::duck_block,
+  {'kind':'inline','element_type':'text','content':'INLEAK','level':2,'encoding':'text','attributes':MAP{},'element_order':4}::duck_block
+]) LIKE '%LEAK%';
 ----
 false
 
+# Input inlined from pandoc_ast_to_blocks( '{"meta":{"abstract":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"BLOCKLEAK"}]}]}}, "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}') (the converter moved to panduck).
 query I
-SELECT duck_blocks_render_ansi(pandoc_ast_to_blocks(
-  '{"meta":{"abstract":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"BLOCKLEAK"}]}]}},
-    "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}')) LIKE '%REALBODY%';
+SELECT duck_blocks_render_ansi([
+  {'kind':'block','element_type':'paragraph','content':'REALBODY','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'value','element_type':'blocks','content':'','level':1,'encoding':'text','attributes':MAP{'key': 'abstract'},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'BLOCKLEAK','level':2,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+]) LIKE '%REALBODY%';
 ----
 true
 
@@ -464,8 +491,13 @@ true	true	true
 # DISCRIMINATING: an EMPTY figure/caption must stay transparent. Rendering the
 # container itself would also make the assertions above pass, while emitting a
 # stray blank line for every figure in every document.
+# Input inlined from pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Str","c":"body"}]}]]}]}') (the converter moved to panduck).
 query I
-SELECT replace(regexp_replace(duck_blocks_render_ansi(pandoc_ast_to_blocks('{"pandoc-api-version":[1,23,1],"meta":{},"blocks":[{"t":"Figure","c":[["",[],[]],[null,[{"t":"Plain","c":[{"t":"Str","c":"cap"}]}]],[{"t":"Plain","c":[{"t":"Str","c":"body"}]}]]}]}'), 40), '\x1b\[[0-9;]*m', '', 'g'), chr(10), '|');
+SELECT replace(regexp_replace(duck_blocks_render_ansi([
+  {'kind':'block','element_type':'figure','content':'','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'plain','content':'body','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'caption','content':'cap','level':2,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+], 40), '\x1b\[[0-9;]*m', '', 'g'), chr(10), '|');
 ----
 body||cap
 

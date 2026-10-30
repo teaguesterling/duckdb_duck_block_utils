@@ -6,14 +6,12 @@
 #include "manipulation.hpp"
 #include "builders.hpp"
 #include "inline_builders.hpp"
-#include "pandoc_inline_convert.hpp"
 #include "assembly.hpp"
 #include "extraction.hpp"
 #include "validation.hpp"
 #include "normalize.hpp"
 #include "repair.hpp"
 #include "body.hpp"
-#include "pandoc_block_convert.hpp"
 #include "pragma_aliases.hpp"
 #include "render_macros.hpp"
 #include "render_ansi.hpp"
@@ -36,9 +34,6 @@ static void LoadInternal(ExtensionLoader &loader) {
 	// Phase 2b: Inline Builder Functions
 	InlineBuilderFunctions::Register(loader);
 
-	// Phase 2c: Pandoc Inline Conversion Functions
-	PandocInlineConvert::Register(loader);
-
 	// Phase 3: Assembly Functions
 	AssemblyFunctions::Register(loader);
 
@@ -52,9 +47,6 @@ static void LoadInternal(ExtensionLoader &loader) {
 	// 6.6: the deterministic fixes for the list-level rules (spec: "Validation over a list")
 	RepairFunctions::Register(loader);
 	BodyFunctions::Register(loader);
-
-	// Phase 6: Pandoc AST Block Functions
-	PandocBlockConvert::Register(loader);
 
 	// Phase 7: Pragma for short aliases
 	PragmaAliases::Register(loader);
