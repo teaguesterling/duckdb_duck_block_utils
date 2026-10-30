@@ -48,18 +48,26 @@ CASES = [
     ("bad kind", f"[{blk(k='thing')}]"),
     ("bad encoding", f"[{blk(e='klingon')}]"),
     ("NULL element_type", f"[{blk(t='NULL')}]"),
-    # Real reader output, not hand-built: the pair must agree on what this repo emits.
+    # Real reader output, not hand-built: the pair must agree on what a reader emits.
+    # Captured from pandoc_ast_to_blocks() before the converter moved to panduck, and
+    # proven equal to it on that build; the source AST is in each comment.
+    # {"meta":{"title":{"t":"MetaString","c":"T"}},"blocks":[{"t":"Para","c":[{"t":"Str","c":"a "},{"t":"Strong","c":[{"t":"Str","c":"b"}]}]}]}
     (
         "reader: rich doc + metadata",
-        "pandoc_ast_to_blocks('{\"meta\":{\"title\":{\"t\":\"MetaString\",\"c\":\"T\"}},"
-        "\"blocks\":[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"a \"},"
-        "{\"t\":\"Strong\",\"c\":[{\"t\":\"Str\",\"c\":\"b\"}]}]}]}')",
+        "[{'kind':'block','element_type':'paragraph','content':'','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block, "
+        "{'kind':'inline','element_type':'text','content':'a ','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block, "
+        "{'kind':'inline','element_type':'bold','content':'','level':2,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block, "
+        "{'kind':'inline','element_type':'text','content':'b','level':3,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block, "
+        "{'kind':'value','element_type':'string','content':'T','level':1,'encoding':'text','attributes':MAP{'key': 'title'},'element_order':4}::duck_block]",
     ),
+    # [{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"o"}]},{"t":"BulletList","c":[[{"t":"Plain","c":[{"t":"Str","c":"i"}]}]]}]]}]
     (
         "reader: nested list",
-        "pandoc_ast_to_blocks('[{\"t\":\"BulletList\",\"c\":[[{\"t\":\"Plain\",\"c\":"
-        "[{\"t\":\"Str\",\"c\":\"o\"}]},{\"t\":\"BulletList\",\"c\":[[{\"t\":\"Plain\",\"c\":"
-        "[{\"t\":\"Str\",\"c\":\"i\"}]}]]}]]}]')",
+        "[{'kind':'block','element_type':'list','content':'','level':1,'encoding':'text','attributes':MAP{'list_type': 'bullet', 'ordered': 'false'},'element_order':0}::duck_block, "
+        "{'kind':'block','element_type':'list_item','content':'','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block, "
+        "{'kind':'block','element_type':'plain','content':'o','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block, "
+        "{'kind':'block','element_type':'list','content':'','level':3,'encoding':'text','attributes':MAP{'list_type': 'bullet', 'ordered': 'false'},'element_order':3}::duck_block, "
+        "{'kind':'block','element_type':'list_item','content':'i','level':4,'encoding':'text','attributes':MAP{},'element_order':4}::duck_block]",
     ),
 ]
 
@@ -326,7 +334,12 @@ def main() -> int:
             "{'kind':'value','element_type':'string','content':'T','level':1,'encoding':'text',"
             "'attributes':MAP{'key':'title'},'element_order':2}::duck_block]",
         ),
-        (False, "clean document", "pandoc_ast_to_blocks('[{\"t\":\"Para\",\"c\":[{\"t\":\"Str\",\"c\":\"x\"}]}]')"),
+        # Captured from pandoc_ast_to_blocks('[{"t":"Para","c":[{"t":"Str","c":"x"}]}]').
+        (
+            False,
+            "clean document",
+            "[{'kind':'block','element_type':'paragraph','content':'x','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block]",
+        ),
         # Depth 3, because the pre-structural shape is worst at depth and the minimal case
         # understates it. webbed's reader emitted one top-level `list` PER NESTING LEVEL,
         # so the deepest text came back three times: ["L1L2L3"], ["L2L3"], ["L3"]. Measured
@@ -403,7 +416,7 @@ def main() -> int:
     if not failed:
         print(
             f"  {len(CASES)} cases agree, including {sum(1 for n, _ in CASES if n.startswith('reader:'))} "
-            f"taken from real reader output rather than hand-built"
+            f"captured from real reader output rather than hand-built"
         )
         print("OK: the macro consumers copy says what the validator says.")
     return 1 if failed else 0

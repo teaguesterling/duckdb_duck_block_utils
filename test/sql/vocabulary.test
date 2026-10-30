@@ -126,19 +126,27 @@ SELECT duck_blocks_to_pandoc_ast(duck_blocks_stamp(duck_block_paragraph([duck_bl
 # through, and MetaInlines children were then picked up as a stray inline run.
 # ============================================================================
 
+# Input inlined from pandoc_ast_to_blocks( '{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"LEAK"}]}, "tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"ALSO"}]}]}}, "blocks":[{"t":"Para","c":[{"t":"Str","c":"Body"}]}]}') (the converter moved to panduck).
 query I
-SELECT duck_blocks_to_text(pandoc_ast_to_blocks(
-  '{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"LEAK"}]},
-            "tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"ALSO"}]}]}},
-    "blocks":[{"t":"Para","c":[{"t":"Str","c":"Body"}]}]}'));
+SELECT duck_blocks_to_text([
+  {'kind':'block','element_type':'paragraph','content':'Body','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'value','element_type':'inlines','content':'','level':1,'encoding':'text','attributes':MAP{'key': 'title'},'element_order':1}::duck_block,
+  {'kind':'inline','element_type':'text','content':'LEAK','level':2,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block,
+  {'kind':'value','element_type':'list','content':'','level':1,'encoding':'text','attributes':MAP{'key': 'tags'},'element_order':3}::duck_block,
+  {'kind':'value','element_type':'inlines','content':'','level':2,'encoding':'text','attributes':MAP{},'element_order':4}::duck_block,
+  {'kind':'inline','element_type':'text','content':'ALSO','level':3,'encoding':'text','attributes':MAP{},'element_order':5}::duck_block
+]);
 ----
 Body
 
 # a heading TOC must not pick up metadata either
+# Input inlined from pandoc_ast_to_blocks( '{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"LEAK"}]}}, "blocks":[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"Real"}]]}]}') (the converter moved to panduck).
 query I
-SELECT count(*) FROM (SELECT unnest(duck_blocks_toc_structs(pandoc_ast_to_blocks(
-  '{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"LEAK"}]}},
-    "blocks":[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"Real"}]]}]}'))) AS t)
+SELECT count(*) FROM (SELECT unnest(duck_blocks_toc_structs([
+  {'kind':'block','element_type':'heading','content':'Real','level':1,'encoding':'text','attributes':MAP{'heading_level': '1'},'element_order':0}::duck_block,
+  {'kind':'value','element_type':'inlines','content':'','level':1,'encoding':'text','attributes':MAP{'key': 'title'},'element_order':1}::duck_block,
+  {'kind':'inline','element_type':'text','content':'LEAK','level':2,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+])) AS t)
 WHERE (t).title = 'LEAK';
 ----
 0
@@ -211,10 +219,13 @@ true
 
 # REGRESSION: kind='value' was added without updating the validator, so every
 # document carrying metadata validated as invalid.
+# Input inlined from pandoc_ast_to_blocks( '{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"T"}]}}, "blocks":[{"t":"Para","c":[{"t":"Str","c":"B"}]}]}') (the converter moved to panduck).
 query I
-SELECT (duck_blocks_validate(pandoc_ast_to_blocks(
-  '{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"T"}]}},
-    "blocks":[{"t":"Para","c":[{"t":"Str","c":"B"}]}]}'))).valid;
+SELECT (duck_blocks_validate([
+  {'kind':'block','element_type':'paragraph','content':'B','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'value','element_type':'inlines','content':'','level':1,'encoding':'text','attributes':MAP{'key': 'title'},'element_order':1}::duck_block,
+  {'kind':'inline','element_type':'text','content':'T','level':2,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+])).valid;
 ----
 true
 
@@ -368,38 +379,56 @@ true
 # is the spec's own containment rule and shape-independent.
 # ============================================================================
 
+# Input inlined from pandoc_ast_to_blocks( '{"meta":{"abstract":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"BLOCKLEAK"}]}]}}, "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}') (the converter moved to panduck).
 query I
-SELECT duck_blocks_to_text(pandoc_ast_to_blocks(
-  '{"meta":{"abstract":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"BLOCKLEAK"}]}]}},
-    "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}'));
+SELECT duck_blocks_to_text([
+  {'kind':'block','element_type':'paragraph','content':'REALBODY','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'value','element_type':'blocks','content':'','level':1,'encoding':'text','attributes':MAP{'key': 'abstract'},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'BLOCKLEAK','level':2,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block
+]);
 ----
 REALBODY
 
 # every shape at once: inlines, blocks, bool, list, map
+# Input inlined from pandoc_ast_to_blocks( '{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"INLEAK"}]}, "abstract":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"BLOCKLEAK"}]}]}, "draft":{"t":"MetaBool","c":true}, "tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"LISTLEAK"}]}]}, "author":{"t":"MetaMap","c":{"name":{"t":"MetaInlines","c":[{"t":"Str","c":"MAPLEAK"}]}}}}, "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}') (the converter moved to panduck).
 query I
-SELECT duck_blocks_to_text(pandoc_ast_to_blocks(
-  '{"meta":{"title":{"t":"MetaInlines","c":[{"t":"Str","c":"INLEAK"}]},
-            "abstract":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"BLOCKLEAK"}]}]},
-            "draft":{"t":"MetaBool","c":true},
-            "tags":{"t":"MetaList","c":[{"t":"MetaInlines","c":[{"t":"Str","c":"LISTLEAK"}]}]},
-            "author":{"t":"MetaMap","c":{"name":{"t":"MetaInlines","c":[{"t":"Str","c":"MAPLEAK"}]}}}},
-    "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}'));
+SELECT duck_blocks_to_text([
+  {'kind':'block','element_type':'paragraph','content':'REALBODY','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'value','element_type':'inlines','content':'','level':1,'encoding':'text','attributes':MAP{'key': 'title'},'element_order':1}::duck_block,
+  {'kind':'inline','element_type':'text','content':'INLEAK','level':2,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block,
+  {'kind':'value','element_type':'blocks','content':'','level':1,'encoding':'text','attributes':MAP{'key': 'abstract'},'element_order':3}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'BLOCKLEAK','level':2,'encoding':'text','attributes':MAP{},'element_order':4}::duck_block,
+  {'kind':'value','element_type':'bool','content':'true','level':1,'encoding':'text','attributes':MAP{'key': 'draft'},'element_order':5}::duck_block,
+  {'kind':'value','element_type':'list','content':'','level':1,'encoding':'text','attributes':MAP{'key': 'tags'},'element_order':6}::duck_block,
+  {'kind':'value','element_type':'inlines','content':'','level':2,'encoding':'text','attributes':MAP{},'element_order':7}::duck_block,
+  {'kind':'inline','element_type':'text','content':'LISTLEAK','level':3,'encoding':'text','attributes':MAP{},'element_order':8}::duck_block,
+  {'kind':'value','element_type':'map','content':'','level':1,'encoding':'text','attributes':MAP{'key': 'author'},'element_order':9}::duck_block,
+  {'kind':'value','element_type':'inlines','content':'','level':2,'encoding':'text','attributes':MAP{'key': 'name'},'element_order':10}::duck_block,
+  {'kind':'inline','element_type':'text','content':'MAPLEAK','level':3,'encoding':'text','attributes':MAP{},'element_order':11}::duck_block
+]);
 ----
 REALBODY
 
 # nested MetaBlocks inside a MetaMap -- two levels deep, still contained
+# Input inlined from pandoc_ast_to_blocks( '{"meta":{"outer":{"t":"MetaMap","c":{"inner":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"DEEPLEAK"}]}]}}}}, "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}') (the converter moved to panduck).
 query I
-SELECT duck_blocks_to_text(pandoc_ast_to_blocks(
-  '{"meta":{"outer":{"t":"MetaMap","c":{"inner":{"t":"MetaBlocks","c":[{"t":"Para","c":[{"t":"Str","c":"DEEPLEAK"}]}]}}}},
-    "blocks":[{"t":"Para","c":[{"t":"Str","c":"REALBODY"}]}]}'));
+SELECT duck_blocks_to_text([
+  {'kind':'block','element_type':'paragraph','content':'REALBODY','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'value','element_type':'map','content':'','level':1,'encoding':'text','attributes':MAP{'key': 'outer'},'element_order':1}::duck_block,
+  {'kind':'value','element_type':'blocks','content':'','level':2,'encoding':'text','attributes':MAP{'key': 'inner'},'element_order':2}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'DEEPLEAK','level':3,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block
+]);
 ----
 REALBODY
 
 # the TOC must not pick up a heading buried in metadata either
+# Input inlined from pandoc_ast_to_blocks( '{"meta":{"abstract":{"t":"MetaBlocks","c":[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"METAHEAD"}]]}]}}, "blocks":[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"Real"}]]}]}') (the converter moved to panduck).
 query I
-SELECT count(*) FROM (SELECT unnest(duck_blocks_toc_structs(pandoc_ast_to_blocks(
-  '{"meta":{"abstract":{"t":"MetaBlocks","c":[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"METAHEAD"}]]}]}},
-    "blocks":[{"t":"Header","c":[1,["",[],[]],[{"t":"Str","c":"Real"}]]}]}'))) AS t)
+SELECT count(*) FROM (SELECT unnest(duck_blocks_toc_structs([
+  {'kind':'block','element_type':'heading','content':'Real','level':1,'encoding':'text','attributes':MAP{'heading_level': '1'},'element_order':0}::duck_block,
+  {'kind':'value','element_type':'blocks','content':'','level':1,'encoding':'text','attributes':MAP{'key': 'abstract'},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'heading','content':'METAHEAD','level':2,'encoding':'text','attributes':MAP{'heading_level': '1'},'element_order':2}::duck_block
+])) AS t)
 WHERE (t).title = 'METAHEAD';
 ----
 0
@@ -493,15 +522,27 @@ true
 # found by duckdb_markdown auditing their writer against the vocabulary header.
 # ============================================================================
 
+# Input inlined from pandoc_ast_to_blocks( '[{"t":"Para","c":[{"t":"Str","c":"before "},{"t":"Bogus","c":[{"t":"Str","c":"KEPT"}]},{"t":"Str","c":" after"}]}]') (the converter moved to panduck).
 query I
-SELECT duck_blocks_to_text(pandoc_ast_to_blocks(
-  '[{"t":"Para","c":[{"t":"Str","c":"before "},{"t":"Bogus","c":[{"t":"Str","c":"KEPT"}]},{"t":"Str","c":" after"}]}]'));
+SELECT duck_blocks_to_text([
+  {'kind':'block','element_type':'paragraph','content':'','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'inline','element_type':'text','content':'before ','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'inline','element_type':'generic','content':'','level':2,'encoding':'text','attributes':MAP{'source_type': 'Bogus'},'element_order':2}::duck_block,
+  {'kind':'inline','element_type':'text','content':'KEPT','level':3,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block,
+  {'kind':'inline','element_type':'text','content':' after','level':2,'encoding':'text','attributes':MAP{},'element_order':4}::duck_block
+]);
 ----
 before KEPT after
 
+# Input inlined from pandoc_ast_to_blocks( '[{"t":"Para","c":[{"t":"Str","c":"before "},{"t":"Bogus","c":[{"t":"Str","c":"KEPT"}]},{"t":"Str","c":" after"}]}]') (the converter moved to panduck).
 query I
-SELECT duck_blocks_render_ansi(pandoc_ast_to_blocks(
-  '[{"t":"Para","c":[{"t":"Str","c":"before "},{"t":"Bogus","c":[{"t":"Str","c":"KEPT"}]},{"t":"Str","c":" after"}]}]'))
+SELECT duck_blocks_render_ansi([
+  {'kind':'block','element_type':'paragraph','content':'','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'inline','element_type':'text','content':'before ','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'inline','element_type':'generic','content':'','level':2,'encoding':'text','attributes':MAP{'source_type': 'Bogus'},'element_order':2}::duck_block,
+  {'kind':'inline','element_type':'text','content':'KEPT','level':3,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block,
+  {'kind':'inline','element_type':'text','content':' after','level':2,'encoding':'text','attributes':MAP{},'element_order':4}::duck_block
+])
   LIKE '%before KEPT after%';
 ----
 true
