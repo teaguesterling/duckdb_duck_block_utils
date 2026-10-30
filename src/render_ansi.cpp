@@ -1239,29 +1239,62 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 			auto &open_list = list_stack.back();
 			const int item_level = GetDepth(block);
 
-			// The words are either on the item itself (builder shape) or in a
-			// paragraph child one level down (Pandoc shape). Consume only that first
-			// paragraph, so a nested list later in the same item still renders.
+			// The words are on the item itself (builder shape), in a paragraph child one
+			// level down (Pandoc shape), or in the item's OWN inline children (reader
+			// shape). Per spec `content` is populated iff the container holds a single
+			// plain run, so `- **bold** x` keeps nothing of its own and the words are two
+			// inline rows. Consume only the first paragraph, so a nested list later in the
+			// same item still renders.
+			//
+			// The inline-children arm used to be an `else if` on the same
+			// `item_text.empty()` test, where the first arm also required
+			// `consumed < blocks_list.size()`. Reaching the `else` therefore required
+			// `consumed >= size` -- the item being the LAST row in the document, which is
+			// exactly when it has no children to walk. The arm was unreachable, so every
+			// item holding bold, code, a link or a soft line break rendered as a bare
+			// bullet. It is now a FALLBACK of the paragraph test, not an alternative to
+			// it: whatever the paragraph shape does not match falls through to inlines.
+			//
+			// Silent and total downstream: duckeye makes itself the default document
+			// reader, so an agent sent to read a spec got a column of empty bullets and
+			// exit 0. A single-word bullet still worked, which is what made it look
+			// cosmetic rather than like dropped content.
 			string item_text = content;
 			idx_t consumed = bi + 1;
-			if (item_text.empty() && consumed < blocks_list.size()) {
-				auto &next = blocks_list[consumed];
-				if (!next.IsNull() && GetStringField(next, BlockTypes::KIND_IDX) == BlockTypes::KIND_BLOCK &&
-				    (GetStringField(next, BlockTypes::ELEMENT_TYPE_IDX) == BlockTypes::TYPE_PARAGRAPH ||
-				     GetStringField(next, BlockTypes::ELEMENT_TYPE_IDX) == BlockTypes::TYPE_PLAIN) &&
-				    GetDepth(next) == item_level + 1) {
-					item_text = GetStringField(next, BlockTypes::CONTENT_IDX);
-					idx_t inl = consumed + 1;
-					string styled = RenderInlineRun(blocks_list, inl, theme);
-					if (!styled.empty()) {
-						item_text = styled;
+			if (item_text.empty()) {
+				bool took_paragraph = false;
+				if (consumed < blocks_list.size()) {
+					auto &next = blocks_list[consumed];
+					if (!next.IsNull() && GetStringField(next, BlockTypes::KIND_IDX) == BlockTypes::KIND_BLOCK &&
+					    (GetStringField(next, BlockTypes::ELEMENT_TYPE_IDX) == BlockTypes::TYPE_PARAGRAPH ||
+					     GetStringField(next, BlockTypes::ELEMENT_TYPE_IDX) == BlockTypes::TYPE_PLAIN) &&
+					    GetDepth(next) == item_level + 1) {
+						item_text = GetStringField(next, BlockTypes::CONTENT_IDX);
+						idx_t inl = consumed + 1;
+						string styled = RenderInlineRun(blocks_list, inl, theme);
+						if (!styled.empty()) {
+							item_text = styled;
+						}
+						consumed = inl;
+						took_paragraph = true;
 					}
+				}
+				// RenderInlineRun stops at the first non-inline row, so a nested list after
+				// the words still opens its own scope.
+				//
+				// `consumed = inl` advances past the rows just read, so the main loop does not
+				// revisit them, and this arm keeps the same bookkeeping as the paragraph shape
+				// above. It is NOT load-bearing for output: MEASURED by deleting it and
+				// rebuilding -- all 58 render_ansi assertions still passed, because the
+				// kind != 'block' arm consumes only rows DEEPER than the stray inline
+				// (`GetDepth(child) <= scope` breaks), and a sibling list_item is shallower
+				// than the inlines, so it is never swallowed. An earlier version of this
+				// comment claimed it was, which no test supported.
+				if (!took_paragraph) {
+					idx_t inl = bi + 1;
+					item_text = RenderInlineRun(blocks_list, inl, theme);
 					consumed = inl;
 				}
-			} else if (item_text.empty()) {
-				idx_t inl = bi + 1;
-				item_text = RenderInlineRun(blocks_list, inl, theme);
-				consumed = inl;
 			}
 
 			const size_t depth = list_stack.size() - 1;
