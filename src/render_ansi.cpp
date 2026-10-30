@@ -794,6 +794,29 @@ static string RenderInlineRun(const vector<Value> &list, idx_t &i, const ThemePa
 			i++;
 			continue;
 		}
+		// space and softbreak carry their meaning in the TYPE and hold no content, so the
+		// leaf/container logic below added nothing for them and the words either side ran
+		// together. to_text is the reference, being the other renderer: both become a
+		// single space, because this renderer re-wraps to the terminal width itself and a
+		// soft wrap carries no more meaning than a space.
+		//
+		// Reached the screen through panduck, whose readers emit these as rows of their own;
+		// the markdown reader emits a literal ' ' text row instead, which is why markdown
+		// never showed it. MEASURED on a .rst through duckeye before this fix:
+		// `A paragraph thatwraps onto a second line here.`
+		//
+		// A non-empty content is honoured rather than overwritten: panduck's collapsed
+		// shape puts a literal ' ' on the space row, and that is the text it meant.
+		//
+		// INLINE_LINEBREAK is deliberately NOT handled. It needs a real line, and SplitWords
+		// treats only ' ' and '\t' as separators, so a '\n' would travel inside a word and
+		// land mid-line with no prefix. That is a change to the wrapper every block renderer
+		// shares, so it stays a named gap in render_ansi.test.
+		if (etype == BlockTypes::INLINE_SPACE || etype == BlockTypes::INLINE_SOFTBREAK) {
+			out += content.empty() ? " " : content;
+			i++;
+			continue;
+		}
 		if (etype == BlockTypes::INLINE_IMAGE) {
 			string alt = content.empty() ? GetAttribute(el, "alt") : content;
 			out += Sgr(theme.dim) + "[image: " + alt + "]" + RESET;

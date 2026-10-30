@@ -577,3 +577,65 @@ SELECT regexp_replace(l, chr(27) || '\[[0-9;]*m', '', 'g') AS line FROM (
   • alpha
     • nested
   • beta
+
+# ============================================================================
+# Break inlines: space, softbreak and linebreak carry no content
+# ============================================================================
+#
+# These three are in the vocabulary (duck_block_vocabulary.hpp) and carry their
+# meaning in the TYPE, not in `content`. The renderer had no arm for any of them,
+# so each contributed nothing and the words either side ran together:
+#
+#     to_text:      one two      (space, softbreak)  /  one\ntwo  (linebreak)
+#     to_md:        one two      /  one\ntwo         /  one  \ntwo
+#     render_ansi:  onetwo       for all three
+#
+# to_text is the reference here, because it is the other renderer: a soft wrap
+# becomes a space, since this renderer re-wraps to the terminal width itself, and
+# an explicit linebreak becomes a real line.
+#
+# Reached the screen through panduck, whose readers emit these as separate rows
+# (markdown's reader emits a literal ' ' text row instead, which is why markdown
+# never showed it). MEASURED before the fix, on a .rst read through duckeye:
+# `A paragraph thatwraps onto a second line here.`
+# ----------------------------------------------------------------------------
+
+query I
+SELECT regexp_replace(l, chr(27) || '\[[0-9;]*m', '', 'g') AS line FROM (
+  SELECT unnest(string_split(duck_blocks_render_ansi([
+    lvb('paragraph', '', 1), lvi('text', 'one', 2), lvi('space', '', 2), lvi('text', 'two', 2)
+  ], 60), chr(10))) AS l
+);
+----
+one two
+
+query I
+SELECT regexp_replace(l, chr(27) || '\[[0-9;]*m', '', 'g') AS line FROM (
+  SELECT unnest(string_split(duck_blocks_render_ansi([
+    lvb('paragraph', '', 1), lvi('text', 'one', 2), lvi('softbreak', '', 2), lvi('text', 'two', 2)
+  ], 60), chr(10))) AS l
+);
+----
+one two
+
+# `linebreak` is NOT fixed here and has no assertion on purpose. It is an explicit
+# break, so to_text gives it a real line; but SplitWords treats only ' ' and '\t'
+# as separators, so a '\n' handed to WrapStyled travels inside a word and lands
+# mid-line without the line prefix. Teaching the wrapper a forced break changes the
+# path every block renderer uses, which is a bigger change than this one. Asserting
+# today's `onetwo` would pin the defect, so nothing is asserted and the gap is named
+# instead.
+
+# The same break inside a list item, which is the shape panduck emits for a
+# wrapped bullet. Depends on the inline-children fix: before that, this item
+# rendered as a bare bullet and the break was invisible.
+query I
+SELECT regexp_replace(l, chr(27) || '\[[0-9;]*m', '', 'g') AS line FROM (
+  SELECT unnest(string_split(duck_blocks_render_ansi([
+    lvb('list', '', 1), lvb('list_item', '', 2),
+    lvi('text', 'a line that', 3), lvi('softbreak', '', 3), lvi('text', 'wraps here', 3)
+  ], 60), chr(10))) AS l
+);
+----
+  • a line that wraps here
+
