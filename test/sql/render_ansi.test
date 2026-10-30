@@ -24,6 +24,14 @@ CREATE MACRO lvb(t, c, lv) AS
   {kind: 'block', element_type: t, content: c, level: lv, encoding: 'text',
    attributes: MAP{}, element_order: 1}::duck_block;
 
+# The inline counterpart of lvb. A container's words live in kind='inline'
+# children whenever the container holds anything but a single plain run, so a
+# test that only ever builds kind='block' rows cannot see that path at all.
+statement ok
+CREATE MACRO lvi(t, c, lv) AS
+  {kind: 'inline', element_type: t, content: c, level: lv, encoding: 'text',
+   attributes: MAP{}, element_order: 1}::duck_block;
+
 # ============================================================================
 # duck_block_terminal_width
 # ============================================================================
@@ -468,3 +476,104 @@ SELECT (duck_blocks_render_ansi([{'kind':'block','element_type':'figure','conten
      = (duck_blocks_to_text([{'kind':'block','element_type':'figure','content':'CONTENT','level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block]) LIKE '%CONTENT%');
 ----
 true
+
+# ============================================================================
+# Lists: a list_item whose words live in INLINE children
+# ============================================================================
+#
+# Per spec, `content` is populated iff the container holds a single text child.
+# So a list item reading `- **bold** x` keeps NO content of its own: the words
+# are two kind='inline' rows one level down. Measured from read_markdown_blocks:
+#
+#     0 block  list      L1 (empty)
+#     1 block  list_item L2 'plain'      <- single plain run, own content
+#     2 block  list_item L2 (empty)      <- '- **bold** x'
+#     3 inline bold      L3 'bold'
+#     4 inline text      L3 ' x'
+#
+# The renderer had an arm for this and could never reach it:
+#
+#     if (item_text.empty() && consumed < blocks_list.size()) { ...paragraph child... }
+#     else if (item_text.empty())                             { ...inline children... }
+#
+# The second arm requires `consumed >= blocks_list.size()`, so it ran only when
+# the item was the LAST row in the document -- precisely when it has no children
+# to walk. Every structurally-formatted item therefore took the first arm, failed
+# its block-paragraph test, and rendered with an empty string after the bullet.
+#
+# Downstream this was silent and total: duckeye makes itself the default document
+# reader, so an agent sent to read a spec got a column of bare bullets, exit 0,
+# and no error. A plain-text bullet survived, which is what made it look cosmetic.
+#
+# Asserted as exact stripped lines, not a LIKE on the words: the bug produced a
+# bullet with nothing after it, and `r LIKE '%bold%'` would also pass on output
+# that put the text in the wrong place or at the wrong indent.
+# ----------------------------------------------------------------------------
+
+# Inline children render, and a sibling item with its own content still renders.
+query I
+SELECT regexp_replace(l, chr(27) || '\[[0-9;]*m', '', 'g') AS line FROM (
+  SELECT unnest(string_split(duck_blocks_render_ansi([
+    lvb('list', '', 1),
+    lvb('list_item', 'plain', 2),
+    lvb('list_item', '', 2),
+    lvi('bold', 'bold', 3),
+    lvi('text', ' x', 3)
+  ], 60), chr(10))) AS l
+);
+----
+  • plain
+  • bold x
+
+# A soft line break inside one item arrives as several text inlines, which is why
+# a wrapped bullet vanished along with the formatted ones. They join into one line.
+query I
+SELECT regexp_replace(l, chr(27) || '\[[0-9;]*m', '', 'g') AS line FROM (
+  SELECT unnest(string_split(duck_blocks_render_ansi([
+    lvb('list', '', 1),
+    lvb('list_item', '', 2),
+    lvi('text', 'wraps', 3),
+    lvi('text', ' ', 3),
+    lvi('text', 'here', 3)
+  ], 60), chr(10))) AS l
+);
+----
+  • wraps here
+
+# Two formatted items in a row: both must render. This is a sibling regression
+# check, and it is deliberately NOT described as proof that `consumed` advances
+# past the inline children. MEASURED: deleting `consumed = inl` from the renderer
+# leaves all of these assertions passing, because the stray-inline arm consumes
+# only rows deeper than the inline and a sibling item is shallower. The advance is
+# correct bookkeeping, not a guard this test can see.
+query I
+SELECT regexp_replace(l, chr(27) || '\[[0-9;]*m', '', 'g') AS line FROM (
+  SELECT unnest(string_split(duck_blocks_render_ansi([
+    lvb('list', '', 1),
+    lvb('list_item', '', 2),
+    lvi('bold', 'one', 3),
+    lvb('list_item', '', 2),
+    lvi('bold', 'two', 3)
+  ], 60), chr(10))) AS l
+);
+----
+  • one
+  • two
+
+# Inline children followed by a NESTED list: RenderInlineRun stops at the first
+# non-inline row, so the sublist must still open its own scope and indent.
+query I
+SELECT regexp_replace(l, chr(27) || '\[[0-9;]*m', '', 'g') AS line FROM (
+  SELECT unnest(string_split(duck_blocks_render_ansi([
+    lvb('list', '', 1),
+    lvb('list_item', '', 2),
+    lvi('bold', 'alpha', 3),
+    lvb('list', '', 3),
+    lvb('list_item', 'nested', 4),
+    lvb('list_item', 'beta', 2)
+  ], 60), chr(10))) AS l
+);
+----
+  • alpha
+    • nested
+  • beta
