@@ -1948,7 +1948,8 @@ relocation resolves it by panduck registering NEW names (`read_pandoc_blocks`,
 `pandoc_ast_to_blocks` and friends stay here until this repo's release cycle retires
 them. No two-copy collision, and no hard cutover needed.
 
-**Superseded 2026-10-30: the names moved.** "duck_block_utils is only utility macros", so the
+**Superseded 2026-10-30: the names moved.** "dbu is only supposed to be utility macros"
+(Teague), so the
 converter's nine canonical names (`pandoc_ast_to_blocks`, `read_pandoc_ast`,
 `write_pandoc_ast`, `duck_blocks_to_pandoc_ast`, `duck_blocks_to_pandoc_blocks`, `pandoc_ast`,
 `pandoc_inlines_to_db_inlines`, `pandoc_inlines_to_text`, `duck_blocks_inlines_to_pandoc`) are
