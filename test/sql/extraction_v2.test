@@ -480,3 +480,18 @@ query I
 SELECT duck_blocks_to_text(escaped_table('{"headers":["rows",""],"rows":[["headers","z"]]}'), ' | ');
 ----
 rows | headers | z
+
+# A malformed \u escape (fewer than four hex digits) must not swallow the
+# closing quote and run the next cell into this one. It decodes like any other
+# unknown escape: the backslash goes, the letter stays.
+query I
+SELECT duck_blocks_to_text(escaped_table('{"headers":["a\u12"],"rows":[["b"]]}'), ' | ');
+----
+au12 | b
+
+# Nesting is bounded. The parser recurses per level, so unbounded depth was a
+# stack overflow in a function that runs over every table in a search.
+query I
+SELECT length(duck_blocks_to_text(escaped_table(repeat('[', 200000) || '"deep"' || repeat(']', 200000)), ' | ')) >= 0;
+----
+true
