@@ -437,3 +437,61 @@ query I
 SELECT duck_blocks_to_text(duck_block_link('https://example.com', 'Click here'));
 ----
 Click here
+
+# ============================================================================
+# A table cell's JSON string escapes are decoded, not stripped of the backslash.
+# webbed emits a <td> holding a <ul> as "\n\nx\ny\n\n"; text extraction printed
+# "nnxnynn". A newline in a cell is a newline in the text, as it is in a
+# paragraph. chr(10) is shown as ⏎ so a failure prints what came back.
+# ============================================================================
+
+statement ok
+CREATE MACRO escaped_table(json) AS ([
+    {'kind':'block','element_type':'table','content':json,'level':1,'encoding':'json',
+     'attributes':map([]::VARCHAR[],[]::VARCHAR[]),'element_order':0}::duck_block
+]);
+
+# The webbed repro shape: a newline inside a cell
+query I
+SELECT replace(duck_blocks_to_text(escaped_table('{"headers":["A","B"],"rows":[["1","\n\nx\ny\n\n"]]}'), ' | '), chr(10), '⏎');
+----
+A | B | 1 | ⏎⏎x⏎y⏎⏎
+
+# \t decodes to a tab
+query I
+SELECT replace(duck_blocks_to_text(escaped_table('{"headers":["H"],"rows":[["a\tb"]]}'), ' | '), chr(9), '⇥');
+----
+H | a⇥b
+
+# \" and \\ (these came out right by accident; pinned so they stay right)
+query I
+SELECT duck_blocks_to_text(escaped_table('{"headers":["say \"hi\""],"rows":[["C:\\dir"]]}'), ' | ');
+----
+say "hi" | C:\dir
+
+# \uXXXX, including a surrogate pair
+query I
+SELECT duck_blocks_to_text(escaped_table('{"headers":["caf\u00e9"],"rows":[["\ud83d\ude00"]]}'), ' | ');
+----
+café | 😀
+
+# Keys and empty cells are still not cell text
+query I
+SELECT duck_blocks_to_text(escaped_table('{"headers":["rows",""],"rows":[["headers","z"]]}'), ' | ');
+----
+rows | headers | z
+
+# A malformed \u escape (fewer than four hex digits) must not swallow the
+# closing quote and run the next cell into this one. It decodes like any other
+# unknown escape: the backslash goes, the letter stays.
+query I
+SELECT duck_blocks_to_text(escaped_table('{"headers":["a\u12"],"rows":[["b"]]}'), ' | ');
+----
+au12 | b
+
+# Nesting is bounded. The parser recurses per level, so unbounded depth was a
+# stack overflow in a function that runs over every table in a search.
+query I
+SELECT length(duck_blocks_to_text(escaped_table(repeat('[', 200000) || '"deep"' || repeat(']', 200000)), ' | ')) >= 0;
+----
+true
