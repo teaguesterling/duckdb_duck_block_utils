@@ -1,5 +1,6 @@
 #include "extraction.hpp"
 #include "block_types.hpp"
+#include "block_json.hpp"
 #include "pandoc_convert_util.hpp"
 #include "register_helper.hpp"
 #include "duckdb/common/types/value.hpp"
@@ -8,6 +9,9 @@
 #include <functional>
 
 namespace duckdb {
+
+using block_json::JsonParser;
+using block_json::JVal;
 
 // Helper to get a string field from an element struct
 static string GetElementStringField(const Value &element, idx_t field_idx) {
@@ -122,6 +126,33 @@ static string BlockText(const vector<Value> &list, idx_t &i) {
 	return content.empty() ? inline_text : content;
 }
 
+// Every non-empty string value, in document order. Keys are not cell text, and
+// neither are numbers or literals (the old hand scanner never emitted them).
+static void AppendJsonStrings(const JVal &v, const string &separator, string &out) {
+	switch (v.type) {
+	case JVal::Type::STRING:
+		if (!v.str.empty()) {
+			if (!out.empty()) {
+				out += separator;
+			}
+			out += v.str;
+		}
+		break;
+	case JVal::Type::ARRAY:
+		for (auto &item : v.arr) {
+			AppendJsonStrings(item, separator, out);
+		}
+		break;
+	case JVal::Type::OBJECT:
+		for (auto &kv : v.obj) {
+			AppendJsonStrings(kv.second, separator, out);
+		}
+		break;
+	default:
+		break;
+	}
+}
+
 // Cell text of the native table schema {"headers":[...],"rows":[[...]]}.
 //
 // Without this a table's text was its raw JSON: searching a document for a word
@@ -129,49 +160,13 @@ static string BlockText(const vector<Value> &list, idx_t &i) {
 // Same defect the Pandoc tuple caused before 5.0 -- structure serialised into a
 // field a text extractor reads verbatim -- and it does not go away just because
 // the schema got smaller.
+//
+// The JSON is parsed, not scanned: a hand scanner dropped the backslash of every
+// escape and kept the letter, so a cell holding a newline printed "n".
 static string TableJsonToText(const string &json, const string &separator) {
+	JsonParser parser(json);
 	string out;
-	bool in_string = false, escaped = false, is_key = false;
-	string current;
-	// The schema is exactly two keys, both mapping to arrays of strings, so every
-	// string that is not one of the two key names is cell text.
-	for (size_t i = 0; i < json.size(); i++) {
-		char c = json[i];
-		if (escaped) {
-			current += c;
-			escaped = false;
-			continue;
-		}
-		if (in_string && c == '\\') {
-			escaped = true;
-			continue;
-		}
-		if (c == '"') {
-			if (in_string) {
-				in_string = false;
-				// A key is a string immediately followed by ':'.
-				size_t k = i + 1;
-				while (k < json.size() && (json[k] == ' ' || json[k] == '\t')) {
-					k++;
-				}
-				is_key = (k < json.size() && json[k] == ':');
-				if (!is_key && !current.empty()) {
-					if (!out.empty()) {
-						out += separator;
-					}
-					out += current;
-				}
-				current.clear();
-			} else {
-				in_string = true;
-				current.clear();
-			}
-			continue;
-		}
-		if (in_string) {
-			current += c;
-		}
-	}
+	AppendJsonStrings(parser.Parse(), separator, out);
 	return out;
 }
 
