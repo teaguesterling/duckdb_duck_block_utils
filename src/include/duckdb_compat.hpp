@@ -383,6 +383,37 @@ inline void CompatAddNamedParameter(TableFunction &fn, const char *name, Logical
 	CompatAddNamedParameterImpl(fn, name, std::move(type), CompatHasGetSignature<TableFunction>());
 }
 
+// --- The ClientContext of a scalar function's ExpressionState ---
+//
+// v2.0.0: ExpressionState::GetContext() returns ClientContext &.
+// main:   duckdb/duckdb 7cda1961d02 (2026-11-06, "Use Context instead of ClientContext in
+//         more expression code") changed GetContext() to return the new duckdb::Context,
+//         and added GetClientContext() for the old meaning. A Context does not convert to
+//         ClientContext &, so `TryAutoLoadExtension(state.GetContext(), ...)` stopped
+//         compiling on the DuckDB-main canary (src/doc_macros.cpp:18).
+//
+// Probe for GetClientContext() and dispatch on the answer, as CompatAddNamedParameter
+// does. Same fix as duckdb_panduck#174 (panduck::ClientContextOf).
+template <class T, class = void>
+struct CompatHasGetClientContext : std::false_type {};
+template <class T>
+struct CompatHasGetClientContext<T, decltype(void(std::declval<T &>().GetClientContext()))> : std::true_type {};
+
+template <class STATE>
+inline ClientContext &CompatClientContextImpl(STATE &state, std::true_type) {
+	return state.GetClientContext();
+}
+template <class STATE>
+inline ClientContext &CompatClientContextImpl(STATE &state, std::false_type) {
+	return state.GetContext();
+}
+//! Call this rather than `state.GetContext()`. In src/*.cpp, `grep -rn '\.GetContext()'`
+//! should find nothing.
+template <class STATE>
+inline ClientContext &CompatClientContext(STATE &state) {
+	return CompatClientContextImpl(state, CompatHasGetClientContext<STATE>());
+}
+
 // BOTH ANSWERS PINNED. A detector tested only on the line we build against is
 // half-checked: it would pass identically if it always returned the answer v1.5
 // wants. These cost nothing at run time and fail the build the day a probe stops
@@ -416,6 +447,15 @@ struct FunctionWithNamedParametersOnly {
 };
 static_assert(CompatHasGetSignature<FunctionWithSignature>::value, "must detect GetSignature (v2.0 shape)");
 static_assert(!CompatHasGetSignature<FunctionWithNamedParametersOnly>::value, "must not fire without it (v1.5 shape)");
+struct StateWithClientContext {
+	int GetClientContext();
+	int GetContext();
+};
+struct StateWithContextOnly {
+	int GetContext();
+};
+static_assert(CompatHasGetClientContext<StateWithClientContext>::value, "must detect GetClientContext (main shape)");
+static_assert(!CompatHasGetClientContext<StateWithContextOnly>::value, "must not fire without it (v2.0.0 shape)");
 } // namespace compat_detail
 
 } // namespace duckdb
