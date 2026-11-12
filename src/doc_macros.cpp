@@ -12,7 +12,7 @@ namespace duckdb {
 
 // C++ Scalar function: duck_block_ensure_extension(VARCHAR) -> BOOLEAN
 static void DbEnsureExtensionFun(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &context = state.GetContext();
+	auto &context = CompatClientContext(state);
 	UnaryExecutor::Execute<string_t, bool>(args.data[0], result, args.size(), [&](string_t ext_name) {
 		string name = ext_name.GetString();
 		return ExtensionHelper::TryAutoLoadExtension(context, name);
