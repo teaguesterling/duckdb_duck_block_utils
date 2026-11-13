@@ -18,6 +18,8 @@ private:
 	// duck_blocks_headings(blocks LIST(duck_block)) -> LIST(STRUCT(level, title, id, element_order))
 	// Extract heading information
 	static void DbBlocksHeadingsFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static void DbBlocksSectionsFun(DataChunk &args, ExpressionState &state, Vector &result);
+	static LogicalType SectionStructType();
 
 	// duck_blocks_code_blocks(blocks LIST(duck_block)) -> LIST(STRUCT(language, content, element_order))
 	// Extract code blocks with metadata

@@ -1,0 +1,154 @@
+# name: test/sql/sections.test
+# description: duck_blocks_sections - read_markdown_sections' columns for any reader's blocks (#82)
+# group: [sql]
+
+require duck_block_utils
+
+# Expected values below were measured from read_markdown_sections (markdown
+# extension, DuckDB v2.0.0, 2026-11-13) on Markdown files with the same
+# structure. test/sql/sections_markdown_parity.test checks against the reader
+# itself wherever the markdown extension can be installed.
+
+# ============================================================================
+# The tree: ids, paths, levels, titles, parents.
+# ============================================================================
+
+statement ok
+CREATE TABLE doc AS SELECT duck_blocks_assemble([
+    duck_block_paragraph('Preamble text.'),
+    duck_block_heading(1, 'Intro & Overview'),
+    duck_block_paragraph('Para one.'),
+    duck_block_heading(2, 'Sub One'),
+    duck_block_paragraph('Text bold.'),
+    duck_block_heading(3, 'Deep, Down!'),
+    duck_block_paragraph('x'),
+    duck_block_heading(2, 'Sub One'),
+    duck_block_paragraph('dup title'),
+    duck_block_heading(1, 'Second'),
+    duck_block_list(['item'])
+]) AS blocks;
+
+# Text before the first heading is not a section (read_markdown_sections drops
+# it too, even with include_empty_sections). A repeated title gets -1.
+query IIIII
+SELECT section_id, section_path, level, title, parent_id FROM duck_blocks_sections((SELECT blocks FROM doc));
+----
+intro-overview	intro-overview	1	Intro & Overview	NULL
+sub-one	intro-overview/sub-one	2	Sub One	intro-overview
+deep-down	intro-overview/sub-one/deep-down	3	Deep, Down!	sub-one
+sub-one-1	intro-overview/sub-one-1	2	Sub One	intro-overview
+second	second	1	Second	NULL
+
+# A section's own content runs to the next heading of ANY level, as in
+# read_markdown_sections' default: Intro's subsections are not in its content.
+# start_order is the heading's element_order; end_order is the last block's.
+query IIII
+SELECT section_id, start_order, end_order, content FROM duck_blocks_sections((SELECT blocks FROM doc));
+----
+intro-overview	1	2	Para one.
+sub-one	3	4	Text bold.
+deep-down	5	6	x
+sub-one-1	7	8	dup title
+second	9	11	item
+
+# The blocks column holds the section's own blocks, without the heading, so
+# a caller can render them (duck_blocks_to_md, duck_blocks_render_ansi).
+query II
+SELECT section_id, list(b.element_type ORDER BY b.element_order)
+FROM (SELECT section_id, unnest(blocks) b FROM duck_blocks_sections((SELECT blocks FROM doc)))
+GROUP BY section_id ORDER BY min(b.element_order);
+----
+intro-overview	[paragraph]
+sub-one	[paragraph]
+deep-down	[paragraph]
+sub-one-1	[paragraph]
+second	[list, list_item]
+
+# ============================================================================
+# The slug rule, ported from duckdb_markdown's GenerateSectionId.
+# ============================================================================
+
+# Lowercase; [a-z0-9_-] kept, every other byte (UTF-8 included) becomes '-';
+# runs collapse; ends trimmed. A skipped level still finds its parent. The title
+# of a heading with inline children is their text.
+query IIIII
+SELECT section_id, section_path, level, title, parent_id FROM duck_blocks_sections(duck_blocks_assemble([
+    duck_block_heading(1, 'A'),
+    duck_block_heading(3, 'Skip To Three'),
+    duck_block_heading(1, 'B'),
+    duck_block_heading(2, 'A'),
+    duck_block_heading(2, 'Café Über_snake 2.0 — v3'),
+    duck_block_heading(2, 'A'),
+    duck_block_heading(2, [duck_block_bold('code'), duck_block_text(' and '), duck_block_bold('em')])
+]));
+----
+a	a	1	A	NULL
+skip-to-three	a/skip-to-three	3	Skip To Three	a
+b	b	1	B	NULL
+a-1	b/a-1	2	A	b
+caf-ber_snake-2-0-v3	b/caf-ber_snake-2-0-v3	2	Café Über_snake 2.0 — v3	b
+a-1-1	b/a-1-1	2	A	b
+code-and-em	b/code-and-em	2	code and em	b
+
+# Duplicates, exactly as read_markdown_sections numbers them: the suffix is
+# appended to the previous id, so the fourth "A" is a-1-2 and a heading that
+# reads "A-1" collides too. An empty title has an empty id; a second one is -1.
+query IIIII
+SELECT section_id, section_path, level, title, parent_id FROM duck_blocks_sections(duck_blocks_assemble([
+    duck_block_heading(1, 'A'),
+    duck_block_heading(1, 'A'),
+    duck_block_heading(1, 'A'),
+    duck_block_heading(1, 'A'),
+    duck_block_heading(1, 'A-1'),
+    duck_block_heading(2, ''),
+    duck_block_heading(2, ''),
+    duck_block_heading(1, 'Only')
+]));
+----
+a	a	1	A	NULL
+a-1	a-1	1	A	NULL
+a-1-1	a-1-1	1	A	NULL
+a-1-2	a-1-2	1	A	NULL
+a-1-3	a-1-3	1	A-1	NULL
+(empty)	a-1-3/	2	(empty)	a-1-3
+-1	a-1-3/-1	2	(empty)	a-1-3
+only	only	1	Only	NULL
+
+# The heading's own inline children are not section content.
+query III
+SELECT start_order, end_order, list_transform(blocks, lambda b: b.element_type)
+FROM duck_blocks_sections(duck_blocks_assemble([
+    duck_block_heading(2, [duck_block_bold('code'), duck_block_text(' and ')]),
+    duck_block_paragraph('body')
+]));
+----
+0	3	[paragraph]
+
+# ============================================================================
+# Edges.
+# ============================================================================
+
+# A heading that comes last has an empty section.
+query IIII
+SELECT section_id, start_order, end_order, len(blocks) FROM duck_blocks_sections(duck_blocks_assemble([
+    duck_block_paragraph('p'), duck_block_heading(1, 'End')
+]));
+----
+end	1	1	0
+
+# No headings: no sections.
+query I
+SELECT count(*) FROM duck_blocks_sections(duck_blocks_assemble([duck_block_paragraph('only text')]));
+----
+0
+
+query I
+SELECT count(*) FROM duck_blocks_sections(NULL::duck_block[]);
+----
+0
+
+# The structs form is the same data, one LIST per document.
+query I
+SELECT list_transform(duck_blocks_sections_structs((SELECT blocks FROM doc)), lambda s: s.section_id);
+----
+[intro-overview, sub-one, deep-down, sub-one-1, second]
