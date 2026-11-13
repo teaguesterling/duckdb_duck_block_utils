@@ -205,3 +205,34 @@ query I
 SELECT duck_blocks_parse_embedded(NULL::duck_block[]) IS NULL;
 ----
 true
+
+# ============================================================================
+# Padding is bounded. Objects with disjoint keys make an N x N table of mostly
+# empty cells from little input (measured: 47 KB of JSON became 48 MB of
+# content). Past max(1,000,000, cells present) empty cells, it is a parse
+# error, so the block stays code.
+# ============================================================================
+
+statement ok
+SET VARIABLE disjoint = (SELECT '[' || string_agg('{"k' || i || '": 1}', ',') || ']' FROM range(2000) t(i));
+
+query II
+SELECT (r).content IS NULL, (r).error LIKE '%padding%'
+FROM (SELECT duck_block_embedded_to_table(getvariable('disjoint'), 'json') r);
+----
+true	true
+
+statement ok
+SET VARIABLE disjoint_l = (SELECT string_agg('{"k' || i || '": 1}', E'\n') FROM range(2000) t(i));
+
+query II
+SELECT (r).content IS NULL, (r).error LIKE '%padding%'
+FROM (SELECT duck_block_embedded_to_table(getvariable('disjoint_l'), 'jsonl') r);
+----
+true	true
+
+# Many objects that share keys are dense, and convert at any count.
+query I
+SELECT (duck_block_embedded_to_table((SELECT '[' || string_agg('{"a": 1, "b": 2}', ',') || ']' FROM range(600000)), 'json')).content IS NOT NULL;
+----
+true

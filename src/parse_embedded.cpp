@@ -248,15 +248,31 @@ bool ParseWhole(const string &s, JVal &out) {
 
 // Objects to a table: headers are every key in first-seen order. A missing key
 // or a JSON null is an empty cell. A scalar keeps its literal text.
-void ObjectsToTable(const vector<const JVal *> &objects, vector<string> &headers, vector<vector<string>> &rows) {
+// The most empty cells a key union may add, unless the objects already hold
+// more real cells than that. Disjoint keys otherwise make N x N cells from N
+// small objects (measured: 47 KB of JSON became 48 MB of content).
+constexpr idx_t MAX_PADDED_CELLS = 1000000;
+
+bool ObjectsToTable(const vector<const JVal *> &objects, const char *fmt, vector<string> &headers,
+                    vector<vector<string>> &rows, string &error) {
 	// JSON keys are case-sensitive, so the index is too.
 	std::unordered_map<string, idx_t> index;
+	idx_t present = 0;
 	for (auto *obj : objects) {
+		present += obj->obj.size();
 		for (auto &kv : obj->obj) {
 			if (index.emplace(kv.first, headers.size()).second) {
 				headers.push_back(kv.first);
 			}
 		}
+	}
+	idx_t total = objects.size() * headers.size();
+	idx_t padded = total > present ? total - present : 0;
+	if (padded > MaxValue<idx_t>(MAX_PADDED_CELLS, present)) {
+		error = string(fmt) + ": " + std::to_string(objects.size()) + " objects x " + std::to_string(headers.size()) +
+		        " keys would need " + std::to_string(padded) + " padding cells; the limit is max(" +
+		        std::to_string(MAX_PADDED_CELLS) + ", present cells)";
+		return false;
 	}
 	for (auto *obj : objects) {
 		vector<string> row(headers.size());
@@ -271,6 +287,7 @@ void ObjectsToTable(const vector<const JVal *> &objects, vector<string> &headers
 		}
 		rows.push_back(std::move(row));
 	}
+	return true;
 }
 
 bool ParseJson(const string &s, vector<string> &headers, vector<vector<string>> &rows, string &error) {
@@ -295,8 +312,7 @@ bool ParseJson(const string &s, vector<string> &headers, vector<vector<string>> 
 		error = "json: the array is empty";
 		return false;
 	}
-	ObjectsToTable(objects, headers, rows);
-	return true;
+	return ObjectsToTable(objects, "json", headers, rows, error);
 }
 
 bool ParseJsonl(const string &s, vector<string> &headers, vector<vector<string>> &rows, string &error) {
@@ -325,8 +341,7 @@ bool ParseJsonl(const string &s, vector<string> &headers, vector<vector<string>>
 	for (auto &v : values) {
 		objects.push_back(&v);
 	}
-	ObjectsToTable(objects, headers, rows);
-	return true;
+	return ObjectsToTable(objects, "jsonl", headers, rows, error);
 }
 
 // The one conversion. Returns true and sets `content`, or false and `error`.
