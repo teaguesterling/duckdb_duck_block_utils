@@ -5,6 +5,10 @@
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/common/types/value.hpp"
 
+#include <algorithm>
+#include <cstdio>
+#include <unordered_map>
+
 namespace duckdb {
 
 using block_json::JsonParser;
