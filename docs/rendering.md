@@ -107,6 +107,45 @@ The rules:
   table that carries `attributes['pandoc_ast']` is read from the native content only;
   spans and cell formatting in the Pandoc tuple are not read.
 
+## Embedded data: code blocks that hold a table
+
+A document often carries data as a fenced code block (```` ```csv ````, ```` ```json ````).
+`duck_blocks_parse_embedded(blocks[, formats])` turns each `code` block whose
+`attributes['language']` is in `formats` into a native `table` block. The default
+formats are `csv`, `tsv`, `json` and `jsonl`, and matching ignores case.
+
+```sql
+SELECT duck_blocks_render(duck_blocks_parse_embedded(blocks)) FROM doc;
+```
+
+- A converted block keeps its attributes, `language` included, and adds
+  `source_text` with the original text. Its `encoding` becomes `json`.
+- A block that fails to parse stays a `code` block, unchanged, with the reason in
+  `attributes['parse_error']`. One bad block never fails the document.
+- Every other block is returned as it was. Running the function twice gives the
+  same result as running it once.
+
+`duck_block_embedded_to_table(text, format)` is the conversion for one text. It
+returns `STRUCT(content, error)`, and exactly one field is set. Use it when a
+client holds a single block's text.
+
+The parsers:
+
+- **csv / tsv.** RFC 4180: the first record is the header row. A field in quotes can
+  hold the delimiter, a line end, or a doubled quote (`""`). CRLF and LF both end a
+  record. A blank line outside quotes is not a record. Every data row must have as
+  many fields as the header. There is no delimiter or header sniffing.
+- **json.** An array of objects. The headers are every key, in first-seen order. A
+  missing key or a JSON `null` is an empty cell. A number keeps its literal text. A
+  nested array or object is kept as its compact JSON text.
+- **jsonl.** One object per non-blank line, with the same rules as `json`.
+- **yaml** is not supported. DuckDB's yaml extension is not served for every build,
+  and this extension has no YAML parser of its own.
+
+The cells are text at this step. `duck_block_table_read` decides the column types when
+the table is read back. These are not DuckDB's `read_csv` and `read_json`: those bind
+their input as a constant, and a block's text is a per-row value.
+
 ## Theme Palettes (Dark and Light)
 
 The renderer supports two color palettes optimized for terminal backgrounds:
@@ -164,6 +203,8 @@ macro users get wrapping and theme palettes for free.
 | `duck_block_json_to_table(json)` | JSON array of objects → `table` duck_block (headers from the first object's keys) |
 | `duck_blocks_table(json)` | JSON array of objects → `table` block as a one-element `LIST(duck_block)` (composes with the builders / `duck_blocks_assemble` / `duck_blocks_page`) |
 | `duck_block_table_read(content)` | Table function: a `table` block's content → a relation with sniffed column types (see *Reading a table block back as data*) |
+| `duck_blocks_parse_embedded(blocks[, formats])` | `code` blocks with csv/tsv/json/jsonl text → `table` blocks; failures stay `code` with `attributes['parse_error']` |
+| `duck_block_embedded_to_table(text, format)` | One text → `STRUCT(content, error)`: table content, or the reason |
 | `duck_blocks_query_table(sql)` | Run `sql` and return its results as an embeddable `table` block list (safe to nest in `duck_blocks_page`) |
 | `duck_blocks_page(title, blocks)` | Compose an `h1` title + a list of block-lists into one assembled `LIST(duck_block)` |
 | `duck_block_ansi(code, s)` | Wrap `s` in an SGR escape (e.g. `duck_block_ansi('1;31', 'bold red')`) |

@@ -17,6 +17,7 @@
 #include "render_ansi.hpp"
 #include "doc_macros.hpp"
 #include "table_read.hpp"
+#include "parse_embedded.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/function/scalar_function.hpp"
@@ -63,6 +64,9 @@ static void LoadInternal(ExtensionLoader &loader) {
 
 	// Phase 11: table block content back to a typed relation (#78)
 	TableReadFunctions::Register(loader);
+
+	// Phase 12: embedded csv/tsv/json/jsonl code blocks to table blocks (#79)
+	ParseEmbeddedFunctions::Register(loader);
 }
 
 void DuckBlockUtilsExtension::Load(ExtensionLoader &loader) {

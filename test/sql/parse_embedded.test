@@ -1,0 +1,238 @@
+# name: test/sql/parse_embedded.test
+# description: code blocks that carry csv/tsv/json/jsonl data become native table blocks (#79)
+# group: [sql]
+
+require duck_block_utils
+
+require json
+
+statement ok
+PRAGMA duck_block_render;
+
+# ============================================================================
+# duck_block_embedded_to_table(text, format) -> STRUCT(content, error)
+# Exactly one of the two fields is set: the table content, or the reason.
+# ============================================================================
+
+# CSV: the first record is the header row.
+query I
+SELECT (duck_block_embedded_to_table(E'a,b\n1,x\n2,y\n', 'csv')).content;
+----
+{"headers":["a","b"],"rows":[["1","x"],["2","y"]]}
+
+# RFC 4180 quoting: a comma, a doubled quote and a newline inside quotes are
+# cell text, not structure. CRLF line ends are accepted.
+query I
+SELECT (duck_block_embedded_to_table(E'name,note\r\n"Smith, J","said ""hi"""\r\n"x","line1\nline2"\r\n', 'csv')).content;
+----
+{"headers":["name","note"],"rows":[["Smith, J","said \"hi\""],["x","line1\nline2"]]}
+
+# Blank lines outside quotes (a fence often ends with one) are not records.
+query I
+SELECT (duck_block_embedded_to_table(E'\na\n1\n\n2\n\n', 'csv')).content;
+----
+{"headers":["a"],"rows":[["1"],["2"]]}
+
+# TSV: the same reader with a tab delimiter. A comma is cell text.
+query I
+SELECT (duck_block_embedded_to_table(E'a\tb\n1,5\tx\n', 'tsv')).content;
+----
+{"headers":["a","b"],"rows":[["1,5","x"]]}
+
+# JSON: an array of objects. Headers are every key, in first-seen order; a
+# missing key is an empty cell; a number stays its literal text; null is empty.
+query I
+SELECT (duck_block_embedded_to_table('[{"a": 1, "b": "x"}, {"b": "y", "c": null, "a": 2.50}]', 'json')).content;
+----
+{"headers":["a","b","c"],"rows":[["1","x",""],["2.50","y",""]]}
+
+# A nested value is kept as its JSON text, not dropped.
+query I
+SELECT (duck_block_embedded_to_table('[{"k": [1, "two"], "o": {"p": true}}]', 'json')).content;
+----
+{"headers":["k","o"],"rows":[["[1,\"two\"]","{\"p\":true}"]]}
+
+# JSONL: one object per non-blank line.
+query I
+SELECT (duck_block_embedded_to_table(E'{"a": 1}\n\n{"a": 2, "b": "z"}\n', 'jsonl')).content;
+----
+{"headers":["a","b"],"rows":[["1",""],["2","z"]]}
+
+# The format name is case-insensitive.
+query I
+SELECT (duck_block_embedded_to_table(E'a\n1', 'CSV')).content IS NOT NULL;
+----
+true
+
+# Failures carry a reason and no content.
+query II
+SELECT (r).content IS NULL, (r).error LIKE '%quote%'
+FROM (SELECT duck_block_embedded_to_table(E'a,b\n"open,1\n', 'csv') r);
+----
+true	true
+
+query II
+SELECT (r).content IS NULL, (r).error LIKE '%field%'
+FROM (SELECT duck_block_embedded_to_table(E'a,b\n1,2,3\n', 'csv') r);
+----
+true	true
+
+query II
+SELECT (r).content IS NULL, (r).error IS NOT NULL
+FROM (SELECT duck_block_embedded_to_table('not json', 'json') r);
+----
+true	true
+
+query II
+SELECT (r).content IS NULL, (r).error LIKE '%object%'
+FROM (SELECT duck_block_embedded_to_table('[1, 2]', 'json') r);
+----
+true	true
+
+query II
+SELECT (r).content IS NULL, (r).error IS NOT NULL
+FROM (SELECT duck_block_embedded_to_table('[{"a": 1}', 'json') r);
+----
+true	true
+
+query II
+SELECT (r).content IS NULL, (r).error IS NOT NULL
+FROM (SELECT duck_block_embedded_to_table(E'  \n', 'csv') r);
+----
+true	true
+
+query II
+SELECT (r).content IS NULL, (r).error LIKE '%yaml%'
+FROM (SELECT duck_block_embedded_to_table('a: 1', 'yaml') r);
+----
+true	true
+
+query I
+SELECT duck_block_embedded_to_table(NULL, 'csv') IS NULL;
+----
+true
+
+# ============================================================================
+# duck_blocks_parse_embedded(blocks[, formats]) -> blocks
+# The issue's fixture: a csv, a json and a broken csv block.
+# ============================================================================
+
+statement ok
+CREATE TABLE doc AS SELECT duck_blocks_assemble([
+    duck_block_paragraph('Intro'),
+    duck_block_code('csv', E'city,pop\nOslo,709000\nBergen,291000\n'),
+    duck_block_code('json', '[{"d": "2024-01-02", "v": 1.5}, {"d": "2024-01-03", "v": 2}]'),
+    duck_block_code('csv', E'a,b\n"unterminated,1\n'),
+    duck_block_code('python', 'print(1)')
+]) AS blocks;
+
+statement ok
+CREATE TABLE parsed AS SELECT duck_blocks_parse_embedded(blocks) AS blocks FROM doc;
+
+# Two tables, two code blocks (the broken csv and the python), the paragraph.
+query I
+SELECT list(b.element_type ORDER BY b.element_order) FROM (SELECT unnest(blocks) b FROM parsed);
+----
+[paragraph, table, table, code, code]
+
+# Nothing else moves: same length, same order, same levels.
+query I
+SELECT (SELECT list((b.element_order, b.level)) FROM (SELECT unnest(blocks) b FROM doc))
+     = (SELECT list((b.element_order, b.level)) FROM (SELECT unnest(blocks) b FROM parsed));
+----
+true
+
+# A converted table keeps its source text and language; its encoding is json.
+query III
+SELECT b.encoding, b.attributes['language'], b.attributes['source_text'] = E'city,pop\nOslo,709000\nBergen,291000\n'
+FROM (SELECT unnest(blocks) b FROM parsed) WHERE b.element_type = 'table' AND b.element_order = 1;
+----
+json	csv	true
+
+# The broken csv stays a code block, unchanged, with the reason attached.
+query III
+SELECT b.content = E'a,b\n"unterminated,1\n', b.attributes['language'], b.attributes['parse_error'] LIKE '%quote%'
+FROM (SELECT unnest(blocks) b FROM parsed) WHERE b.element_order = 3;
+----
+true	csv	true
+
+# A code block in another language is untouched: no parse_error.
+query I
+SELECT b.attributes['parse_error'] IS NULL
+FROM (SELECT unnest(blocks) b FROM parsed) WHERE b.element_order = 4;
+----
+true
+
+# Each table renders as a table ...
+query I
+SELECT duck_blocks_to_text(blocks) LIKE '%Oslo%709000%Bergen%' FROM parsed;
+----
+true
+
+# ... and reads back as typed data (#78).
+statement ok
+SET VARIABLE csv_tbl = (SELECT b.content FROM (SELECT unnest(blocks) b FROM parsed) WHERE b.element_order = 1);
+
+query II
+SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM duck_block_table_read(getvariable('csv_tbl')));
+----
+city	VARCHAR
+pop	BIGINT
+
+statement ok
+SET VARIABLE json_tbl = (SELECT b.content FROM (SELECT unnest(blocks) b FROM parsed) WHERE b.element_order = 2);
+
+query II
+SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM duck_block_table_read(getvariable('json_tbl')));
+----
+d	DATE
+v	DOUBLE
+
+# The formats list limits which languages convert. Matching is case-insensitive.
+query I
+SELECT list(b.element_type ORDER BY b.element_order)
+FROM (SELECT unnest(duck_blocks_parse_embedded(blocks, ['JSON'])) b FROM doc);
+----
+[paragraph, code, table, code, code]
+
+# Idempotent: a second pass finds no csv/json code blocks it has not already tried.
+query I
+SELECT duck_blocks_parse_embedded(blocks) = blocks FROM parsed;
+----
+true
+
+query I
+SELECT duck_blocks_parse_embedded(NULL::duck_block[]) IS NULL;
+----
+true
+
+# ============================================================================
+# Padding is bounded. Objects with disjoint keys make an N x N table of mostly
+# empty cells from little input (measured: 47 KB of JSON became 48 MB of
+# content). Past max(1,000,000, cells present) empty cells, it is a parse
+# error, so the block stays code.
+# ============================================================================
+
+statement ok
+SET VARIABLE disjoint = (SELECT '[' || string_agg('{"k' || i || '": 1}', ',') || ']' FROM range(2000) t(i));
+
+query II
+SELECT (r).content IS NULL, (r).error LIKE '%padding%'
+FROM (SELECT duck_block_embedded_to_table(getvariable('disjoint'), 'json') r);
+----
+true	true
+
+statement ok
+SET VARIABLE disjoint_l = (SELECT string_agg('{"k' || i || '": 1}', E'\n') FROM range(2000) t(i));
+
+query II
+SELECT (r).content IS NULL, (r).error LIKE '%padding%'
+FROM (SELECT duck_block_embedded_to_table(getvariable('disjoint_l'), 'jsonl') r);
+----
+true	true
+
+# Many objects that share keys are dense, and convert at any count.
+query I
+SELECT (duck_block_embedded_to_table((SELECT '[' || string_agg('{"a": 1, "b": 2}', ',') || ']' FROM range(600000)), 'json')).content IS NOT NULL;
+----
+true
