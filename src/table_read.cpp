@@ -123,6 +123,10 @@ bool CellText(const JVal &v, string &out) {
 	}
 }
 
+// The most NULL cells a ragged table may gain from padding, unless the table
+// already holds more real cells than that.
+constexpr idx_t MAX_PADDED_CELLS = 1000000;
+
 struct TableReadBindData : public TableFunctionData {
 	vector<vector<Value>> columns; // columns[col][row]
 	idx_t row_count = 0;
@@ -153,10 +157,24 @@ unique_ptr<FunctionData> TableReadBind(ClientContext &context, TableFunctionBind
 	// The column count is the widest of the headers and every row, so a long
 	// row adds a column rather than lose cells. A short row pads with NULL.
 	idx_t ncols = headers->arr.size();
+	idx_t present = 0;
 	for (auto &row : row_list) {
 		if (row.type == JVal::Type::ARRAY) {
 			ncols = MaxValue<idx_t>(ncols, row.arr.size());
+			present += row.arr.size();
 		}
+	}
+
+	// Padding is the one place output can outgrow input: one wide row and many
+	// short ones make rows x width cells from a few kilobytes. Present cells
+	// are bounded by the input's size; invented ones are capped here.
+	idx_t padded = row_list.size() * ncols - present;
+	if (padded > MaxValue<idx_t>(MAX_PADDED_CELLS, present)) {
+		throw InvalidInputException("duck_block_table_read: %llu rows x %llu columns would need %llu padding cells "
+		                            "for %llu present cells; the limit is max(%llu, present)",
+		                            (unsigned long long)row_list.size(), (unsigned long long)ncols,
+		                            (unsigned long long)padded, (unsigned long long)present,
+		                            (unsigned long long)MAX_PADDED_CELLS);
 	}
 
 	// Cell text per column; an absent string is NULL.

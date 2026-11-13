@@ -179,3 +179,28 @@ statement error
 SELECT * FROM duck_block_table_read(NULL);
 ----
 duck_block_table_read
+
+# ============================================================================
+# Padding is bounded. A short row pads with NULL, so one wide row and many
+# short ones would make rows x width cells from little input. Past
+# max(1,000,000, cells present) padded cells, bind fails rather than allocate.
+# ============================================================================
+
+statement ok
+SET VARIABLE wide = (SELECT '{"headers":["a"],"rows":[[' || (SELECT string_agg('"x"', ',') FROM range(2000)) || '],'
+    || (SELECT string_agg('["y"]', ',') FROM range(2000)) || ']}');
+
+statement error
+SELECT count(*) FROM duck_block_table_read(getvariable('wide'));
+----
+padding
+
+# A dense table far past the padding limit is still read: the limit counts
+# only invented cells, and dense cells are bounded by the input itself.
+statement ok
+SET VARIABLE dense = (SELECT to_json({headers: ['a', 'b'], rows: list(['1', '2'])})::VARCHAR FROM range(600000));
+
+query I
+SELECT count(*) FROM duck_block_table_read(getvariable('dense'));
+----
+600000
