@@ -97,6 +97,9 @@ The rules:
   `column_<n>`, where `n` is the 1-based position.
 - **Ragged rows.** A short row pads with NULL. A row longer than the headers adds a
   column, named by position.
+- **Padding limit.** Padding may add at most max(1,000,000, cells present) NULL
+  cells. Past that, the call fails at bind. One wide row and many short rows would
+  otherwise turn a few kilobytes into millions of cells.
 - **Codes keep their zeros.** The strict integer cast rejects a leading zero, so a
   column such as `007`, `010` stays `VARCHAR`. The words `inf` and `nan` do cast to
   `DOUBLE`, so a column of only those words reads as `DOUBLE`.
