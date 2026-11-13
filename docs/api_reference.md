@@ -905,6 +905,7 @@ Registers convenience macros (requires the `json` extension, autoloaded):
 | `duck_blocks_render(blocks)` | Render to ANSI at auto-detected width (delegates to `duck_blocks_render_ansi`) |
 | `duck_blocks_render_query(sql)` | Table macro: run `sql` and render the result as an ANSI table (column `rendered`) |
 | `duck_block_json_to_table(json)` | JSON array of objects → `table` duck_block |
+| `duck_block_table_read(content)` | Table function: `table` block content → relation with sniffed column types; the argument must be a constant (literal, `getvariable()`, prepared parameter). See rendering.md |
 | `duck_block_render_one(type, content, attrs)` | Render a single block element |
 | `duck_block_ansi(code, s)` / `duck_block_ansi_inline(s)` | SGR wrapper / inline markdown styler |
 

@@ -71,6 +71,42 @@ SELECT duck_blocks_render(duck_blocks_page('Sales Report', [
 does the same for a JSON array you already have, returning a one-element
 `LIST(duck_block)` that composes with the other builders.
 
+## Reading a table block back as data
+
+`duck_block_table_read(content)` is the inverse of `duck_block_json_to_table`. It
+reads a table block's native content (`{"headers": [...], "rows": [[...]]}`) and
+returns a relation with typed columns. It is a C++ table function, and its bind
+step reads the content to decide the columns. The argument must therefore be a
+constant: a literal, `getvariable()`, or a prepared parameter. A subquery is
+rejected, as for any DuckDB table function.
+
+```sql
+SET VARIABLE t = (SELECT content FROM blocks WHERE element_type = 'table' LIMIT 1);
+SELECT * FROM duck_block_table_read(getvariable('t'));
+```
+
+The rules:
+
+- **Types.** Each column takes the first type that every non-empty cell fits under a
+  strict cast: `BIGINT`, `DOUBLE`, `DATE`, `TIMESTAMP`, `BOOLEAN`, else `VARCHAR`.
+  `BOOLEAN` accepts only `true` and `false` (any case). A column with no non-empty
+  cell is `VARCHAR`.
+- **Empty cells are NULL**, in every column, `VARCHAR` included. The forward direction
+  writes NULL as an empty cell, so the two cannot be told apart after a round trip.
+- **Names.** An empty or duplicate header (compared case-insensitively) becomes
+  `column_<n>`, where `n` is the 1-based position.
+- **Ragged rows.** A short row pads with NULL. A row longer than the headers adds a
+  column, named by position.
+- **Padding limit.** Padding may add at most max(1,000,000, cells present) NULL
+  cells. Past that, the call fails at bind. One wide row and many short rows would
+  otherwise turn a few kilobytes into millions of cells.
+- **Codes keep their zeros.** The strict integer cast rejects a leading zero, so a
+  column such as `007`, `010` stays `VARCHAR`. The words `inf` and `nan` do cast to
+  `DOUBLE`, so a column of only those words reads as `DOUBLE`.
+- **Losses.** A nested array or object in a cell reads as NULL. A
+  table that carries `attributes['pandoc_ast']` is read from the native content only;
+  spans and cell formatting in the Pandoc tuple are not read.
+
 ## Theme Palettes (Dark and Light)
 
 The renderer supports two color palettes optimized for terminal backgrounds:
@@ -127,6 +163,7 @@ macro users get wrapping and theme palettes for free.
 | `duck_blocks_render_query(sql)` | Table macro: run `sql` via `query()` and render the result as an ANSI table (column `rendered`) |
 | `duck_block_json_to_table(json)` | JSON array of objects → `table` duck_block (headers from the first object's keys) |
 | `duck_blocks_table(json)` | JSON array of objects → `table` block as a one-element `LIST(duck_block)` (composes with the builders / `duck_blocks_assemble` / `duck_blocks_page`) |
+| `duck_block_table_read(content)` | Table function: a `table` block's content → a relation with sniffed column types (see *Reading a table block back as data*) |
 | `duck_blocks_query_table(sql)` | Run `sql` and return its results as an embeddable `table` block list (safe to nest in `duck_blocks_page`) |
 | `duck_blocks_page(title, blocks)` | Compose an `h1` title + a list of block-lists into one assembled `LIST(duck_block)` |
 | `duck_block_ansi(code, s)` | Wrap `s` in an SGR escape (e.g. `duck_block_ansi('1;31', 'bold red')`) |
