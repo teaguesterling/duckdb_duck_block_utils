@@ -78,6 +78,16 @@ SELECT bool_and(n = rn - 1) FROM (SELECT n, row_number() OVER () rn FROM duck_bl
 ----
 true
 
+# A prepared parameter is a constant at bind, so clients can bind the content.
+statement ok
+PREPARE read_tbl AS SELECT * FROM duck_block_table_read($1);
+
+query I
+EXECUTE read_tbl('{"headers":["a"],"rows":[["1"],["2"]]}');
+----
+1
+2
+
 # ============================================================================
 # Sniffing: a column takes the narrowest type every non-empty cell fits.
 # ============================================================================
