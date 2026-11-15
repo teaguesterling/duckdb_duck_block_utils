@@ -4,8 +4,10 @@
 #include "pandoc_convert_util.hpp"
 #include "register_helper.hpp"
 #include "duckdb/common/types/value.hpp"
+#include "duckdb/common/string_util.hpp"
 
 #include <map>
+#include <unordered_map>
 #include <functional>
 
 namespace duckdb {
@@ -705,6 +707,7 @@ struct HeadingInfo {
 	string id;
 	int32_t order;
 	idx_t index;
+	idx_t body_index; // the first index after the heading's inline run
 };
 
 // Same walk as DbBlocksHeadingsFun / DbBlocksTocFun: skips kind='value' scopes,
@@ -743,9 +746,134 @@ static vector<HeadingInfo> CollectHeadings(const vector<Value> &blocks_list) {
 		h.id = GetElementAttribute(block, BlockTypes::ATTR_ID);
 		h.order = GetElementIntField(block, BlockTypes::ELEMENT_ORDER_IDX, 0);
 		h.title = BlockText(blocks_list, bi); // advances bi past the inline run
+		h.body_index = bi;
 		out.push_back(std::move(h));
 	}
 	return out;
+}
+
+// read_markdown_sections' section id, ported from duckdb_markdown
+// (src/markdown_utils.cpp, GenerateSectionId and its caller in ExtractSections)
+// so a Markdown document gets the same ids read either way. Lowercase ASCII;
+// every byte outside [a-z0-9_-] becomes '-' (so each byte of a UTF-8 character
+// does); runs of '-' collapse; leading and trailing '-' go.
+static string SectionSlug(const string &title) {
+	string out;
+	bool prev_dash = false;
+	for (char raw : StringUtil::Lower(title)) {
+		char c = raw;
+		bool keep = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+		if (!keep || c == '-') {
+			if (!prev_dash) {
+				out += '-';
+			}
+			prev_dash = true;
+		} else {
+			out += c;
+			prev_dash = false;
+		}
+	}
+	auto b = out.find_first_not_of('-');
+	if (b == string::npos) {
+		return string();
+	}
+	auto e = out.find_last_not_of('-');
+	return out.substr(b, e - b + 1);
+}
+
+// The duplicate rule, also ported as-is, quirks included: the count is kept per
+// SUFFIXED id, so the third "A" is a-1-1 (not a-2) and a title reading "A-1"
+// collides with the second "A". Parity is the point, not a nicer numbering.
+static string UniqueSectionId(const string &title, std::unordered_map<string, int32_t> &id_counts) {
+	string id = SectionSlug(title);
+	auto it = id_counts.find(id);
+	if (it != id_counts.end() && it->second > 0) {
+		id += "-" + std::to_string(it->second);
+	}
+	auto n = ++id_counts[id];
+	return n > 1 ? id + "-" + std::to_string(n - 1) : id;
+}
+
+LogicalType ExtractionFunctions::SectionStructType() {
+	child_list_t<LogicalType> c;
+	c.push_back(make_pair("section_id", LogicalType::VARCHAR));
+	c.push_back(make_pair("section_path", LogicalType::VARCHAR));
+	c.push_back(make_pair("level", LogicalType::INTEGER));
+	c.push_back(make_pair("title", LogicalType::VARCHAR));
+	c.push_back(make_pair("parent_id", LogicalType::VARCHAR));
+	c.push_back(make_pair("start_order", LogicalType::INTEGER));
+	c.push_back(make_pair("end_order", LogicalType::INTEGER));
+	c.push_back(make_pair("content_start_order", LogicalType::INTEGER));
+	return LogicalType::STRUCT(std::move(c));
+}
+
+// duck_blocks_sections_structs(blocks) -> LIST(STRUCT(...)): one entry per heading.
+// A section's own content runs to the next heading of ANY level, which is
+// read_markdown_sections' default; subsections are separate entries. Text before
+// the first heading is no section, as there.
+void ExtractionFunctions::DbBlocksSectionsFun(DataChunk &args, ExpressionState &state, Vector &result) {
+	auto &blocks_vec = args.data[0];
+	auto type = SectionStructType();
+	auto count = args.size();
+	for (idx_t i = 0; i < count; i++) {
+		auto blocks_val = blocks_vec.GetValue(i);
+		if (blocks_val.IsNull()) {
+			result.SetValue(i, Value::LIST(type, vector<Value>()));
+			continue;
+		}
+		auto &blocks_list = ListValue::GetChildren(blocks_val);
+		int32_t last_order = -1;
+		for (auto &b : blocks_list) {
+			if (!b.IsNull()) {
+				last_order = MaxValue(last_order, GetElementIntField(b, BlockTypes::ELEMENT_ORDER_IDX, 0));
+			}
+		}
+		auto headings = CollectHeadings(blocks_list);
+
+		struct Done {
+			int32_t level;
+			string id;
+			string path;
+		};
+		vector<Done> done;
+		std::unordered_map<string, int32_t> id_counts;
+		vector<Value> sections;
+		for (idx_t h = 0; h < headings.size(); h++) {
+			auto &hd = headings[h];
+			auto id = UniqueSectionId(hd.title, id_counts);
+			Value parent(LogicalType::VARCHAR);
+			string path = id;
+			for (idx_t j = done.size(); j-- > 0;) {
+				if (done[j].level < hd.level) {
+					parent = Value(done[j].id);
+					path = done[j].path + "/" + id;
+					break;
+				}
+			}
+			int32_t end = h + 1 < headings.size() ? headings[h + 1].order - 1 : last_order;
+			// Content starts after the heading's own inline run, not at the heading.
+			int32_t content_start = end + 1;
+			for (idx_t k = hd.body_index; k < blocks_list.size(); k++) {
+				if (!blocks_list[k].IsNull()) {
+					content_start = GetElementIntField(blocks_list[k], BlockTypes::ELEMENT_ORDER_IDX, 0);
+					break;
+				}
+			}
+
+			child_list_t<Value> v;
+			v.push_back(make_pair("section_id", Value(id)));
+			v.push_back(make_pair("section_path", Value(path)));
+			v.push_back(make_pair("level", Value(hd.level)));
+			v.push_back(make_pair("title", Value(hd.title)));
+			v.push_back(make_pair("parent_id", parent));
+			v.push_back(make_pair("start_order", Value(hd.order)));
+			v.push_back(make_pair("end_order", Value(end)));
+			v.push_back(make_pair("content_start_order", Value(content_start)));
+			sections.push_back(Value::STRUCT(std::move(v)));
+			done.push_back({hd.level, id, path});
+		}
+		result.SetValue(i, Value::LIST(type, std::move(sections)));
+	}
 }
 
 // Outline positions are positions in the OUTLINE, not the heading's own digit:
@@ -941,6 +1069,17 @@ void ExtractionFunctions::Register(ExtensionLoader &loader) {
 	    ScalarFunction("duck_blocks_headings_structs", {duck_block_list_type}, heading_list_type, DbBlocksHeadingsFun);
 	RegisterScalarWithDesc(loader, headings_func, {"blocks"}, "Extract headings as list of structs.",
 	                       {"duck_blocks_headings_structs(blocks)"});
+
+	// duck_blocks_sections_structs(blocks) -> LIST(STRUCT): the data behind the
+	// duck_blocks_sections table macro (#82).
+	RegisterScalarWithDesc(
+	    loader,
+	    ScalarFunction("duck_blocks_sections_structs", {duck_block_list_type}, LogicalType::LIST(SectionStructType()),
+	                   DbBlocksSectionsFun),
+	    {"blocks"},
+	    "One struct per heading: read_markdown_sections' section_id, section_path, level, title and parent_id, "
+	    "with start_order/end_order (element_order) and content_start_order.",
+	    {"duck_blocks_sections_structs(blocks)"});
 
 	// 6.5: the base name returns blocks; the projection above lives on as _structs.
 	RegisterScalarWithDesc(loader,

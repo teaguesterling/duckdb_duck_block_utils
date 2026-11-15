@@ -372,6 +372,28 @@ static const DefaultTableMacro DOC_TABLE_MACROS[] = {
      "           sec AS blocks\n"
      "    FROM sliced\n"
      "    ORDER BY s"},
+    // read_markdown_sections' columns for any reader's blocks (#82). content is the
+    // section's own text; `blocks` carries the same slice, so a caller with the
+    // markdown extension loaded can render Markdown with duck_blocks_to_md(blocks).
+    // The slice starts after the heading's inline run, so the title is not content.
+    {DEFAULT_SCHEMA,
+     "duck_blocks_sections",
+     {"blocks", nullptr},
+     {{nullptr, nullptr}},
+     "WITH doc AS (SELECT blocks AS b),\n"
+     "         sec AS (SELECT unnest(duck_blocks_sections_structs(doc.b)) AS s, doc.b AS b FROM doc),\n"
+     "         sliced AS (SELECT s, duck_blocks_slice(b, (s).content_start_order, (s).end_order) AS own FROM sec)\n"
+     "    SELECT (s).section_id AS section_id,\n"
+     "           (s).section_path AS section_path,\n"
+     "           (s).level AS level,\n"
+     "           (s).title AS title,\n"
+     "           duck_blocks_to_text(own) AS content,\n"
+     "           (s).parent_id AS parent_id,\n"
+     "           (s).start_order AS start_order,\n"
+     "           (s).end_order AS end_order,\n"
+     "           own AS blocks\n"
+     "    FROM sliced\n"
+     "    ORDER BY (s).start_order"},
     {DEFAULT_SCHEMA,
      "duck_blocks_sections_like",
      {"blocks", "query_term", nullptr},

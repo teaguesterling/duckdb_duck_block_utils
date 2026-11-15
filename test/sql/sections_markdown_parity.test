@@ -1,0 +1,39 @@
+# name: test/sql/sections_markdown_parity.test
+# description: duck_blocks_sections agrees with read_markdown_sections on a Markdown file (#82)
+# group: [sql]
+
+require duck_block_utils
+
+# Skips where the markdown extension cannot be installed (a local dev build);
+# runs in CI.
+statement ok
+INSTALL markdown;
+
+statement ok
+LOAD markdown;
+
+# The issue's bar: the same id, path, level, title and parent for every
+# section, read either way. Both directions, so a missing or an extra section
+# fails, not only a different one.
+query I
+SELECT count(*) FROM (
+    (SELECT section_id, section_path, level, title, parent_id
+     FROM read_markdown_sections('test/fixtures/sections.md', include_content := true)
+     EXCEPT
+     SELECT section_id, section_path, level, title, parent_id
+     FROM duck_blocks_sections((SELECT list(b ORDER BY b.element_order) FROM read_markdown_blocks('test/fixtures/sections.md') b)))
+    UNION ALL
+    (SELECT section_id, section_path, level, title, parent_id
+     FROM duck_blocks_sections((SELECT list(b ORDER BY b.element_order) FROM read_markdown_blocks('test/fixtures/sections.md') b))
+     EXCEPT
+     SELECT section_id, section_path, level, title, parent_id
+     FROM read_markdown_sections('test/fixtures/sections.md', include_content := true))
+);
+----
+0
+
+# And it is not vacuous: the fixture has thirteen sections (measured).
+query I
+SELECT count(*) FROM read_markdown_sections('test/fixtures/sections.md', include_content := true);
+----
+13

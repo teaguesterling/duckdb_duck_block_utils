@@ -687,6 +687,31 @@ not a compatibility shim.
 | `duck_blocks_get_section(blocks, pattern)` | `duck_blocks_get_section_text(blocks, pattern)` → VARCHAR |
 | `duck_blocks_get_pages(blocks, first, last)` | `duck_blocks_get_pages_text(blocks, first, last)` → VARCHAR |
 | `duck_blocks_sections_like(blocks, term)` → `(section, start_order, blocks)` | `duck_blocks_sections_like_text(doc, term)` → `(section, start_order, content)` |
+| `duck_blocks_sections(blocks)` → `(section_id, section_path, level, title, content, parent_id, start_order, end_order, blocks)` | `duck_blocks_sections_structs(blocks)` → `LIST(STRUCT)`, the same rows less content and blocks, plus `content_start_order` |
+
+**`duck_blocks_sections` is `read_markdown_sections` for any reader.** One row per
+heading, in document order, with the markdown extension's columns:
+
+- `section_id` uses `read_markdown_sections`' slug rule, ported from duckdb_markdown's
+  `GenerateSectionId`. Lowercase. Bytes outside `[a-z0-9_-]` become `-`, and that
+  includes each byte of a UTF-8 character. Runs of `-` collapse, and the ends are trimmed.
+  Duplicates follow the same quirk: `a`, `a-1`, `a-1-1`, `a-1-2`. The heading's own
+  `id` attribute is not used, so an HTML `<h1 id="top">Top Level</h1>` is `top-level`.
+- `section_path` joins ids with `/` from the root. `parent_id` is the nearest earlier
+  heading of a lower rank, so a skipped level still finds its parent.
+- `level` is `attributes['heading_level']`, falling back to the `level` field.
+- `start_order` is the heading's `element_order`, and `end_order` is the last block
+  before the next heading of **any** rank. That is `read_markdown_sections`' default
+  content mode: a section's subsections are not in its own content.
+- `content` is that span's text (`duck_blocks_to_text`). `blocks` is the same span
+  as `LIST(duck_block)`, without the heading. Render it as Markdown with
+  `duck_blocks_to_md(blocks)` when the markdown extension is loaded.
+- Text before the first heading is no section, as in `read_markdown_sections`.
+
+Measured 2026-11-13: id, path, level, title and parent agree with
+`read_markdown_sections` on every section of this repo's README and `docs/*.md`
+(589 sections in 18 files). `test/sql/sections_markdown_parity.test` repeats the check
+wherever the markdown extension can be installed.
 
 **The recovery contract.** Every function in this table carries `element_order` through
 from the source **unrenumbered, with gaps**. It is the join key back to the document and
