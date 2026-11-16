@@ -1224,6 +1224,10 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 			auto table = json_tree::Parse(content);
 			if (table.type == JVal::Type::OBJECT) {
 				RenderTable(table, width, theme, lines);
+			} else if (!content.empty()) {
+				// Content that is not a JSON table object, as for a list above: a
+				// malformed table is still text somebody wrote.
+				RenderParagraph(content, width, lines);
 			}
 		} else if (element_type == BlockTypes::TYPE_BLOCKQUOTE) {
 			RenderBlockquote(text, width, theme, lines);
