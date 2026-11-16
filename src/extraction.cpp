@@ -1,6 +1,6 @@
 #include "extraction.hpp"
 #include "block_types.hpp"
-#include "block_json.hpp"
+#include "json_tree.hpp"
 #include "pandoc_convert_util.hpp"
 #include "register_helper.hpp"
 #include "duckdb/common/types/value.hpp"
@@ -12,8 +12,7 @@
 
 namespace duckdb {
 
-using block_json::JsonParser;
-using block_json::JVal;
+using json_tree::JVal;
 
 // Helper to get a string field from an element struct
 static string GetElementStringField(const Value &element, idx_t field_idx) {
@@ -166,9 +165,14 @@ static void AppendJsonStrings(const JVal &v, const string &separator, string &ou
 // The JSON is parsed, not scanned: a hand scanner dropped the backslash of every
 // escape and kept the letter, so a cell holding a newline printed "n".
 static string TableJsonToText(const string &json, const string &separator) {
-	JsonParser parser(json);
+	// Content that is not valid JSON is not a native table: its text is the
+	// content as written, so a search still finds the words.
+	JVal root;
+	if (!json_tree::Parse(json, root)) {
+		return json;
+	}
 	string out;
-	AppendJsonStrings(parser.Parse(), separator, out);
+	AppendJsonStrings(root, separator, out);
 	return out;
 }
 

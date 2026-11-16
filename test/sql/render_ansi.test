@@ -488,6 +488,14 @@ SELECT duck_blocks_render_ansi([{'kind':'block','element_type':'figure','content
 ----
 true	true	true
 
+# A table whose content is not valid JSON is still text somebody wrote, as for
+# a list. The JSON parser is strict (DuckDB's yyjson), so a broken table used to
+# render as nothing at all.
+query I
+SELECT duck_blocks_render_ansi([{'kind':'block','element_type':'table','content':'{"headers":["CONTENT"],"rows":[[','level':1,'encoding':'json','attributes':MAP{},'element_order':0}::duck_block], 40) LIKE '%CONTENT%';
+----
+true
+
 # DISCRIMINATING: an EMPTY figure/caption must stay transparent. Rendering the
 # container itself would also make the assertions above pass, while emitting a
 # stray blank line for every figure in every document.
