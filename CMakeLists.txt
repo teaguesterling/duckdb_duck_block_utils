@@ -14,7 +14,7 @@ include_directories(src/include)
 # warns about.
 include_directories(vendor)
 # JSON content (list items, table cells) is parsed with the yyjson that DuckDB
-# vendors for its json extension. This extension keeps no JSON parser of its own.
+# vendors for its json extension. This extension has no JSON parser of its own.
 include_directories(duckdb/third_party/yyjson/include)
 
 set(EXTENSION_SOURCES
