@@ -1,5 +1,5 @@
 #include "table_read.hpp"
-#include "block_json.hpp"
+#include "json_tree.hpp"
 #include "duckdb_compat.hpp"
 #include "register_helper.hpp"
 #include "duckdb/common/case_insensitive_map.hpp"
@@ -10,8 +10,7 @@
 
 namespace duckdb {
 
-using block_json::JsonParser;
-using block_json::JVal;
+using json_tree::JVal;
 
 namespace {
 
@@ -143,8 +142,7 @@ unique_ptr<FunctionData> TableReadBind(ClientContext &context, TableFunctionBind
 		throw InvalidInputException("duck_block_table_read: the table content is NULL");
 	}
 	auto text = arg.GetValue<string>();
-	JsonParser parser(text);
-	auto root = parser.Parse();
+	auto root = json_tree::Parse(text);
 	const JVal *headers = root.type == JVal::Type::OBJECT ? root.Find("headers") : nullptr;
 	if (!headers || headers->type != JVal::Type::ARRAY) {
 		throw InvalidInputException("duck_block_table_read: expected a table block's content, "

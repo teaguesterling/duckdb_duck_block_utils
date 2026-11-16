@@ -1,6 +1,6 @@
 #include "render_ansi.hpp"
 #include "block_types.hpp"
-#include "block_json.hpp"
+#include "json_tree.hpp"
 #include "register_helper.hpp"
 #include "duckdb/common/types/value.hpp"
 #include "utf8proc_wrapper.hpp"
@@ -15,8 +15,7 @@
 
 namespace duckdb {
 
-using block_json::JsonParser;
-using block_json::JVal;
+using json_tree::JVal;
 
 namespace {
 
@@ -1206,13 +1205,12 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 		} else if (element_type == BlockTypes::TYPE_CODE) {
 			RenderCode(content, GetAttribute(block, "language"), theme, lines);
 		} else if (element_type == BlockTypes::TYPE_LIST && !content.empty() &&
-		           JsonParser(content).Parse().type != JVal::Type::ARRAY) {
+		           json_tree::Parse(content).type != JVal::Type::ARRAY) {
 			// Content that is not a JSON items array. Rendering nothing loses it
 			// silently; a malformed list is still text somebody wrote.
 			RenderParagraph(content, width, lines);
 		} else if (element_type == BlockTypes::TYPE_LIST) {
-			JsonParser parser(content);
-			auto items = parser.Parse();
+			auto items = json_tree::Parse(content);
 			if (items.type == JVal::Type::ARRAY) {
 				// Read BOTH names, as the structural path above does. A producer writing
 				// only list_type with JSON content rendered as bullets otherwise -- the
@@ -1223,8 +1221,7 @@ static string RenderDocument(const Value &blocks_val, size_t width, const ThemeP
 				                0, width, theme, lines);
 			}
 		} else if (element_type == BlockTypes::TYPE_TABLE) {
-			JsonParser parser(content);
-			auto table = parser.Parse();
+			auto table = json_tree::Parse(content);
 			if (table.type == JVal::Type::OBJECT) {
 				RenderTable(table, width, theme, lines);
 			}

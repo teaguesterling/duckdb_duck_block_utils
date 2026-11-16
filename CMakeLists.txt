@@ -13,6 +13,9 @@ include_directories(src/include)
 # publishes -- a copy here would be the drift the vendored header's own comment
 # warns about.
 include_directories(vendor)
+# JSON content (list items, table cells) is parsed with the yyjson that DuckDB
+# vendors for its json extension. This extension keeps no JSON parser of its own.
+include_directories(duckdb/third_party/yyjson/include)
 
 set(EXTENSION_SOURCES
     src/duck_block_utils_extension.cpp
@@ -35,6 +38,8 @@ set(EXTENSION_SOURCES
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
+target_link_libraries(${EXTENSION_NAME} duckdb_yyjson)
+target_link_libraries(${LOADABLE_EXTENSION_NAME} duckdb_yyjson)
 
 # Windows MSVC needs /std:c++17 to compile duckdb's vendored fmt/format.h (which
 # uses C++17 inline variables). MSVC defaults to /std:c++14. duckdb's own

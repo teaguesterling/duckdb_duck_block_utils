@@ -481,13 +481,14 @@ SELECT duck_blocks_to_text(escaped_table('{"headers":["rows",""],"rows":[["heade
 ----
 rows | headers | z
 
-# A malformed \u escape (fewer than four hex digits) must not swallow the
-# closing quote and run the next cell into this one. It decodes like any other
-# unknown escape: the backslash goes, the letter stays.
+# Content that is not valid JSON (here a \u escape with fewer than four hex
+# digits) is not a native table. Its text is the content as written, so a
+# search still finds it. An empty result would drop the words silently, and a
+# lenient parse used to run the cells together.
 query I
 SELECT duck_blocks_to_text(escaped_table('{"headers":["a\u12"],"rows":[["b"]]}'), ' | ');
 ----
-au12 | b
+{"headers":["a\u12"],"rows":[["b"]]}
 
 # Nesting is bounded. The parser recurses per level, so unbounded depth was a
 # stack overflow in a function that runs over every table in a search.
