@@ -16,7 +16,6 @@
 #include "render_macros.hpp"
 #include "render_ansi.hpp"
 #include "doc_macros.hpp"
-#include "table_read.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/function/scalar_function.hpp"
@@ -60,9 +59,6 @@ static void LoadInternal(ExtensionLoader &loader) {
 
 	// Phase 10: Unified Document & AST Query Pipeline Macros
 	DocMacros::Register(loader);
-
-	// Phase 11: table block content back to a typed relation (#78)
-	TableReadFunctions::Register(loader);
 }
 
 void DuckBlockUtilsExtension::Load(ExtensionLoader &loader) {
