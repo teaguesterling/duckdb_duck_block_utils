@@ -295,7 +295,7 @@ SELECT duck_blocks_to_compact([
    'attributes':MAP{'heading_level':'2','id':'heading-two'},'element_order':0},
   {'kind':'inline','element_type':'image','content':NULL,'level':2,'encoding':'text',
    'attributes':MAP{'src':'cat.png','width':'200px'},'element_order':1}]::duck_block[]);
--- {"@":"v4.2.0"}       (the version of the build that wrote it; illustrative)
+-- {"@":"4.2.0"}        (the version of the code tables)
 -- {"t":"H","c":"Heading Two","l":1,"a":{"h":"2","i":"heading-two"}}
 -- {"t":"g","l":2,"a":{"u":"cat.png"},"m":{"width":"200px"}}
 

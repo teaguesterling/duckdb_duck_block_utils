@@ -830,13 +830,12 @@ SELECT duck_blocks_to_compact([
 ```
 
 ```
-{"@":"v4.2.0"}
+{"@":"4.2.0"}
 {"t":"H","c":"Heading Two","l":1,"a":{"h":"2","i":"heading-two"}}
 {"t":"g","l":2,"a":{"u":"cat.png"},"m":{"width":"200px"}}
 ```
 
-The header carries the version of the build that wrote it. `v4.2.0` above is
-illustrative; a development build writes its commit hash instead.
+The header carries the version of the code tables, `4.2.0` here.
 
 The format does not carry a NULL `level`, `encoding`, `attributes` map or attribute
 value. The writer stops with an error on one, rather than writing a default the element
@@ -889,9 +888,12 @@ Measured on one machine: 486,000 lines in four files read in 1.4 s, with every
 
 ### The header, and versions
 
-The first line is `{"@":"<version>"}`, the duck_block_utils version that wrote the file,
-as `duckdb_extensions()` reports it. The code tables below are versioned with
-duck_block_utils, so the header names the table a file was written with.
+The first line is `{"@":"<table version>"}`. The code tables below are versioned with
+duck_block_utils, and the header names the version of the TABLE a file was written
+with: `TABLE_VERSION` in `vendor/duck_block_compact.hpp`, the duck_block_utils release
+that last changed the tables. It is a constant, not the running build's version, so
+every writer of the format (these macros, and anything that vendors that header, such
+as duckdb_panduck) stamps the same value for the same table.
 
 Codes are only ever ADDED, never changed or reused. A reader refuses a type code or an
 attribute code it does not know, so a file written with a newer table fails loudly on an
@@ -949,8 +951,9 @@ The value symbols avoid `"` and `\`, which JSON would escape, and `:`, which mar
 | `o` | ordered | `g` | language | `x` | execution_count |
 | `d` | number_delim | `y` | number_style | `e` | title |
 
-The source of both tables is the `DBU_COMPACT_*` pieces in `src/doc_macros.cpp`, which
-all three functions share. A key without a code goes in `m`, and every reader keeps it.
+The source of both tables is `vendor/duck_block_compact.hpp`. duck_block_utils builds
+the three functions' SQL from its arrays at load, and the header also carries a C++
+codec for an extension that cannot load duck_block_utils. A key without a code goes in `m`, and every reader keeps it.
 
 ---
 
