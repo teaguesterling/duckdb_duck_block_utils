@@ -114,7 +114,7 @@ def main() -> int:
         shutil.copy(VOCAB, inc / VOCAB.name)
         probe = Path(td) / "probe.cpp"
         probe.write_text(PROBE)
-        args = [cxx, "-std=c++11", "-fsyntax-only", f"-I{inc}", f"-I{duckdb_inc}"]
+        args = [cxx, "-std=c++17", "-fsyntax-only", f"-I{inc}", f"-I{duckdb_inc}"]
         tp = REPO / "duckdb" / "third_party"
         args += [f"-I{tp / d}" for d in THIRD_PARTY if (tp / d).is_dir()]
         args.append(str(probe))
