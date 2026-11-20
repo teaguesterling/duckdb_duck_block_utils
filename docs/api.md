@@ -801,11 +801,12 @@ Return document summary (block counts, heading levels, etc.).
 ## Compact Line Format
 
 A small text form of a duck_block list: one JSON object per line, one line per element,
-in `element_order` order. Field names are one letter, types and attribute keys are short
-codes, and NULL or default fields are left out. The line number, from 0, is the order,
-so `element_order` is not written. It reads back with plain DuckDB SQL.
+in `element_order` order, after one header line. Field names are one letter, types and
+attribute keys are short codes, and NULL or default fields are left out. The line
+number of an element, from 0, is its order, so `element_order` is not written. It reads
+back with plain DuckDB SQL.
 
-Measured on 16 duckdb_panduck fixtures: 0.52 of pandoc JSON raw and 0.91 with zstd,
+Measured on 16 duckdb_panduck fixtures: 0.53 of pandoc JSON raw and 0.92 with zstd,
 against 1.68 and 1.37 for `COPY ... (FORMAT json)` of the same rows. The design and
 measurements are in duckdb_panduck
 `docs/superpowers/specs/2026-11-19-compact-blocks-line-format-design.md`.
@@ -816,8 +817,9 @@ measurements are in duckdb_panduck
 duck_blocks_to_compact(blocks LIST(duck_block)) → VARCHAR
 ```
 
-Write the list as compact lines. Every line ends with a newline, including the last, so
-outputs concatenate. An empty list gives `''`.
+Write the list as compact lines. The first line is the header, then one line per
+element. Every line ends with a newline, including the last, so outputs concatenate. An
+empty list gives the header alone.
 
 ```sql
 SELECT duck_blocks_to_compact([
@@ -828,9 +830,13 @@ SELECT duck_blocks_to_compact([
 ```
 
 ```
-{"t":"h","c":"Heading Two","l":1,"a":{"h":"2","i":"heading-two"}}
+{"@":"v4.2.0"}
+{"t":"H","c":"Heading Two","l":1,"a":{"h":"2","i":"heading-two"}}
 {"t":"g","l":2,"a":{"u":"cat.png"},"m":{"width":"200px"}}
 ```
+
+The header carries the version of the build that wrote it. `v4.2.0` above is
+illustrative; a development build writes its commit hash instead.
 
 The format does not carry a NULL `level`, `encoding`, `attributes` map or attribute
 value. The writer stops with an error on one, rather than writing a default the element
@@ -850,10 +856,13 @@ TO 'doc.compact.jsonl' (FORMAT csv, HEADER false, QUOTE '', ESCAPE '', DELIMITER
 duck_blocks_from_compact(compact VARCHAR) → LIST(duck_block)
 ```
 
-Read compact lines back. `element_order` is the line's position, from 0, counted over
-non-empty lines, so input order gaps come back dense. Empty lines are skipped. A line
-without `l`, or with a type code that is neither in the table nor of the form
-`kind:element_type`, is refused with an error.
+Read compact lines back. `element_order` is the element's position, from 0, counted
+over element lines only, so input order gaps come back dense. Empty lines and header
+lines are skipped. These are refused with an error:
+
+- a line without `l`
+- a type code that is neither in the table nor of the form `kind:element_type`
+- an attribute code in `a` that is not in the table
 
 `attributes` comes back sorted by key. `a` and `m` are two objects, so the format cannot
 keep the source's key order across them. DuckDB compares MAPs in key order, so an
@@ -869,6 +878,17 @@ read_compact_blocks(path VARCHAR) → TABLE(kind, element_type, content, level, 
 Read one or more compact files (a glob works) as rows: the seven canonical fields, then
 `filename` (spec 6.4), so `list(b)` binds as a duck_block list. Rows are ordered by
 `filename`, then `element_order`.
+
+### The header, and versions
+
+The first line is `{"@":"<version>"}`, the duck_block_utils version that wrote the file,
+as `duckdb_extensions()` reports it. The code tables below are versioned with
+duck_block_utils, so the header names the table a file was written with.
+
+Codes are only ever ADDED, never changed or reused. A reader refuses a type code or an
+attribute code it does not know, so a file written with a newer table fails loudly on an
+older reader instead of losing a field. A line with `@` and no `t` is a header wherever
+it appears, so concatenated files read as one document.
 
 ### The fields
 
@@ -887,22 +907,27 @@ because DuckDB treats STRUCT field names that way.
 
 ### Type codes
 
-Type codes are values, so case is significant: `C` is a code block, `c` is inline code.
+A block is UPPERCASE, an inline is lowercase, and a value is a symbol. A type that is
+both a block and an inline has one letter in both cases: `C` is a code block, `c` is
+inline code. Every type in the spec 1.4 vocabulary has a code. Any other type is written
+as `kind:element_type`, for example `inline:caption`.
 
-| Code | Type | Code | Type | Code | Type |
+| Block | | Inline | | Value | |
 |---|---|---|---|---|---|
-| `h` | block heading | `x` | inline text | `v` | inline subscript |
-| `p` | block paragraph | `S` | inline space | `u` | inline superscript |
-| `i` | block list_item | `b` | inline bold | `z` | inline cite |
-| `l` | block list | `e` | inline italic | `w` | inline raw |
-| `q` | block blockquote | `c` | inline code | `o` | inline caption |
-| `C` | block code | `k` | inline strikethrough | `y` | inline span |
-| `d` | block div | `a` | inline link | `B` | inline linebreak |
-| `T` | block table | `N` | inline note | `j` | inline softbreak |
-| `R` | block raw | `g` | inline image | `V` | value inlines |
-| `r` | block hr | `s` | block section | `L` | value list |
-| `f` | block figure | `P` | block plain | `Z` | value string |
-| `n` | block caption | | | `M` | value map |
+| `O` document | `T` table | `t` text | `i` italic | `$` string | |
+| `H` heading | `R` hr | `s` space | `k` strikethrough | `?` bool | |
+| `P` paragraph | `K` page_break | `j` softbreak | `u` superscript | `[` list | |
+| `N` plain | `M` metadata | `r` linebreak | `d` subscript | `{` map | |
+| `C` code | `G` image | `c` code | `z` smallcaps | `~` inlines | |
+| `Q` blockquote | `W` raw | `m` math | `l` underline | `#` blocks | |
+| `L` list | `D` div | `w` raw | `a` link | `@` version | |
+| `I` list_item | `S` section | `b` bold | `g` image | `*` generic | |
+| `E` deflist | `F` figure | `q` quoted | `p` span | | |
+| `B` lineblock | `A` caption | `e` cite | `f` note | | |
+| `X` generic | | `x` generic | | | |
+
+The value symbols avoid `"` and `\`, which JSON would escape, and `:`, which marks the
+`kind:element_type` escape.
 
 ### Attribute codes
 
@@ -916,10 +941,8 @@ Type codes are values, so case is significant: `C` is a code block, `c` is inlin
 | `o` | ordered | `g` | language | `x` | execution_count |
 | `d` | number_delim | `y` | number_style | `e` | title |
 
-The source of both tables is the macro text in `src/doc_macros.cpp`. Adding a code
-changes the format: a file written with a longer table puts that key in `a`, where an
-older reader does not look for it. Until a key has a code, it goes in `m`, and every
-reader keeps it.
+The source of both tables is the macro text in `src/doc_macros.cpp`. A key without a
+code goes in `m`, and every reader keeps it.
 
 ---
 
