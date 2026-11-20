@@ -631,3 +631,40 @@ statement error
 SELECT count(*) FROM read_compact_blocks('test/fixtures/compact/golden/error_missing_level.dblocks');
 ----
 missing level
+
+# ---------------------------------------------------------------------------------------
+# A REFUSAL MUST NOT DEPEND ON WHICH COLUMNS A QUERY READS. On DuckDB v2.1-dev (the
+# canary, run 44779793482), count(*) over error_type_code.dblocks returned 1: the type
+# decode that raises the error feeds only `kind` and `element_type`, and a count(*) reads
+# neither, so the newer optimizer never evaluated it. Each refusal is now also a row
+# filter, which runs whatever is projected. These are the shapes that read no decoded
+# column at all: a count(*) and a list length.
+statement error
+SELECT count(*) FROM read_compact_blocks('test/fixtures/compact/golden/error_attribute_code.dblocks');
+----
+unknown attribute code
+
+statement error
+SELECT count(*) FROM read_compact_blocks('test/fixtures/compact/golden/error_missing_level.dblocks');
+----
+missing level
+
+statement error
+SELECT count(filename) FROM read_compact_blocks('test/fixtures/compact/golden/error_type_code.dblocks');
+----
+unknown type code
+
+statement error
+SELECT len(duck_blocks_from_compact(content)) FROM read_text('test/fixtures/compact/golden/error_type_code.dblocks');
+----
+unknown type code
+
+statement error
+SELECT len(duck_blocks_from_compact(content)) FROM read_text('test/fixtures/compact/golden/error_attribute_code.dblocks');
+----
+unknown attribute code
+
+statement error
+SELECT len(duck_blocks_from_compact(content)) FROM read_text('test/fixtures/compact/golden/error_missing_level.dblocks');
+----
+missing level
