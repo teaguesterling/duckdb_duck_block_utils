@@ -234,7 +234,7 @@ CREATE TABLE fixtures AS
 SELECT parse_filename(filename) AS name,
        list(struct_pack(kind, element_type, content, level, encoding, attributes, element_order)
             ORDER BY element_order)::duck_block[] AS blocks
-FROM read_json('test_fixtures/compact/*.blocks.jsonl', format := 'newline_delimited', filename := true,
+FROM read_json('test/fixtures/compact/*.blocks.jsonl', format := 'newline_delimited', filename := true,
   columns := {kind: 'VARCHAR', element_type: 'VARCHAR', content: 'VARCHAR', level: 'INTEGER',
               encoding: 'VARCHAR', attributes: 'MAP(VARCHAR, VARCHAR)', element_order: 'INTEGER'})
 GROUP BY filename;
@@ -301,3 +301,42 @@ encoding
 attributes
 element_order
 filename
+
+# ---------------------------------------------------------------------------------------
+# A GLOB reads each file on its own: element_order restarts at 0 in every file, and the
+# rows come grouped by filename.
+statement ok
+COPY (SELECT rtrim(duck_blocks_to_compact([
+  {'kind':'block','element_type':'paragraph','content':'a0','level':1,'encoding':'text',
+   'attributes':MAP{}::MAP(VARCHAR, VARCHAR),'element_order':0},
+  {'kind':'block','element_type':'paragraph','content':'a1','level':1,'encoding':'text',
+   'attributes':MAP{}::MAP(VARCHAR, VARCHAR),'element_order':1}]::duck_block[]), chr(10)))
+TO '{TEST_DIR}/glob_a.compact.jsonl' (FORMAT csv, HEADER false, QUOTE '', ESCAPE '', DELIMITER E'\x01');
+
+statement ok
+COPY (SELECT rtrim(duck_blocks_to_compact([
+  {'kind':'block','element_type':'paragraph','content':'b0','level':1,'encoding':'text',
+   'attributes':MAP{}::MAP(VARCHAR, VARCHAR),'element_order':0}]::duck_block[]), chr(10)))
+TO '{TEST_DIR}/glob_b.compact.jsonl' (FORMAT csv, HEADER false, QUOTE '', ESCAPE '', DELIMITER E'\x01');
+
+query III
+SELECT parse_filename(filename), element_order, content
+FROM read_compact_blocks('{TEST_DIR}/glob_*.compact.jsonl');
+----
+glob_a.compact.jsonl	0	a0
+glob_a.compact.jsonl	1	a1
+glob_b.compact.jsonl	0	b0
+
+# ---------------------------------------------------------------------------------------
+# ATTRIBUTE KEYS COME BACK SORTED. `a` and `m` are two objects, so the format cannot keep
+# the source's key order across them; the reader sorts instead. DuckDB compares MAPs in
+# key order (MAP{'b':'1','a':'2'} = MAP{'a':'2','b':'1'} is false), so an element whose
+# map was NOT sorted reads back as the sorted map, not as itself.
+query II
+SELECT b.attributes::VARCHAR,
+       b.attributes = MAP{'class':'x', 'lang':'fr', 'zeta':'1'}
+FROM (SELECT unnest(duck_blocks_from_compact(duck_blocks_to_compact([
+  {'kind':'inline','element_type':'span','content':NULL,'level':1,'encoding':'text',
+   'attributes':MAP{'zeta':'1', 'class':'x', 'lang':'fr'},'element_order':0}]::duck_block[]))) AS b);
+----
+{class=x, lang=fr, zeta=1}	true
