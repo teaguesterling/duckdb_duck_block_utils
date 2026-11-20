@@ -448,3 +448,94 @@ query I
 SELECT duck_blocks_to_compact([duck_block_heading('Intro', 1)]) = compact_header() || '{"t":"H","c":"Intro","l":1,"a":{"h":"1"}}' || chr(10);
 ----
 true
+
+# ---------------------------------------------------------------------------------------
+# SCALE. The reader must STREAM: its cost grows with the file, not with the square of it.
+# The first reader was a scalar macro whose body was a subquery; given a column (as
+# read_compact_blocks gave it read_text's content), DuckDB ran it as a correlated
+# subquery. Measured: 3,888 elements took 2.2 s, and 15,552 elements ran out of memory
+# at 16 GB. No reader may hold more than a small multiple of the file in memory, so
+# these run under a 500 MB limit. The document is the three fixtures repeated, so it has
+# attributes on most elements -- the 4,000-paragraph test above has none and passed.
+statement ok
+CREATE TABLE scale AS
+SELECT list(struct_pack(kind, element_type, content, level, encoding, attributes,
+                        element_order := o::INTEGER) ORDER BY o)::duck_block[] AS blocks
+FROM (SELECT f.*, row_number() OVER (ORDER BY r.range, f.name, f.element_order) - 1 AS o
+      FROM (SELECT parse_filename(filename) AS name, *
+            FROM read_json('test/fixtures/compact/*.blocks.jsonl', format := 'newline_delimited', filename := true,
+              columns := {kind: 'VARCHAR', element_type: 'VARCHAR', content: 'VARCHAR', level: 'INTEGER',
+                          encoding: 'VARCHAR', attributes: 'MAP(VARCHAR, VARCHAR)', element_order: 'INTEGER'})) f,
+           range(170) r);
+
+statement ok
+COPY (SELECT rtrim(duck_blocks_to_compact(blocks), chr(10)) FROM scale)
+TO '{TEST_DIR}/scale.compact.jsonl' (FORMAT csv, HEADER false, QUOTE '', ESCAPE '', DELIMITER E'\x01');
+
+statement ok
+CREATE TABLE scale_text AS SELECT duck_blocks_to_compact(blocks) AS c FROM scale;
+
+statement ok
+SET memory_limit = '500MB';
+
+query II
+SELECT count(*), list(b ORDER BY b.element_order)::duck_block[] = (SELECT blocks FROM scale)
+FROM (SELECT kind, element_type, content, level, encoding, attributes, element_order
+      FROM read_compact_blocks('{TEST_DIR}/scale.compact.jsonl')) b;
+----
+15470	true
+
+# The scalar reader on a COLUMN, the shape that was correlated.
+query II
+SELECT len(duck_blocks_from_compact(c)), duck_blocks_from_compact(c) = (SELECT blocks FROM scale) FROM scale_text;
+----
+15470	true
+
+# The writer on a column, at the same size.
+query I
+SELECT duck_blocks_to_compact(blocks) = (SELECT c FROM scale_text) FROM scale;
+----
+true
+
+statement ok
+RESET memory_limit;
+
+# ---------------------------------------------------------------------------------------
+# A GLOB AT SCALE keeps each file's own order. Each file restarts at 0 and its rows come
+# back in file order -- checked by content, which records each element's true position.
+statement ok
+COPY (SELECT rtrim(duck_blocks_to_compact(list({'kind':'block','element_type':'paragraph','content':'big_a:' || i::VARCHAR,
+  'level':1,'encoding':'text','attributes':MAP{'id':'a' || i::VARCHAR},'element_order':i::INTEGER} ORDER BY i)::duck_block[]), chr(10))
+  FROM range(30000) t(i))
+TO '{TEST_DIR}/big_a.compact.jsonl' (FORMAT csv, HEADER false, QUOTE '', ESCAPE '', DELIMITER E'\x01');
+
+statement ok
+COPY (SELECT rtrim(duck_blocks_to_compact(list({'kind':'block','element_type':'paragraph','content':'big_b:' || i::VARCHAR,
+  'level':1,'encoding':'text','attributes':MAP{'id':'b' || i::VARCHAR},'element_order':i::INTEGER} ORDER BY i)::duck_block[]), chr(10))
+  FROM range(20000) t(i))
+TO '{TEST_DIR}/big_b.compact.jsonl' (FORMAT csv, HEADER false, QUOTE '', ESCAPE '', DELIMITER E'\x01');
+
+statement ok
+SET threads = 8;
+
+query II
+SELECT count(*),
+       count(*) FILTER (WHERE content <> split_part(parse_filename(filename), '.', 1) || ':' || element_order::VARCHAR)
+FROM read_compact_blocks('{TEST_DIR}/big_*.compact.jsonl');
+----
+50000	0
+
+# ---------------------------------------------------------------------------------------
+# ORDER RESTS ON preserve_insertion_order. read_compact_blocks numbers lines in the order
+# DuckDB's scan returns them, which is file order only while preserve_insertion_order is
+# on (the default). With it off, the reader refuses rather than misnumber.
+statement ok
+SET preserve_insertion_order = false;
+
+statement error
+SELECT count(*) FROM read_compact_blocks('{TEST_DIR}/big_a.compact.jsonl');
+----
+preserve_insertion_order
+
+statement ok
+RESET preserve_insertion_order;
