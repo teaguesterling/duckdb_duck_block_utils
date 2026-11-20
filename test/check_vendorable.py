@@ -16,6 +16,10 @@ refused duck_block_utils by every route, which is why these files exist at all.
                              block_types.hpp or normalize.hpp fails here rather than
                              at a consumer's build.
 
+  duck_block_compact.hpp     the compact line format's code tables and its C++ codec;
+                             probed the same way, in the same translation unit, with
+                             yyjson (DuckDB's bundled copy) the only addition.
+
   duck_block_conformance.sql covered by check_conformance_macro.py, which compares it
                              against the real validator rather than merely running it.
 
@@ -36,10 +40,14 @@ VENDOR = REPO / "vendor"
 VOCAB = REPO / "src" / "include" / "duck_block_vocabulary.hpp"
 
 PROBE = """#include "duck_block_normalize.hpp"
+#include "duck_block_compact.hpp"
 int main() {
     duckdb::vector<duckdb::Value> v;
     duckdb::duck_block::CollapseLonePlainIntoParent(v, duckdb::LogicalType::VARCHAR);
-    return (int)v.size();
+    std::string out = duckdb::duck_block::compact::Write(v);
+    duckdb::vector<duckdb::Value> back;
+    duckdb::duck_block::compact::Read(out, duckdb::LogicalType::VARCHAR, back);
+    return (int)(v.size() + back.size() + out.size());
 }
 """
 
@@ -101,16 +109,19 @@ def main() -> int:
     if not duckdb_inc.is_dir():
         return skip("no duckdb source tree, cannot probe the header as a consumer would")
 
-    hdr = VENDOR / "duck_block_normalize.hpp"
-    if not hdr.exists():
-        print("FAIL: vendor/duck_block_normalize.hpp is missing.")
+    headers = [VENDOR / "duck_block_normalize.hpp", VENDOR / "duck_block_compact.hpp"]
+    missing = [h.name for h in headers if not h.exists()]
+    if missing:
+        print("FAIL: vendor/ is missing " + ", ".join(missing) + ".")
         return 1
 
     with tempfile.TemporaryDirectory() as td:
         inc = Path(td) / "inc"
         inc.mkdir()
-        # ONLY these two. No src/include on the path -- that is the whole point.
-        shutil.copy(hdr, inc / hdr.name)
+        # ONLY the vendored headers and the vocabulary. No src/include on the path --
+        # that is the whole point.
+        for hdr in headers:
+            shutil.copy(hdr, inc / hdr.name)
         shutil.copy(VOCAB, inc / VOCAB.name)
         probe = Path(td) / "probe.cpp"
         probe.write_text(PROBE)
@@ -120,14 +131,14 @@ def main() -> int:
         args.append(str(probe))
         proc = subprocess.run(args, capture_output=True, text=True)
         if proc.returncode != 0:
-            print("\nFAIL: duck_block_normalize.hpp does not compile as a vendored file.")
+            print("\nFAIL: the vendored headers do not compile as vendored files.")
             print("      It was compiled with ONLY itself, duck_block_vocabulary.hpp and DuckDB")
             print("      on the include path -- which is what a consumer has. An include of")
             print("      block_types.hpp or anything else from this repo fails here.")
             print("      " + "\n      ".join(proc.stderr.strip().splitlines()[:6]))
             return 1
 
-    print("  duck_block_normalize.hpp compiles with only the vocabulary header + DuckDB")
+    print("  duck_block_normalize.hpp and duck_block_compact.hpp compile with only the vocabulary header + DuckDB")
     print("OK: vendor/ is consumable as copied files.")
     return 0
 

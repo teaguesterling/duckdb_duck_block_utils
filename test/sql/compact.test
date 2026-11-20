@@ -24,9 +24,12 @@ require json
 #
 # element_order is NOT written: the line number, from 0, is the order.
 #
-# THE FIRST LINE IS A HEADER, not an element: {"@":"<duck_block_utils version>"}. The type
-# and attribute code tables are versioned with duck_block_utils, so the header names the
-# table a file was written with. A line with "@" and no "t" is a header wherever it
+# THE FIRST LINE IS A HEADER, not an element: {"@":"<table version>"}. The type and
+# attribute code tables are versioned with duck_block_utils, and the header names the
+# version of the TABLE a file was written with -- a constant in
+# vendor/duck_block_compact.hpp, the duck_block_utils release that last changed the
+# tables. It is not the running build's version: panduck writes the same format from the
+# vendored header and cannot know that, and both writers must stamp the same thing. A line with "@" and no "t" is a header wherever it
 # appears, so concatenated files still read.
 #
 # TYPE CODES FOLLOW A CONVENTION: a block is UPPERCASE, an inline is lowercase, a value is
@@ -36,15 +39,14 @@ require json
 # compact_header(): the exact header this build writes. compact_body(s): the lines after
 # the header, with newlines shown as \n, for the exact-output tests below.
 statement ok
-CREATE MACRO compact_header() AS
-  '{"@":' || to_json((SELECT extension_version FROM duckdb_extensions() WHERE extension_name = 'duck_block_utils')) || '}' || chr(10);
+CREATE MACRO compact_header() AS '{"@":"4.2.0"}' || chr(10);
 
 statement ok
 CREATE MACRO compact_body(s) AS replace(s[length(compact_header()) + 1:], chr(10), '\n');
 
 # ---------------------------------------------------------------------------------------
 # THE HEADER. It is the first line, it is one JSON object whose only key is "@", and its
-# value is the extension version DuckDB reports for this build.
+# value is the table version.
 query II
 SELECT starts_with(duck_blocks_to_compact([]::duck_block[]), compact_header()),
        json_keys(rtrim(compact_header(), chr(10)));
@@ -539,3 +541,56 @@ preserve_insertion_order
 
 statement ok
 RESET preserve_insertion_order;
+
+# ---------------------------------------------------------------------------------------
+# THE GOLDEN CORPUS (test/fixtures/compact/golden). Every implementation of the format
+# must agree on it: these SQL macros, and the C++ codec in vendor/duck_block_compact.hpp
+# that duckdb_panduck vendors. duck_block_utils never calls the C++ codec, so these files
+# are what ties the two together; panduck's tests read the same files.
+#
+# Each <name>.dblocks reads to exactly the rows in <name>.expected.jsonl, and those rows
+# write back to the .dblocks byte for byte.
+statement ok
+CREATE TABLE golden AS
+SELECT split_part(parse_filename(filename), '.expected', 1) AS name,
+       list(struct_pack(kind, element_type, content, level, encoding, attributes, element_order)
+            ORDER BY element_order)::duck_block[] AS blocks
+FROM read_json('test/fixtures/compact/golden/*.expected.jsonl', format := 'newline_delimited', filename := true,
+  columns := {kind: 'VARCHAR', element_type: 'VARCHAR', content: 'VARCHAR', level: 'INTEGER',
+              encoding: 'VARCHAR', attributes: 'MAP(VARCHAR, VARCHAR)', element_order: 'INTEGER'})
+GROUP BY filename;
+
+query IIII
+SELECT g.name, len(g.blocks),
+       (SELECT list(struct_pack(kind, element_type, content, level, encoding, attributes, element_order)
+                    ORDER BY element_order)::duck_block[]
+        FROM read_compact_blocks('test/fixtures/compact/golden/' || g.name || '.dblocks')) = g.blocks,
+       duck_blocks_to_compact(g.blocks) = (SELECT content FROM read_text('test/fixtures/compact/golden/' || g.name || '.dblocks'))
+FROM golden g ORDER BY 1;
+----
+constructs.rst	49	true	true
+every_type	50	true	true
+hard	10	true	true
+notebook.ipynb	18	true	true
+pandoc.epub	24	true	true
+
+query I
+SELECT string_agg(element_order || ':' || content, ' ' ORDER BY element_order)
+FROM read_compact_blocks('test/fixtures/compact/golden/concat.dblocks');
+----
+0:one 1:two
+
+statement error
+SELECT count(*) FROM read_compact_blocks('test/fixtures/compact/golden/error_type_code.dblocks');
+----
+unknown type code
+
+statement error
+SELECT count(*) FROM read_compact_blocks('test/fixtures/compact/golden/error_attribute_code.dblocks');
+----
+unknown attribute code
+
+statement error
+SELECT count(*) FROM read_compact_blocks('test/fixtures/compact/golden/error_missing_level.dblocks');
+----
+missing level
