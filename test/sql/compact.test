@@ -555,24 +555,61 @@ CREATE TABLE golden AS
 SELECT split_part(parse_filename(filename), '.expected', 1) AS name,
        list(struct_pack(kind, element_type, content, level, encoding, attributes, element_order)
             ORDER BY element_order)::duck_block[] AS blocks
-FROM read_json('test/fixtures/compact/golden/*.expected.jsonl', format := 'newline_delimited', filename := true,
+FROM read_json(['test/fixtures/compact/golden/constructs.rst.expected.jsonl',
+                'test/fixtures/compact/golden/every_type.expected.jsonl',
+                'test/fixtures/compact/golden/hard.expected.jsonl',
+                'test/fixtures/compact/golden/notebook.ipynb.expected.jsonl',
+                'test/fixtures/compact/golden/pandoc.epub.expected.jsonl'], format := 'newline_delimited', filename := true,
   columns := {kind: 'VARCHAR', element_type: 'VARCHAR', content: 'VARCHAR', level: 'INTEGER',
               encoding: 'VARCHAR', attributes: 'MAP(VARCHAR, VARCHAR)', element_order: 'INTEGER'})
 GROUP BY filename;
 
+# read_compact_blocks takes literal paths only (read_json does), so all five files are
+# read in one call and matched to their expected rows by name.
+statement ok
+CREATE TABLE golden_read AS
+SELECT split_part(parse_filename(filename), '.dblocks', 1) AS name,
+       list(struct_pack(kind, element_type, content, level, encoding, attributes, element_order)
+            ORDER BY element_order)::duck_block[] AS blocks
+FROM read_compact_blocks(['test/fixtures/compact/golden/constructs.rst.dblocks',
+                          'test/fixtures/compact/golden/every_type.dblocks',
+                          'test/fixtures/compact/golden/hard.dblocks',
+                          'test/fixtures/compact/golden/notebook.ipynb.dblocks',
+                          'test/fixtures/compact/golden/pandoc.epub.dblocks'])
+GROUP BY filename;
+
+statement ok
+CREATE TABLE golden_text AS
+SELECT split_part(parse_filename(filename), '.dblocks', 1) AS name, content
+FROM read_text(['test/fixtures/compact/golden/constructs.rst.dblocks',
+                'test/fixtures/compact/golden/every_type.dblocks',
+                'test/fixtures/compact/golden/hard.dblocks',
+                'test/fixtures/compact/golden/notebook.ipynb.dblocks',
+                'test/fixtures/compact/golden/pandoc.epub.dblocks']);
+
 query IIII
-SELECT g.name, len(g.blocks),
-       (SELECT list(struct_pack(kind, element_type, content, level, encoding, attributes, element_order)
-                    ORDER BY element_order)::duck_block[]
-        FROM read_compact_blocks('test/fixtures/compact/golden/' || g.name || '.dblocks')) = g.blocks,
-       duck_blocks_to_compact(g.blocks) = (SELECT content FROM read_text('test/fixtures/compact/golden/' || g.name || '.dblocks'))
-FROM golden g ORDER BY 1;
+SELECT g.name, len(g.blocks), r.blocks = g.blocks, duck_blocks_to_compact(g.blocks) = t.content
+FROM golden g JOIN golden_read r USING (name) JOIN golden_text t USING (name) ORDER BY 1;
 ----
 constructs.rst	49	true	true
 every_type	50	true	true
 hard	10	true	true
 notebook.ipynb	18	true	true
 pandoc.epub	24	true	true
+
+# A file whose maps were NOT key-sorted when written reads to SORTED rows, so it is only
+# read: writing the rows back gives the sorted order, not these bytes.
+query I
+SELECT (SELECT list(struct_pack(kind, element_type, content, level, encoding, attributes, element_order)
+                    ORDER BY element_order)::duck_block[]
+        FROM read_compact_blocks('test/fixtures/compact/golden/read_only_unsorted_keys.dblocks'))
+     = (SELECT list(struct_pack(kind, element_type, content, level, encoding, attributes, element_order)
+                    ORDER BY element_order)::duck_block[]
+        FROM read_json('test/fixtures/compact/golden/read_only_unsorted_keys.expected.jsonl', format := 'newline_delimited',
+          columns := {kind: 'VARCHAR', element_type: 'VARCHAR', content: 'VARCHAR', level: 'INTEGER',
+                      encoding: 'VARCHAR', attributes: 'MAP(VARCHAR, VARCHAR)', element_order: 'INTEGER'}));
+----
+true
 
 query I
 SELECT string_agg(element_order || ':' || content, ' ' ORDER BY element_order)
