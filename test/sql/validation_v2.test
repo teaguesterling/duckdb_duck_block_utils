@@ -1078,3 +1078,51 @@ SELECT len(list_filter(duck_blocks_lint([
 ]), lambda x: x.message LIKE '%nested under the inline%'));
 ----
 0
+
+# ============================================================================
+# duck_blocks_normalize KEEPS element_order DENSE (duckdb_panduck#206).
+#
+# The collapse deletes a lone `plain` row and moves its inline children up one
+# level, but it left every later element_order unchanged. So each collapse left a
+# hole: a two-item tight list came back as 0, 1, 3, 5. Measured on pandoc 3.1.3
+# JSON for 16 duckdb_panduck fixtures, 11 had holes, 47 numbers in all.
+# A consumer that takes element_order as a dense index -- or a format that drops
+# the column and uses the line number, as duck_blocks_to_compact does -- gets a
+# different value back.
+#
+# The fix lowers every LATER element_order by one at each deletion. A hole the
+# input already had is not this function's to close, so it survives.
+# ============================================================================
+query I
+SELECT array_to_string(list_transform(duck_blocks_normalize([
+  {'kind':'block','element_type':'list','content':NULL,'level':1,'encoding':'text','attributes':MAP{'list_type':'bullet'},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'list_item','content':NULL,'level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'plain','content':'first','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block,
+  {'kind':'block','element_type':'list_item','content':NULL,'level':2,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block,
+  {'kind':'block','element_type':'plain','content':'second','level':3,'encoding':'text','attributes':MAP{},'element_order':4}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'after','level':1,'encoding':'text','attributes':MAP{},'element_order':5}::duck_block
+]), lambda b: b.element_order || ':' || b.element_type || ':' || coalesce(b.content, '')), ' ');
+----
+0:list: 1:list_item:first 2:list_item:second 3:paragraph:after
+
+# A plain whose text is in its INLINE children: the inlines move up a level AND
+# down one place in the order, so they stay directly after their new parent.
+query I
+SELECT array_to_string(list_transform(duck_blocks_normalize([
+  {'kind':'block','element_type':'list_item','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'plain','content':NULL,'level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'inline','element_type':'text','content':'a','level':3,'encoding':'text','attributes':MAP{},'element_order':2}::duck_block,
+  {'kind':'inline','element_type':'bold','content':'b','level':3,'encoding':'text','attributes':MAP{},'element_order':3}::duck_block
+]), lambda b: b.element_order || ':' || b.level || ':' || b.element_type), ' ');
+----
+0:1:list_item 1:2:text 2:2:bold
+
+# A hole the INPUT already had survives: normalize closes only the holes it makes.
+query I
+SELECT array_to_string(list_transform(duck_blocks_normalize([
+  {'kind':'block','element_type':'list_item','content':NULL,'level':1,'encoding':'text','attributes':MAP{},'element_order':0}::duck_block,
+  {'kind':'block','element_type':'plain','content':'x','level':2,'encoding':'text','attributes':MAP{},'element_order':1}::duck_block,
+  {'kind':'block','element_type':'paragraph','content':'later','level':1,'encoding':'text','attributes':MAP{},'element_order':10}::duck_block
+]), lambda b: b.element_order || ':' || b.element_type), ' ');
+----
+0:list_item 9:paragraph
