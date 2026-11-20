@@ -340,3 +340,11 @@ FROM (SELECT unnest(duck_blocks_from_compact(duck_blocks_to_compact([
    'attributes':MAP{'zeta':'1', 'class':'x', 'lang':'fr'},'element_order':0}]::duck_block[]))) AS b);
 ----
 {class=x, lang=fr, zeta=1}	true
+
+# ---------------------------------------------------------------------------------------
+# A BUILDER'S BLOCK IS WRITABLE. The legacy duck_block_heading(content, level) returned a
+# NULL level, so the writer refused it (#87).
+query I
+SELECT duck_blocks_to_compact([duck_block_heading('Intro', 1)]) = '{"t":"h","c":"Intro","l":1,"a":{"h":"1"}}' || chr(10);
+----
+true
