@@ -16,6 +16,7 @@ This extension complements format-specific document extensions (markdown, HTML, 
 - **Validation**: Check schema compliance and lint for common issues
 - **Pandoc AST conversion**: moved to [panduck](https://github.com/teaguesterling/duckdb_panduck) — `LOAD panduck`; same function names (see below)
 - **Conversion helpers**: Normalize blocks and track provenance
+- **Compact line format**: `duck_blocks_to_compact`, `duck_blocks_from_compact`, `read_compact_blocks` — a small JSONL form of a duck_block list, one line per element, that reads back with plain SQL ([docs](docs/api.md#compact-line-format))
 - **ANSI terminal rendering**: `PRAGMA duck_block_render` — render documents and query results as styled terminal output, glow-style ([docs](docs/rendering.md))
 - **Page composition & query tables**: `duck_blocks_page`, `duck_blocks_query_table`, `duck_blocks_table` — assemble dashboards that embed live query results as rendered tables
 - **Vocabulary introspection**: `duck_block_kind_names`, `duck_block_type_names`, `duck_block_encoding_names`, `duck_block_spec_version` — so sibling extensions can *assert* they agree with the vocabulary rather than mirroring a header
@@ -274,6 +275,32 @@ is now the single most costly mistake a producer can make here.
 |----------|-------------|
 | `db_blocks_normalize(blocks)` | Convert to core types only |
 | `db_blocks_map_types(blocks, mapping)` | Remap block types |
+
+### Compact Line Format
+
+One JSON object per line, one line per element, with one-letter fields and short codes, and
+NULL or default fields left out. The line number is the order. Measured on 16 duckdb_panduck
+fixtures, it is 0.52 of pandoc JSON raw and 0.91 with zstd. The fields, the code tables and
+the rules are in [docs/api.md](docs/api.md#compact-line-format).
+
+| Function | Description |
+|----------|-------------|
+| `duck_blocks_to_compact(blocks)` | Write a duck_block list as compact lines. Refuses a NULL level, encoding, attributes map or attribute value |
+| `duck_blocks_from_compact(text)` | Read compact lines back into a duck_block list; `element_order` is the line number |
+| `read_compact_blocks(path)` | Read compact files (a glob works) as rows: the seven canonical fields, then `filename` |
+
+```sql
+SELECT duck_blocks_to_compact([
+  {'kind':'block','element_type':'heading','content':'Heading Two','level':1,'encoding':'text',
+   'attributes':MAP{'heading_level':'2','id':'heading-two'},'element_order':0},
+  {'kind':'inline','element_type':'image','content':NULL,'level':2,'encoding':'text',
+   'attributes':MAP{'src':'cat.png','width':'200px'},'element_order':1}]::duck_block[]);
+-- {"t":"h","c":"Heading Two","l":1,"a":{"h":"2","i":"heading-two"}}
+-- {"t":"g","l":2,"a":{"u":"cat.png"},"m":{"width":"200px"}}
+
+-- a document read by any producer
+SELECT duck_blocks_to_compact((SELECT list(b) FROM read_markdown_blocks('doc.md') b));
+```
 
 ### Block Builders (Declarative Construction)
 
