@@ -149,14 +149,13 @@ static vector<Value> FlattenBlockWithChildren(const Value &parent_block, const V
 
 	// Add parent block with the specified level.
 	//
-	// A TOP-LEVEL container carries a NULL level, matching pandoc_ast_to_blocks()
-	// and the spec: `level` is structural nesting DEPTH, and a block that is not
-	// nested has no depth to record. Stamping 1 here made the builders and the
-	// converter disagree about a documented field -- the same class of divergence
-	// this extension exists to prevent, sitting inside it.
+	// `level` is structural nesting DEPTH, and a top-level block carries 1 (spec:
+	// "a TOP-LEVEL element carries 1"). Earlier revisions documented a NULL at top
+	// level; duck_blocks_validate now rejects a NULL level, so the parent always
+	// gets base_level.
 	//
-	// Children are unaffected: level_offset below is computed from `base_level`,
-	// not from what is stored on the parent, so they still start at base_level + 1.
+	// Children start at base_level + 1: level_offset below is computed from
+	// `base_level`.
 	auto parent_children = StructValue::GetChildren(parent_block);
 	parent_children[BlockTypes::LEVEL_IDX] = Value(base_level);
 	parent_children[BlockTypes::ELEMENT_ORDER_IDX] = Value(0);
@@ -232,7 +231,11 @@ void BuilderFunctions::DbHeadingFun(DataChunk &args, ExpressionState &state, Vec
 		if (!heading_level.IsNull()) {
 			attrs[BlockTypes::ATTR_HEADING_LEVEL] = std::to_string(heading_level.GetValue<int32_t>());
 		}
-		SetBlockFields(entries, i, BlockTypes::TYPE_HEADING, content_vec.GetValue(i), Value(),
+		// Level is structural DEPTH, and a top-level block carries 1 (spec 1.4). The
+		// `level` ARGUMENT is the heading's rank, which goes in heading_level above.
+		// This passed NULL, the retired top-level convention, so its block failed
+		// duck_blocks_validate (#87).
+		SetBlockFields(entries, i, BlockTypes::TYPE_HEADING, content_vec.GetValue(i), Value(1),
 		               BlockTypes::ENCODING_TEXT, CreateAttributesMap(attrs));
 	}
 }
