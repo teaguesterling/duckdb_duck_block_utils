@@ -280,7 +280,7 @@ is now the single most costly mistake a producer can make here.
 
 One JSON object per line, one line per element, with one-letter fields and short codes, and
 NULL or default fields left out. The line number is the order. Measured on 16 duckdb_panduck
-fixtures, it is 0.52 of pandoc JSON raw and 0.91 with zstd. The fields, the code tables and
+fixtures, it is 0.53 of pandoc JSON raw and 0.92 with zstd. The fields, the code tables and
 the rules are in [docs/api.md](docs/api.md#compact-line-format).
 
 | Function | Description |
@@ -295,7 +295,8 @@ SELECT duck_blocks_to_compact([
    'attributes':MAP{'heading_level':'2','id':'heading-two'},'element_order':0},
   {'kind':'inline','element_type':'image','content':NULL,'level':2,'encoding':'text',
    'attributes':MAP{'src':'cat.png','width':'200px'},'element_order':1}]::duck_block[]);
--- {"t":"h","c":"Heading Two","l":1,"a":{"h":"2","i":"heading-two"}}
+-- {"@":"v4.2.0"}       (the version of the build that wrote it; illustrative)
+-- {"t":"H","c":"Heading Two","l":1,"a":{"h":"2","i":"heading-two"}}
 -- {"t":"g","l":2,"a":{"u":"cat.png"},"m":{"width":"200px"}}
 
 -- a document read by any producer

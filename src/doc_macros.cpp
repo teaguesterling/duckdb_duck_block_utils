@@ -251,6 +251,15 @@ static const DocScalarMacro DOC_SCALAR_MACROS[] = {
     // 2026-11-19-compact-blocks-line-format-design.md. THESE TWO MACROS ARE THE SOURCE
     // of the type-code and attribute-code tables; docs/api.md restates them.
     //
+    // TYPE CODES: a block is UPPERCASE, an inline is lowercase, a value is a symbol, and
+    // a type that is both a block and an inline has one letter in both cases. Every type
+    // in the vocabulary has a code; anything else is written as kind:element_type.
+    //
+    // THE FIRST LINE IS A HEADER, {"@":"<this extension's version>"}: the code tables are
+    // versioned with duck_block_utils, and codes are only ever ADDED. An older reader
+    // refuses a type or attribute code it does not know, so a file from a newer table
+    // fails loudly instead of losing a field.
+    //
     // A NULL level, encoding, attributes map or attribute value is REFUSED with an
     // error, not written as a default: the format cannot carry it, and a default would
     // read back as a value the element never had.
@@ -259,20 +268,26 @@ static const DocScalarMacro DOC_SCALAR_MACROS[] = {
      {"blocks", nullptr},
      {{nullptr, nullptr}},
      "(\n"
-     "    SELECT coalesce(string_agg(\n"
+     "    SELECT '{\"@\":' || to_json((SELECT extension_version FROM duckdb_extensions()\n"
+     "                               WHERE extension_name = 'duck_block_utils')) || '}' || chr(10)\n"
+     "        || coalesce(string_agg(\n"
      "        '{' || concat_ws(',',\n"
      "            '\"t\":' || to_json(coalesce(\n"
-     "                MAP {'block:heading': 'h', 'block:paragraph': 'p', 'block:list_item': 'i',\n"
-     "                     'block:list': 'l', 'block:blockquote': 'q', 'block:code': 'C', 'block:div': 'd',\n"
-     "                     'block:table': 'T', 'block:raw': 'R', 'block:hr': 'r', 'block:figure': 'f',\n"
-     "                     'block:section': 's', 'block:plain': 'P', 'block:caption': 'n',\n"
-     "                     'inline:text': 'x', 'inline:space': 'S', 'inline:bold': 'b', 'inline:italic': 'e',\n"
-     "                     'inline:code': 'c', 'inline:strikethrough': 'k', 'inline:link': 'a',\n"
-     "                     'inline:note': 'N', 'inline:image': 'g', 'inline:subscript': 'v',\n"
-     "                     'inline:superscript': 'u', 'inline:cite': 'z', 'inline:raw': 'w',\n"
-     "                     'inline:caption': 'o', 'inline:span': 'y', 'inline:linebreak': 'B',\n"
-     "                     'inline:softbreak': 'j', 'value:inlines': 'V', 'value:list': 'L',\n"
-     "                     'value:string': 'Z', 'value:map': 'M'}[b.kind || ':' || b.element_type],\n"
+     "                MAP {'block:document': 'O', 'block:heading': 'H', 'block:paragraph': 'P',\n"
+     "                     'block:plain': 'N', 'block:code': 'C', 'block:blockquote': 'Q', 'block:list': 'L',\n"
+     "                     'block:list_item': 'I', 'block:deflist': 'E', 'block:lineblock': 'B',\n"
+     "                     'block:table': 'T', 'block:hr': 'R', 'block:page_break': 'K', 'block:metadata': 'M',\n"
+     "                     'block:image': 'G', 'block:raw': 'W', 'block:div': 'D', 'block:section': 'S',\n"
+     "                     'block:figure': 'F', 'block:caption': 'A', 'block:generic': 'X', 'inline:text': 't',\n"
+     "                     'inline:space': 's', 'inline:softbreak': 'j', 'inline:linebreak': 'r',\n"
+     "                     'inline:code': 'c', 'inline:math': 'm', 'inline:raw': 'w', 'inline:bold': 'b',\n"
+     "                     'inline:italic': 'i', 'inline:strikethrough': 'k', 'inline:superscript': 'u',\n"
+     "                     'inline:subscript': 'd', 'inline:smallcaps': 'z', 'inline:underline': 'l',\n"
+     "                     'inline:link': 'a', 'inline:image': 'g', 'inline:quoted': 'q', 'inline:span': 'p',\n"
+     "                     'inline:cite': 'e', 'inline:note': 'f', 'inline:generic': 'x', 'value:string': '$',\n"
+     "                     'value:bool': '?', 'value:list': '[', 'value:map': '{', 'value:inlines': '~',\n"
+     "                     'value:blocks': '#', 'value:version': '@', 'value:generic': '*'}[b.kind || ':' || "
+     "b.element_type],\n"
      "                b.kind || ':' || b.element_type)),\n"
      "            CASE WHEN b.content IS NOT NULL THEN '\"c\":' || to_json(b.content) END,\n"
      "            '\"l\":' || CASE WHEN b.level IS NULL\n"
@@ -317,8 +332,9 @@ static const DocScalarMacro DOC_SCALAR_MACROS[] = {
      "x))\n"
      ")"},
     // The reader numbers lines itself (list_transform's index), so the order never
-    // depends on how DuckDB schedules a scan. Empty lines are skipped, so files
-    // concatenate. An unknown code without a colon is refused rather than guessed at.
+    // depends on how DuckDB schedules a scan. Empty lines and header lines (an "@" and
+    // no "t") are skipped, so files concatenate. An unknown type code without a colon,
+    // or an unknown attribute code, is refused rather than guessed at or dropped.
     {DEFAULT_SCHEMA,
      "duck_blocks_from_compact",
      {"compact", nullptr},
@@ -349,25 +365,34 @@ static const DocScalarMacro DOC_SCALAR_MACROS[] = {
      "    FROM (\n"
      "        SELECT n, j, (row_number() OVER (ORDER BY n) - 1)::INTEGER AS ord,\n"
      "               coalesce(\n"
-     "                   MAP {'h': 'block:heading', 'p': 'block:paragraph', 'i': 'block:list_item',\n"
-     "                        'l': 'block:list', 'q': 'block:blockquote', 'C': 'block:code', 'd': 'block:div',\n"
-     "                        'T': 'block:table', 'R': 'block:raw', 'r': 'block:hr', 'f': 'block:figure',\n"
-     "                        's': 'block:section', 'P': 'block:plain', 'n': 'block:caption',\n"
-     "                        'x': 'inline:text', 'S': 'inline:space', 'b': 'inline:bold', 'e': 'inline:italic',\n"
-     "                        'c': 'inline:code', 'k': 'inline:strikethrough', 'a': 'inline:link',\n"
-     "                        'N': 'inline:note', 'g': 'inline:image', 'v': 'inline:subscript',\n"
-     "                        'u': 'inline:superscript', 'z': 'inline:cite', 'w': 'inline:raw',\n"
-     "                        'o': 'inline:caption', 'y': 'inline:span', 'B': 'inline:linebreak',\n"
-     "                        'j': 'inline:softbreak', 'V': 'value:inlines', 'L': 'value:list',\n"
-     "                        'Z': 'value:string', 'M': 'value:map'}[j.t],\n"
+     "                   MAP {'O': 'block:document', 'H': 'block:heading', 'P': 'block:paragraph',\n"
+     "                        'N': 'block:plain', 'C': 'block:code', 'Q': 'block:blockquote', 'L': 'block:list',\n"
+     "                        'I': 'block:list_item', 'E': 'block:deflist', 'B': 'block:lineblock',\n"
+     "                        'T': 'block:table', 'R': 'block:hr', 'K': 'block:page_break', 'M': 'block:metadata',\n"
+     "                        'G': 'block:image', 'W': 'block:raw', 'D': 'block:div', 'S': 'block:section',\n"
+     "                        'F': 'block:figure', 'A': 'block:caption', 'X': 'block:generic', 't': 'inline:text',\n"
+     "                        's': 'inline:space', 'j': 'inline:softbreak', 'r': 'inline:linebreak',\n"
+     "                        'c': 'inline:code', 'm': 'inline:math', 'w': 'inline:raw', 'b': 'inline:bold',\n"
+     "                        'i': 'inline:italic', 'k': 'inline:strikethrough', 'u': 'inline:superscript',\n"
+     "                        'd': 'inline:subscript', 'z': 'inline:smallcaps', 'l': 'inline:underline',\n"
+     "                        'a': 'inline:link', 'g': 'inline:image', 'q': 'inline:quoted', 'p': 'inline:span',\n"
+     "                        'e': 'inline:cite', 'f': 'inline:note', 'x': 'inline:generic', '$': 'value:string',\n"
+     "                        '?': 'value:bool', '[': 'value:list', '{': 'value:map', '~': 'value:inlines',\n"
+     "                        '#': 'value:blocks', '@': 'value:version', '*': 'value:generic'}[j.t],\n"
      "                   CASE WHEN contains(j.t, ':') THEN j.t\n"
      "                        ELSE error('duck_blocks_from_compact: unknown type code ' || coalesce(to_json(j.t), "
      "'NULL')\n"
      "                                   || ' on line ' || n::VARCHAR) END) AS t\n"
      "        FROM (\n"
      "            SELECT x.n AS n,\n"
-     "                   from_json(x.line, '{\"t\": \"VARCHAR\", \"c\": \"VARCHAR\", \"l\": \"INTEGER\", \"e\": "
-     "\"VARCHAR\",\n"
+     "                   CASE WHEN len(list_filter(coalesce(json_keys(x.line, '$.a'), []), lambda k: k NOT IN (\n"
+     "                            'c', 'i', 's', 'h', 't', 'o', 'k', 'r', 'w', 'f', 'u', 'g', 'd', 'y', 'n', 'm',\n"
+     "                            'a', 'l', 'p', 'x', 'e'))) > 0\n"
+     "                        THEN error('duck_blocks_from_compact: unknown attribute code on line ' || x.n::VARCHAR\n"
+     "                                   || ': ' || to_json(json_keys(x.line, '$.a')))\n"
+     "                   END AS refused,\n"
+     "                   from_json(x.line, '{\"@\": \"VARCHAR\", \"t\": \"VARCHAR\", \"c\": \"VARCHAR\", \"l\": "
+     "\"INTEGER\", \"e\": \"VARCHAR\",\n"
      "                       \"a\": {\"c\": \"VARCHAR\", \"i\": \"VARCHAR\", \"s\": \"VARCHAR\", \"h\": \"VARCHAR\", "
      "\"t\": \"VARCHAR\",\n"
      "                             \"o\": \"VARCHAR\", \"k\": \"VARCHAR\", \"r\": \"VARCHAR\", \"w\": \"VARCHAR\", "
@@ -382,6 +407,7 @@ static const DocScalarMacro DOC_SCALAR_MACROS[] = {
      "                                               lambda line, i: {line: line, n: i})) AS x)\n"
      "            WHERE x.line <> ''\n"
      "        )\n"
+     "        WHERE NOT (j.t IS NULL AND j.\"@\" IS NOT NULL) AND refused IS NULL\n"
      "    )\n"
      ")"},
     {nullptr, nullptr, {nullptr}, {{nullptr, nullptr}}, nullptr}};
