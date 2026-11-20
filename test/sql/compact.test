@@ -23,11 +23,38 @@ require json
 #   m  every other attribute key, unchanged      when the element has one
 #
 # element_order is NOT written: the line number, from 0, is the order.
+#
+# THE FIRST LINE IS A HEADER, not an element: {"@":"<duck_block_utils version>"}. The type
+# and attribute code tables are versioned with duck_block_utils, so the header names the
+# table a file was written with. A line with "@" and no "t" is a header wherever it
+# appears, so concatenated files still read.
+#
+# TYPE CODES FOLLOW A CONVENTION: a block is UPPERCASE, an inline is lowercase, a value is
+# a symbol. A type that is both a block and an inline uses the same letter in both cases
+# (C block code, c inline code). Every type in the spec 1.4 vocabulary has a code.
+
+# compact_header(): the exact header this build writes. compact_body(s): the lines after
+# the header, with newlines shown as \n, for the exact-output tests below.
+statement ok
+CREATE MACRO compact_header() AS
+  '{"@":' || to_json((SELECT extension_version FROM duckdb_extensions() WHERE extension_name = 'duck_block_utils')) || '}' || chr(10);
+
+statement ok
+CREATE MACRO compact_body(s) AS replace(s[length(compact_header()) + 1:], chr(10), '\n');
+
+# ---------------------------------------------------------------------------------------
+# THE HEADER. It is the first line, it is one JSON object whose only key is "@", and its
+# value is the extension version DuckDB reports for this build.
+query II
+SELECT starts_with(duck_blocks_to_compact([]::duck_block[]), compact_header()),
+       json_keys(rtrim(compact_header(), chr(10)));
+----
+true	[@]
 
 # ---------------------------------------------------------------------------------------
 # THE LINE, exactly. These are the examples in the design note.
 query I
-SELECT replace(duck_blocks_to_compact([
+SELECT compact_body(duck_blocks_to_compact([
   {'kind':'block','element_type':'heading','content':'Heading Two','level':1,'encoding':'text',
    'attributes':MAP{'heading_level':'2','id':'heading-two'},'element_order':0},
   {'kind':'block','element_type':'paragraph','content':'','level':1,'encoding':'text',
@@ -35,23 +62,25 @@ SELECT replace(duck_blocks_to_compact([
   {'kind':'inline','element_type':'text','content':'plain','level':2,'encoding':'text',
    'attributes':MAP{}::MAP(VARCHAR, VARCHAR),'element_order':2},
   {'kind':'inline','element_type':'image','content':NULL,'level':3,'encoding':'text',
-   'attributes':MAP{'align':'center','src':'cat.png','width':'200px'},'element_order':3}]::duck_block[]), chr(10), '\n');
+   'attributes':MAP{'align':'center','src':'cat.png','width':'200px'},'element_order':3}]::duck_block[]));
 ----
-{"t":"h","c":"Heading Two","l":1,"a":{"h":"2","i":"heading-two"}}\n{"t":"p","c":"","l":1}\n{"t":"x","c":"plain","l":2}\n{"t":"g","l":3,"a":{"u":"cat.png"},"m":{"align":"center","width":"200px"}}\n
+{"t":"H","c":"Heading Two","l":1,"a":{"h":"2","i":"heading-two"}}\n{"t":"P","c":"","l":1}\n{"t":"t","c":"plain","l":2}\n{"t":"g","l":3,"a":{"u":"cat.png"},"m":{"align":"center","width":"200px"}}\n
 
 # Every line ends with a newline, including the last, so files concatenate.
 query I
 SELECT duck_blocks_to_compact([{'kind':'block','element_type':'hr','content':NULL,'level':1,
   'encoding':'text','attributes':MAP{}::MAP(VARCHAR, VARCHAR),'element_order':0}]::duck_block[])
-  = '{"t":"r","l":1}' || chr(10);
+  = compact_header() || '{"t":"R","l":1}' || chr(10);
 ----
 true
 
-# An empty document is the empty string, and reads back as an empty list.
-query II
-SELECT duck_blocks_to_compact([]::duck_block[]), len(duck_blocks_from_compact(''));
+# An empty document is the header alone. It, and the empty string, read back as an
+# empty list.
+query III
+SELECT duck_blocks_to_compact([]::duck_block[]) = compact_header(),
+       len(duck_blocks_from_compact(compact_header())), len(duck_blocks_from_compact(''));
 ----
-(empty)	0
+true	0	0
 
 # ---------------------------------------------------------------------------------------
 # NULL CONTENT AND "" STAY DISTINCT. 131 of 1,475 measured rows have NULL content and 232
@@ -81,7 +110,7 @@ CREATE TABLE hard AS SELECT [
 query I
 SELECT len(string_split(rtrim(duck_blocks_to_compact(blocks), chr(10)), chr(10))) FROM hard;
 ----
-2
+3
 
 query I
 SELECT duck_blocks_from_compact(duck_blocks_to_compact(blocks)) = blocks FROM hard;
@@ -92,13 +121,13 @@ true
 # ENCODING. 'text' is left out, 'json' is "j", and any other encoding is written as it is.
 # "t" and "j" are reserved as codes, so an encoding literally named one of them is refused.
 query I
-SELECT replace(duck_blocks_to_compact([
+SELECT compact_body(duck_blocks_to_compact([
   {'kind':'block','element_type':'table','content':'{"headers":["a"],"rows":[["1"]]}','level':1,'encoding':'json',
    'attributes':MAP{}::MAP(VARCHAR, VARCHAR),'element_order':0},
   {'kind':'block','element_type':'metadata','content':'a: 1','level':1,'encoding':'yaml',
-   'attributes':MAP{}::MAP(VARCHAR, VARCHAR),'element_order':1}]::duck_block[]), chr(10), '\n');
+   'attributes':MAP{}::MAP(VARCHAR, VARCHAR),'element_order':1}]::duck_block[]));
 ----
-{"t":"T","c":"{\"headers\":[\"a\"],\"rows\":[[\"1\"]]}","l":1,"e":"j"}\n{"t":"block:metadata","c":"a: 1","l":1,"e":"yaml"}\n
+{"t":"T","c":"{\"headers\":[\"a\"],\"rows\":[[\"1\"]]}","l":1,"e":"j"}\n{"t":"M","c":"a: 1","l":1,"e":"yaml"}\n
 
 statement error
 SELECT duck_blocks_to_compact([{'kind':'block','element_type':'raw','content':'x','level':1,
@@ -107,12 +136,19 @@ SELECT duck_blocks_to_compact([{'kind':'block','element_type':'raw','content':'x
 reserved
 
 # ---------------------------------------------------------------------------------------
-# A TYPE WITH NO CODE is written as kind:element_type and reads back unchanged. Above,
-# block metadata. Here an inline type, and an element_type that itself holds a colon.
+# A TYPE WITH NO CODE is written as kind:element_type and reads back unchanged: here an
+# inline caption (panduck emits one; the vocabulary has caption as a block only), and an
+# element_type that itself holds a colon.
+query I
+SELECT compact_body(duck_blocks_to_compact([{'kind':'inline','element_type':'caption','content':'Cap','level':1,
+  'encoding':'text','attributes':MAP{}::MAP(VARCHAR, VARCHAR),'element_order':0}]::duck_block[]));
+----
+{"t":"inline:caption","c":"Cap","l":1}\n
+
 query I
 SELECT duck_blocks_from_compact(duck_blocks_to_compact(blocks)) = blocks
 FROM (SELECT [
-  {'kind':'inline','element_type':'smallcaps','content':'Abc','level':1,'encoding':'text',
+  {'kind':'inline','element_type':'caption','content':'Cap','level':1,'encoding':'text',
    'attributes':MAP{}::MAP(VARCHAR, VARCHAR),'element_order':0},
   {'kind':'block','element_type':'x:custom','content':NULL,'level':1,'encoding':'text',
    'attributes':MAP{}::MAP(VARCHAR, VARCHAR),'element_order':1}]::duck_block[] AS blocks);
@@ -125,15 +161,59 @@ SELECT duck_blocks_from_compact('{"t":"zz","l":1}' || chr(10));
 ----
 unknown type code
 
+# Case carries the kind: C is a block code, c is inline code.
+query II
+SELECT b[1].kind || ':' || b[1].element_type, b[2].kind || ':' || b[2].element_type
+FROM (SELECT duck_blocks_from_compact('{"t":"C","l":1}' || chr(10) || '{"t":"c","l":2}' || chr(10)) AS b);
+----
+block:code	inline:code
+
+# EVERY TYPE IN THE VOCABULARY HAS A CODE: all 21 block, 21 inline and 8 value types are
+# written without the kind:element_type escape, and all of them read back unchanged.
+# Two types sharing a code would fail the round trip.
+statement ok
+CREATE TABLE every_type AS
+SELECT list({'kind': k, 'element_type': t, 'content': NULL, 'level': 1, 'encoding': 'text',
+             'attributes': MAP{}::MAP(VARCHAR, VARCHAR), 'element_order': (n - 1)::INTEGER} ORDER BY n)::duck_block[] AS blocks
+FROM (SELECT k, t, row_number() OVER () AS n FROM (VALUES
+  ('block','document'),('block','heading'),('block','paragraph'),('block','plain'),('block','code'),
+  ('block','blockquote'),('block','list'),('block','list_item'),('block','deflist'),('block','lineblock'),
+  ('block','table'),('block','hr'),('block','page_break'),('block','metadata'),('block','image'),
+  ('block','raw'),('block','div'),('block','section'),('block','figure'),('block','caption'),
+  ('block','generic'),
+  ('inline','text'),('inline','space'),('inline','softbreak'),('inline','linebreak'),('inline','code'),
+  ('inline','math'),('inline','raw'),('inline','bold'),('inline','italic'),('inline','strikethrough'),
+  ('inline','superscript'),('inline','subscript'),('inline','smallcaps'),('inline','underline'),
+  ('inline','link'),('inline','image'),('inline','quoted'),('inline','span'),('inline','cite'),
+  ('inline','note'),('inline','generic'),
+  ('value','string'),('value','bool'),('value','list'),('value','map'),('value','inlines'),
+  ('value','blocks'),('value','version'),('value','generic')) v(k, t));
+
+query II
+SELECT len(blocks), duck_blocks_from_compact(duck_blocks_to_compact(blocks)) = blocks
+FROM every_type;
+----
+50	true
+
+# The codes themselves, in that order: blocks, then inlines, then values. None is a
+# kind:element_type escape.
+query I
+SELECT string_agg(json_extract_string(line, '$.t'), ' ' ORDER BY n)
+FROM (SELECT unnest(string_split(rtrim(duck_blocks_to_compact(blocks), chr(10)), chr(10))[2:]) AS line,
+             generate_subscripts(string_split(rtrim(duck_blocks_to_compact(blocks), chr(10)), chr(10))[2:], 1) AS n
+      FROM every_type);
+----
+O H P N C Q L I E B T R K M G W D S F A X t s j r c m w b i k u d z l a g q p e f x $ ? [ { ~ # @ *
+
 # ---------------------------------------------------------------------------------------
 # ATTRIBUTES. Known keys go in `a` under their codes; every other key goes in `m`
 # unchanged. The two fields are separate, so an unknown key can never collide with a
 # code -- even an unknown key that IS a code letter, such as "c" (the code for class).
 query I
-SELECT replace(duck_blocks_to_compact([{'kind':'inline','element_type':'span','content':NULL,'level':1,
-  'encoding':'text','attributes':MAP{'c':'unknown-c','class':'note','lang':'fr'},'element_order':0}]::duck_block[]), chr(10), '\n');
+SELECT compact_body(duck_blocks_to_compact([{'kind':'inline','element_type':'span','content':NULL,'level':1,
+  'encoding':'text','attributes':MAP{'c':'unknown-c','class':'note','lang':'fr'},'element_order':0}]::duck_block[]));
 ----
-{"t":"y","l":1,"a":{"c":"note"},"m":{"c":"unknown-c","lang":"fr"}}\n
+{"t":"p","l":1,"a":{"c":"note"},"m":{"c":"unknown-c","lang":"fr"}}\n
 
 query I
 SELECT duck_blocks_from_compact(duck_blocks_to_compact(blocks)) = blocks
@@ -156,14 +236,14 @@ FROM (SELECT [{'kind':'block','element_type':'div','content':NULL,'level':1,'enc
 true
 
 query I
-SELECT replace(duck_blocks_to_compact([{'kind':'block','element_type':'div','content':NULL,'level':1,'encoding':'text',
+SELECT compact_body(duck_blocks_to_compact([{'kind':'block','element_type':'div','content':NULL,'level':1,'encoding':'text',
   'attributes':MAP{'alt':'1','class':'2','execution_count':'3','format':'4','heading_level':'5',
                    'href':'6','id':'7','key':'8','language':'9','link_type':'10','list_type':'11',
                    'number_delim':'12','number_style':'13','ordered':'14','pandoc_ast':'15',
                    'role':'16','source_type':'17','src':'18','start':'19','template_name':'20',
-                   'title':'21'},'element_order':0}]::duck_block[]), chr(10), '\n') AS line;
+                   'title':'21'},'element_order':0}]::duck_block[])) AS line;
 ----
-{"t":"d","l":1,"a":{"a":"1","c":"2","x":"3","f":"4","h":"5","w":"6","i":"7","k":"8","g":"9","l":"10","t":"11","d":"12","y":"13","o":"14","p":"15","r":"16","s":"17","u":"18","n":"19","m":"20","e":"21"}}\n
+{"t":"D","l":1,"a":{"a":"1","c":"2","x":"3","f":"4","h":"5","w":"6","i":"7","k":"8","g":"9","l":"10","t":"11","d":"12","y":"13","o":"14","p":"15","r":"16","s":"17","u":"18","n":"19","m":"20","e":"21"}}\n
 
 # ---------------------------------------------------------------------------------------
 # WHAT V1 DOES NOT CARRY is refused, not written as a default: a NULL level, encoding,
@@ -200,9 +280,17 @@ SELECT len(duck_blocks_to_compact([{'kind':'block','element_type':'paragraph','c
 ----
 true
 
+# An attribute code the reader does not know is REFUSED, like an unknown type code. A
+# newer duck_block_utils may add codes; an older reader that dropped the field would lose
+# the attribute with no error, so it stops instead.
+statement error
+SELECT duck_blocks_from_compact('{"t":"P","c":"x","l":1,"a":{"q":"from-a-newer-table","i":"id1"}}' || chr(10));
+----
+unknown attribute code
+
 # A line without "l" is refused on read.
 statement error
-SELECT duck_blocks_from_compact('{"t":"p","c":"x"}' || chr(10));
+SELECT duck_blocks_from_compact('{"t":"P","c":"x"}' || chr(10));
 ----
 missing level
 
@@ -228,7 +316,7 @@ FROM (SELECT unnest(duck_blocks_from_compact(duck_blocks_to_compact([
 # REAL DOCUMENTS. Three of the 16 measured fixtures, as `COPY ... (FORMAT json)` wrote them
 # from duckdb_panduck's readers: an RST file, an EPUB whose headings nest in sections (so a
 # heading's level and its heading_level differ), and a notebook. Each round-trips exactly,
-# and each line count equals the element count.
+# and each file has one line per element plus the header.
 statement ok
 CREATE TABLE fixtures AS
 SELECT parse_filename(filename) AS name,
@@ -245,9 +333,9 @@ SELECT name, len(blocks),
        duck_blocks_from_compact(duck_blocks_to_compact(blocks)) = blocks
 FROM fixtures ORDER BY name;
 ----
-constructs.rst.blocks.jsonl	49	49	true
-notebook.ipynb.blocks.jsonl	18	18	true
-pandoc.epub.blocks.jsonl	24	24	true
+constructs.rst.blocks.jsonl	49	50	true
+notebook.ipynb.blocks.jsonl	18	19	true
+pandoc.epub.blocks.jsonl	24	25	true
 
 # The output is a conforming duck_block list.
 query II
@@ -327,6 +415,18 @@ glob_a.compact.jsonl	0	a0
 glob_a.compact.jsonl	1	a1
 glob_b.compact.jsonl	0	b0
 
+# CONCATENATED output reads as one document: the second header is skipped, and the
+# numbering runs on across it.
+query I
+SELECT array_to_string(list_transform(duck_blocks_from_compact(
+  duck_blocks_to_compact([{'kind':'block','element_type':'paragraph','content':'one','level':1,'encoding':'text',
+    'attributes':MAP{}::MAP(VARCHAR, VARCHAR),'element_order':0}]::duck_block[])
+  || duck_blocks_to_compact([{'kind':'block','element_type':'paragraph','content':'two','level':1,'encoding':'text',
+    'attributes':MAP{}::MAP(VARCHAR, VARCHAR),'element_order':0}]::duck_block[])),
+  lambda b: b.element_order || ':' || b.content), ' ');
+----
+0:one 1:two
+
 # ---------------------------------------------------------------------------------------
 # ATTRIBUTE KEYS COME BACK SORTED. `a` and `m` are two objects, so the format cannot keep
 # the source's key order across them; the reader sorts instead. DuckDB compares MAPs in
@@ -345,6 +445,6 @@ FROM (SELECT unnest(duck_blocks_from_compact(duck_blocks_to_compact([
 # A BUILDER'S BLOCK IS WRITABLE. The legacy duck_block_heading(content, level) returned a
 # NULL level, so the writer refused it (#87).
 query I
-SELECT duck_blocks_to_compact([duck_block_heading('Intro', 1)]) = '{"t":"h","c":"Intro","l":1,"a":{"h":"1"}}' || chr(10);
+SELECT duck_blocks_to_compact([duck_block_heading('Intro', 1)]) = compact_header() || '{"t":"H","c":"Intro","l":1,"a":{"h":"1"}}' || chr(10);
 ----
 true
