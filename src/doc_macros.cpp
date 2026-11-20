@@ -220,6 +220,22 @@ static unique_ptr<CreateMacroInfo> CreateScalarMacroInfo(const DocScalarMacro &m
 	"                        || ': ' || to_json(json_keys(x.j.a)))\n"                                                  \
 	"             ELSE from_json(x.j.a, '" DBU_COMPACT_A_STRUCT "') END"
 
+// Every refusal, as one expression that is `true` for a line the format allows. It is used
+// as a ROW FILTER (WHERE, list_filter), not only inside the decode: a filter runs whatever
+// a query projects, a decode does not. On DuckDB v2.1-dev a count(*) read no decoded
+// column, so the error inside DBU_COMPACT_KT never ran and a bad file counted as 1 row.
+#define DBU_COMPACT_CHECK                                                                                              \
+	"CASE WHEN " DBU_COMPACT_TYPE_DECODE "[x.j.t] IS NULL AND NOT contains(coalesce(x.j.t, ''), ':')\n"                \
+	"         THEN error('duck_blocks_from_compact: unknown type code ' || coalesce(to_json(x.j.t), 'NULL')\n"         \
+	"                    || ' at element_order ' || x.ord::VARCHAR)\n"                                                 \
+	"     WHEN len(list_filter(coalesce(json_keys(x.j.a), []), lambda k: k NOT IN (" DBU_COMPACT_ATTR_CODES            \
+	"))) > 0\n"                                                                                                        \
+	"         THEN error('duck_blocks_from_compact: unknown attribute code at element_order ' || x.ord::VARCHAR\n"     \
+	"                    || ': ' || to_json(json_keys(x.j.a)))\n"                                                      \
+	"     WHEN x.j.l IS NULL\n"                                                                                        \
+	"         THEN error('duck_blocks_from_compact: missing level at element_order ' || x.ord::VARCHAR)\n"             \
+	"     ELSE true END"
+
 #define DBU_COMPACT_A_ENTRIES "{{A_ENTRIES}}"
 
 #define DBU_COMPACT_ELEMENT                                                                                            \
@@ -440,12 +456,13 @@ static const DocScalarMacro DOC_SCALAR_MACROS[] = {
      {"compact", nullptr},
      {{nullptr, nullptr}},
      "coalesce(list_transform(list_transform(\n"
-     "        list_transform(\n"
+     "        list_filter(list_transform(\n"
      "            list_filter(\n"
      "                list_transform(list_filter(string_split(compact, chr(10)), lambda line: line <> ''),\n"
      "                               lambda line: {j: from_json(line, '" DBU_COMPACT_LINE_STRUCT "'), ord: 0}),\n"
      "                lambda x: NOT (" DBU_COMPACT_IS_HEADER ")),\n"
      "            lambda x, i: {j: x.j, ord: (i - 1)::INTEGER}),\n"
+     "            lambda x: " DBU_COMPACT_CHECK "),\n"
      "        lambda x: {j: x.j, ord: x.ord, kt: " DBU_COMPACT_KT ", a: " DBU_COMPACT_A "}),\n"
      "        lambda r: " DBU_COMPACT_ELEMENT "), []::duck_block[])"},
     {nullptr, nullptr, {nullptr}, {{nullptr, nullptr}}, nullptr}};
@@ -676,6 +693,7 @@ static const DefaultTableMacro DOC_TABLE_MACROS[] = {
      "                WHERE NOT (j.t IS NULL AND j.\"@\" IS NOT NULL)\n"
      "            )\n"
      "        )\n"
+     "        WHERE " DBU_COMPACT_CHECK "\n"
      "    )\n"
      ")\n"
      "ORDER BY filename, b.element_order"},
