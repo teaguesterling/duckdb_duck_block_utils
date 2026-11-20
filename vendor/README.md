@@ -16,6 +16,7 @@ because this repo can always load itself.
 |---|---|---|
 | `duck_block_conformance.sql` | validity, error detail, advisory rules, and the declared kind / type / encoding lists, as DuckDB macros | DuckDB. Nothing else. |
 | `duck_block_normalize.hpp` | the spec 6.1 content rule as a transform — collapses a lone `plain` into its container, to a fixpoint | `duck_block_vocabulary.hpp` + DuckDB's `Value` API |
+| `duck_block_compact.hpp` | the compact line format: its type and attribute code tables, `TABLE_VERSION`, and a C++ codec (`Write`, `WriteLine`, `Read`, `ReadLine`) | `duck_block_vocabulary.hpp` + DuckDB's `Value` API + DuckDB's bundled yyjson |
 | `../src/include/duck_block_vocabulary.hpp` | the element_type / kind / attribute names as C++ constants | `<cstdint>`. Nothing else. |
 
 `duck_block_normalize.hpp` is **the implementation this extension itself calls** — not
@@ -24,6 +25,13 @@ include path, so there is exactly one version of the rule and it cannot drift fr
 one you vendored. Where a duplicate was unavoidable (`duck_block_conformance.sql`
 reimplements the validator in SQL) it is compared on every `make check`; here it was
 avoidable, so there is no duplicate to compare.
+
+`duck_block_compact.hpp` holds **the tables this extension's SQL is built from**:
+`src/doc_macros.cpp` fills the `{{NAME}}` pieces of `duck_blocks_to_compact`,
+`duck_blocks_from_compact` and `read_compact_blocks` from its arrays at load. Its C++
+codec is NOT called here -- the extension's readers and writer are SQL. What holds the
+codec and the SQL in step is `test/fixtures/compact/golden`: `compact.test` checks the
+SQL against it, and a consumer's tests should read the same files with the codec.
 
 Pass your own `duck_block` LogicalType as the second argument — the header does not
 define the type, and the rebuilt structs must match the vectors you put them in.

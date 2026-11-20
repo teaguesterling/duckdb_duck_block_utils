@@ -1,4 +1,5 @@
 #include "doc_macros.hpp"
+#include "duck_block_compact.hpp"
 #include "duckdb_compat.hpp"
 #include "register_helper.hpp"
 #include "duckdb/catalog/default/default_functions.hpp"
@@ -7,6 +8,8 @@
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/extension_helper.hpp"
+
+#include <functional>
 
 namespace duckdb {
 
@@ -144,34 +147,18 @@ static unique_ptr<CreateMacroInfo> CreateScalarMacroInfo(const DocScalarMacro &m
 	}
 }
 
-// GENERATED as one source: each piece below is used by more than one macro, or by
+// THE COMPACT LINE FORMAT'S SQL. Each piece below is used by more than one macro, or by
 // another piece, so it is written ONCE and joined by C string-literal concatenation.
-#define DBU_COMPACT_VERSION                                                                                            \
-	"(SELECT extension_version FROM duckdb_extensions() WHERE extension_name = 'duck_block_utils')"
+// A piece written "{{NAME}}" comes from the code tables in vendor/duck_block_compact.hpp:
+// CompactSql() fills it in at registration, so these macros and anything that vendors
+// that header use one set of codes, and the header's TABLE_VERSION is the "@" they write.
+#define DBU_COMPACT_VERSION "{{VERSION}}"
 
-#define DBU_COMPACT_TYPE_ENCODE                                                                                        \
-	"MAP {'block:document': 'O', 'block:heading': 'H', 'block:paragraph': 'P', 'block:plain': 'N', 'block:code': "     \
-	"'C', 'block:blockquote': 'Q', 'block:list': 'L', 'block:list_item': 'I', 'block:deflist': 'E', "                  \
-	"'block:lineblock': 'B', 'block:table': 'T', 'block:hr': 'R', 'block:page_break': 'K', 'block:metadata': 'M', "    \
-	"'block:image': 'G', 'block:raw': 'W', 'block:div': 'D', 'block:section': 'S', 'block:figure': 'F', "              \
-	"'block:caption': 'A', 'block:generic': 'X', 'inline:text': 't', 'inline:space': 's', 'inline:softbreak': 'j', "   \
-	"'inline:linebreak': 'r', 'inline:code': 'c', 'inline:math': 'm', 'inline:raw': 'w', 'inline:bold': 'b', "         \
-	"'inline:italic': 'i', 'inline:strikethrough': 'k', 'inline:superscript': 'u', 'inline:subscript': 'd', "          \
-	"'inline:smallcaps': 'z', 'inline:underline': 'l', 'inline:link': 'a', 'inline:image': 'g', 'inline:quoted': "     \
-	"'q', 'inline:span': 'p', 'inline:cite': 'e', 'inline:note': 'f', 'inline:generic': 'x', 'value:string': '$', "    \
-	"'value:bool': '?', 'value:list': '[', 'value:map': '{', 'value:inlines': '~', 'value:blocks': '#', "              \
-	"'value:version': '@', 'value:generic': '*'}"
+#define DBU_COMPACT_TYPE_ENCODE "{{TYPE_ENCODE}}"
 
-#define DBU_COMPACT_ATTR_KEYS                                                                                          \
-	"'class', 'id', 'source_type', 'heading_level', 'list_type', 'ordered', 'key', 'role', 'href', 'format', 'src', "  \
-	"'language', 'number_delim', 'number_style', 'start', 'template_name', 'alt', 'link_type', 'pandoc_ast', "         \
-	"'execution_count', 'title'"
+#define DBU_COMPACT_ATTR_KEYS "{{ATTR_KEYS}}"
 
-#define DBU_COMPACT_ATTR_ENCODE                                                                                        \
-	"MAP {'class': 'c', 'id': 'i', 'source_type': 's', 'heading_level': 'h', 'list_type': 't', 'ordered': 'o', "       \
-	"'key': 'k', 'role': 'r', 'href': 'w', 'format': 'f', 'src': 'u', 'language': 'g', 'number_delim': 'd', "          \
-	"'number_style': 'y', 'start': 'n', 'template_name': 'm', 'alt': 'a', 'link_type': 'l', 'pandoc_ast': 'p', "       \
-	"'execution_count': 'x', 'title': 'e'}"
+#define DBU_COMPACT_ATTR_ENCODE "{{ATTR_ENCODE}}"
 
 #define DBU_COMPACT_LINE                                                                                               \
 	"'{' || concat_ws(',',\n"                                                                                          \
@@ -213,18 +200,7 @@ static unique_ptr<CreateMacroInfo> CreateScalarMacroInfo(const DocScalarMacro &m
 
 #define DBU_COMPACT_IS_HEADER "x.j.t IS NULL AND x.j.\"@\" IS NOT NULL"
 
-#define DBU_COMPACT_TYPE_DECODE                                                                                        \
-	"MAP {'O': 'block:document', 'H': 'block:heading', 'P': 'block:paragraph', 'N': 'block:plain', 'C': "              \
-	"'block:code', 'Q': 'block:blockquote', 'L': 'block:list', 'I': 'block:list_item', 'E': 'block:deflist', 'B': "    \
-	"'block:lineblock', 'T': 'block:table', 'R': 'block:hr', 'K': 'block:page_break', 'M': 'block:metadata', 'G': "    \
-	"'block:image', 'W': 'block:raw', 'D': 'block:div', 'S': 'block:section', 'F': 'block:figure', 'A': "              \
-	"'block:caption', 'X': 'block:generic', 't': 'inline:text', 's': 'inline:space', 'j': 'inline:softbreak', 'r': "   \
-	"'inline:linebreak', 'c': 'inline:code', 'm': 'inline:math', 'w': 'inline:raw', 'b': 'inline:bold', 'i': "         \
-	"'inline:italic', 'k': 'inline:strikethrough', 'u': 'inline:superscript', 'd': 'inline:subscript', 'z': "          \
-	"'inline:smallcaps', 'l': 'inline:underline', 'a': 'inline:link', 'g': 'inline:image', 'q': 'inline:quoted', "     \
-	"'p': 'inline:span', 'e': 'inline:cite', 'f': 'inline:note', 'x': 'inline:generic', '$': 'value:string', '?': "    \
-	"'value:bool', '[': 'value:list', '{': 'value:map', '~': 'value:inlines', '#': 'value:blocks', '@': "              \
-	"'value:version', '*': 'value:generic'}"
+#define DBU_COMPACT_TYPE_DECODE "{{TYPE_DECODE}}"
 
 #define DBU_COMPACT_KT                                                                                                 \
 	"coalesce(" DBU_COMPACT_TYPE_DECODE "[x.j.t],\n"                                                                   \
@@ -233,14 +209,9 @@ static unique_ptr<CreateMacroInfo> CreateScalarMacroInfo(const DocScalarMacro &m
 	"'NULL')\n"                                                                                                        \
 	"                                 || ' at element_order ' || x.ord::VARCHAR) END)"
 
-#define DBU_COMPACT_ATTR_CODES                                                                                         \
-	"'c', 'i', 's', 'h', 't', 'o', 'k', 'r', 'w', 'f', 'u', 'g', 'd', 'y', 'n', 'm', 'a', 'l', 'p', 'x', 'e'"
+#define DBU_COMPACT_ATTR_CODES "{{ATTR_CODES}}"
 
-#define DBU_COMPACT_A_STRUCT                                                                                           \
-	"{\"c\": \"VARCHAR\", \"i\": \"VARCHAR\", \"s\": \"VARCHAR\", \"h\": \"VARCHAR\", \"t\": \"VARCHAR\", \"o\": "     \
-	"\"VARCHAR\", \"k\": \"VARCHAR\", \"r\": \"VARCHAR\", \"w\": \"VARCHAR\", \"f\": \"VARCHAR\", \"u\": "             \
-	"\"VARCHAR\", \"g\": \"VARCHAR\", \"d\": \"VARCHAR\", \"y\": \"VARCHAR\", \"n\": \"VARCHAR\", \"m\": "             \
-	"\"VARCHAR\", \"a\": \"VARCHAR\", \"l\": \"VARCHAR\", \"p\": \"VARCHAR\", \"x\": \"VARCHAR\", \"e\": \"VARCHAR\"}"
+#define DBU_COMPACT_A_STRUCT "{{A_STRUCT}}"
 
 #define DBU_COMPACT_A                                                                                                  \
 	"CASE WHEN len(list_filter(coalesce(json_keys(x.j.a), []), lambda k: k NOT IN (" DBU_COMPACT_ATTR_CODES            \
@@ -249,13 +220,7 @@ static unique_ptr<CreateMacroInfo> CreateScalarMacroInfo(const DocScalarMacro &m
 	"                        || ': ' || to_json(json_keys(x.j.a)))\n"                                                  \
 	"             ELSE from_json(x.j.a, '" DBU_COMPACT_A_STRUCT "') END"
 
-#define DBU_COMPACT_A_ENTRIES                                                                                          \
-	"[{k: 'class', v: r.a.c}, {k: 'id', v: r.a.i}, {k: 'source_type', v: r.a.s}, {k: 'heading_level', v: r.a.h}, {k: " \
-	"'list_type', v: r.a.t}, {k: 'ordered', v: r.a.o}, {k: 'key', v: r.a.k}, {k: 'role', v: r.a.r}, {k: 'href', v: "   \
-	"r.a.w}, {k: 'format', v: r.a.f}, {k: 'src', v: r.a.u}, {k: 'language', v: r.a.g}, {k: 'number_delim', v: "        \
-	"r.a.d}, {k: 'number_style', v: r.a.y}, {k: 'start', v: r.a.n}, {k: 'template_name', v: r.a.m}, {k: 'alt', v: "    \
-	"r.a.a}, {k: 'link_type', v: r.a.l}, {k: 'pandoc_ast', v: r.a.p}, {k: 'execution_count', v: r.a.x}, {k: 'title', " \
-	"v: r.a.e}]"
+#define DBU_COMPACT_A_ENTRIES "{{A_ENTRIES}}"
 
 #define DBU_COMPACT_ELEMENT                                                                                            \
 	"struct_pack(\n"                                                                                                   \
@@ -271,6 +236,70 @@ static unique_ptr<CreateMacroInfo> CreateScalarMacroInfo(const DocScalarMacro &m
 	"                coalesce(r.j.m, MAP {}::MAP(VARCHAR, VARCHAR)),\n"                                                \
 	"                map_from_entries(list_filter(" DBU_COMPACT_A_ENTRIES ", lambda e: e.v IS NOT NULL)))))),\n"       \
 	"            element_order := r.ord)::duck_block"
+
+//! Fill the {{NAME}} pieces of a compact macro's text from the tables in
+//! vendor/duck_block_compact.hpp. Text without "{{" is returned unchanged.
+static string CompactSql(const char *text) {
+	string sql(text);
+	if (sql.find("{{") == string::npos) {
+		return sql;
+	}
+	namespace cmp = duck_block::compact;
+	auto join = [](idx_t n, const std::function<string(idx_t)> &item) {
+		string out;
+		for (idx_t i = 0; i < n; i++) {
+			out += (i ? ", " : "") + item(i);
+		}
+		return out;
+	};
+	auto kt = [&](idx_t i) {
+		return string(cmp::TYPE_CODES[i].kind) + ":" + cmp::TYPE_CODES[i].element_type;
+	};
+	const vector<std::pair<string, string>> pieces = {
+	    {"{{VERSION}}", string("'") + cmp::TABLE_VERSION + "'"},
+	    {"{{TYPE_ENCODE}}",
+	     "MAP {" +
+	         join(cmp::TYPE_CODE_COUNT, [&](idx_t i) { return "'" + kt(i) + "': '" + cmp::TYPE_CODES[i].code + "'"; }) +
+	         "}"},
+	    {"{{TYPE_DECODE}}",
+	     "MAP {" +
+	         join(cmp::TYPE_CODE_COUNT,
+	              [&](idx_t i) { return string("'") + cmp::TYPE_CODES[i].code + "': '" + kt(i) + "'"; }) +
+	         "}"},
+	    {"{{ATTR_KEYS}}",
+	     join(cmp::ATTR_CODE_COUNT, [&](idx_t i) { return string("'") + cmp::ATTR_CODES[i].key + "'"; })},
+	    {"{{ATTR_ENCODE}}", "MAP {" +
+	                            join(cmp::ATTR_CODE_COUNT,
+	                                 [&](idx_t i) {
+		                                 return string("'") + cmp::ATTR_CODES[i].key + "': '" +
+		                                        cmp::ATTR_CODES[i].code + "'";
+	                                 }) +
+	                            "}"},
+	    {"{{ATTR_CODES}}",
+	     join(cmp::ATTR_CODE_COUNT, [&](idx_t i) { return string("'") + cmp::ATTR_CODES[i].code + "'"; })},
+	    {"{{A_STRUCT}}", "{" +
+	                         join(cmp::ATTR_CODE_COUNT,
+	                              [&](idx_t i) { return string("\"") + cmp::ATTR_CODES[i].code + "\": \"VARCHAR\""; }) +
+	                         "}"},
+	    {"{{A_ENTRIES}}", "[" +
+	                          join(cmp::ATTR_CODE_COUNT,
+	                               [&](idx_t i) {
+		                               return string("{k: '") + cmp::ATTR_CODES[i].key + "', v: r.a." +
+		                                      cmp::ATTR_CODES[i].code + "}";
+	                               }) +
+	                          "]"},
+	};
+	for (auto &piece : pieces) {
+		for (auto at = sql.find(piece.first); at != string::npos;
+		     at = sql.find(piece.first, at + piece.second.size())) {
+			sql.replace(at, piece.first.size(), piece.second);
+		}
+	}
+	if (sql.find("{{") != string::npos) {
+		throw InternalException("compact macro text has an unfilled piece: %s", sql.substr(sql.find("{{"), 40));
+	}
+	return sql;
+}
 
 static const DocScalarMacro DOC_SCALAR_MACROS[] = {
     {DEFAULT_SCHEMA,
@@ -670,7 +699,11 @@ void DocMacros::Register(ExtensionLoader &loader) {
 
 	// 2. The document-query macros, at LOAD (see above)
 	for (idx_t i = 0; DOC_SCALAR_MACROS[i].name != nullptr; i++) {
-		auto info = CreateScalarMacroInfo(DOC_SCALAR_MACROS[i]);
+		// `text` outlives the call: the macro is parsed immediately, nothing keeps a pointer.
+		const string text = CompactSql(DOC_SCALAR_MACROS[i].macro);
+		DocScalarMacro m = DOC_SCALAR_MACROS[i];
+		m.macro = text.c_str();
+		auto info = CreateScalarMacroInfo(m);
 		FunctionDescription desc;
 		desc.categories = {"duck_block_utils"};
 		info->descriptions.push_back(desc);
@@ -678,7 +711,10 @@ void DocMacros::Register(ExtensionLoader &loader) {
 		loader.RegisterFunction(*info);
 	}
 	for (idx_t i = 0; DOC_TABLE_MACROS[i].name != nullptr; i++) {
-		auto info = DefaultTableFunctionGenerator::CreateTableMacroInfo(DOC_TABLE_MACROS[i]);
+		const string text = CompactSql(DOC_TABLE_MACROS[i].macro);
+		DefaultTableMacro m = DOC_TABLE_MACROS[i];
+		m.macro = text.c_str();
+		auto info = DefaultTableFunctionGenerator::CreateTableMacroInfo(m);
 		FunctionDescription desc;
 		desc.categories = {"duck_block_utils"};
 		info->descriptions.push_back(desc);
