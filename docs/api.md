@@ -855,6 +855,10 @@ non-empty lines, so input order gaps come back dense. Empty lines are skipped. A
 without `l`, or with a type code that is neither in the table nor of the form
 `kind:element_type`, is refused with an error.
 
+`attributes` comes back sorted by key. `a` and `m` are two objects, so the format cannot
+keep the source's key order across them. DuckDB compares MAPs in key order, so an
+element whose map was not sorted reads back equal to the sorted map, not to itself.
+
 ### read_compact_blocks
 
 ```sql
