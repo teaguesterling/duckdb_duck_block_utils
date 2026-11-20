@@ -27,13 +27,28 @@ SELECT duck_block_heading(1, 'My Title')[1].content;
 My Title
 
 # Test duck_block_heading sets heading_level in attributes (not level field).
-# `level` is NULL on a top-level block: it is structural nesting depth, and this
-# heading is not nested. The assertion used to expect 1, contradicting its own
-# comment and the spec, and disagreeing with pandoc_ast_to_blocks().
+# `level` is structural nesting depth, and a top-level block carries 1 (spec: "a
+# TOP-LEVEL element carries 1"). Earlier revisions documented NULL at top level;
+# duck_blocks_validate now rejects a NULL level.
 query I
 SELECT duck_block_heading(2, 'My Title')[1].level;
 ----
 1
+
+# The LEGACY overload, duck_block_heading(content, level), follows the same rule (#87).
+# It returned a NULL level, so its block failed duck_blocks_validate and
+# duck_blocks_to_compact refused it. Its second argument is the heading's RANK, kept in
+# attributes['heading_level']; it is not the depth.
+query III
+SELECT h.level, h.attributes['heading_level'], (duck_blocks_validate([h])).valid
+FROM (SELECT duck_block_heading('Intro', 3) AS h);
+----
+1	3	true
+
+query I
+SELECT duck_blocks_to_compact([duck_block_heading('Intro', 1)]) = '{"t":"h","c":"Intro","l":1,"a":{"h":"1"}}' || chr(10);
+----
+true
 
 # Test duck_block_heading stores heading level in attributes
 query I
