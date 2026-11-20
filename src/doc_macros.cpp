@@ -243,6 +243,147 @@ static const DocScalarMacro DOC_SCALAR_MACROS[] = {
      {"blocks", "first_page", "last_page", nullptr},
      {{nullptr, nullptr}},
      "duck_blocks_to_text(duck_blocks_get_pages(blocks, first_page, last_page))"},
+    // THE COMPACT LINE FORMAT. One JSON object per line, one line per element, in
+    // element_order order: `t` type code, `c` content, `l` level, `e` encoding, `a` known
+    // attribute keys under one-letter codes, `m` every other key unchanged. NULL content
+    // and default fields are left out, and the line number is the order. Design and
+    // measurements: duckdb_panduck docs/superpowers/specs/
+    // 2026-11-19-compact-blocks-line-format-design.md. THESE TWO MACROS ARE THE SOURCE
+    // of the type-code and attribute-code tables; docs/api.md restates them.
+    //
+    // A NULL level, encoding, attributes map or attribute value is REFUSED with an
+    // error, not written as a default: the format cannot carry it, and a default would
+    // read back as a value the element never had.
+    {DEFAULT_SCHEMA,
+     "duck_blocks_to_compact",
+     {"blocks", nullptr},
+     {{nullptr, nullptr}},
+     "(\n"
+     "    SELECT coalesce(string_agg(\n"
+     "        '{' || concat_ws(',',\n"
+     "            '\"t\":' || to_json(coalesce(\n"
+     "                MAP {'block:heading': 'h', 'block:paragraph': 'p', 'block:list_item': 'i',\n"
+     "                     'block:list': 'l', 'block:blockquote': 'q', 'block:code': 'C', 'block:div': 'd',\n"
+     "                     'block:table': 'T', 'block:raw': 'R', 'block:hr': 'r', 'block:figure': 'f',\n"
+     "                     'block:section': 's', 'block:plain': 'P', 'block:caption': 'n',\n"
+     "                     'inline:text': 'x', 'inline:space': 'S', 'inline:bold': 'b', 'inline:italic': 'e',\n"
+     "                     'inline:code': 'c', 'inline:strikethrough': 'k', 'inline:link': 'a',\n"
+     "                     'inline:note': 'N', 'inline:image': 'g', 'inline:subscript': 'v',\n"
+     "                     'inline:superscript': 'u', 'inline:cite': 'z', 'inline:raw': 'w',\n"
+     "                     'inline:caption': 'o', 'inline:span': 'y', 'inline:linebreak': 'B',\n"
+     "                     'inline:softbreak': 'j', 'value:inlines': 'V', 'value:list': 'L',\n"
+     "                     'value:string': 'Z', 'value:map': 'M'}[b.kind || ':' || b.element_type],\n"
+     "                b.kind || ':' || b.element_type)),\n"
+     "            CASE WHEN b.content IS NOT NULL THEN '\"c\":' || to_json(b.content) END,\n"
+     "            '\"l\":' || CASE WHEN b.level IS NULL\n"
+     "                           THEN error('duck_blocks_to_compact: NULL level at element_order ' || "
+     "b.element_order::VARCHAR)\n"
+     "                           ELSE b.level::VARCHAR END,\n"
+     "            CASE WHEN b.encoding IS NULL\n"
+     "                     THEN error('duck_blocks_to_compact: NULL encoding at element_order ' || "
+     "b.element_order::VARCHAR)\n"
+     "                 WHEN b.encoding = 'text' THEN NULL\n"
+     "                 WHEN b.encoding = 'json' THEN '\"e\":\"j\"'\n"
+     "                 WHEN b.encoding IN ('t', 'j')\n"
+     "                     THEN error('duck_blocks_to_compact: encoding ''' || b.encoding || ''' is a reserved code')\n"
+     "                 ELSE '\"e\":' || to_json(b.encoding) END,\n"
+     "            CASE WHEN b.attributes IS NULL\n"
+     "                     THEN error('duck_blocks_to_compact: NULL attributes at element_order ' || "
+     "b.element_order::VARCHAR)\n"
+     "                 WHEN list_bool_or(list_transform(map_entries(b.attributes), lambda e: e.value IS NULL))\n"
+     "                     THEN error('duck_blocks_to_compact: NULL attribute value at element_order ' || "
+     "b.element_order::VARCHAR)\n"
+     "                 END,\n"
+     "            nullif('\"a\":{' || array_to_string(list_transform(\n"
+     "                list_filter(map_entries(b.attributes), lambda e: e.key IN (\n"
+     "                    'class', 'id', 'source_type', 'heading_level', 'list_type', 'ordered', 'key', 'role',\n"
+     "                    'href', 'format', 'src', 'language', 'number_delim', 'number_style', 'start',\n"
+     "                    'template_name', 'alt', 'link_type', 'pandoc_ast', 'execution_count', 'title')),\n"
+     "                lambda e: to_json(MAP {'class': 'c', 'id': 'i', 'source_type': 's', 'heading_level': 'h',\n"
+     "                    'list_type': 't', 'ordered': 'o', 'key': 'k', 'role': 'r', 'href': 'w', 'format': 'f',\n"
+     "                    'src': 'u', 'language': 'g', 'number_delim': 'd', 'number_style': 'y', 'start': 'n',\n"
+     "                    'template_name': 'm', 'alt': 'a', 'link_type': 'l', 'pandoc_ast': 'p',\n"
+     "                    'execution_count': 'x', 'title': 'e'}[e.key]) || ':' || to_json(e.value)), ',') || '}',\n"
+     "                '\"a\":{}'),\n"
+     "            nullif('\"m\":{' || array_to_string(list_transform(\n"
+     "                list_filter(map_entries(b.attributes), lambda e: e.key NOT IN (\n"
+     "                    'class', 'id', 'source_type', 'heading_level', 'list_type', 'ordered', 'key', 'role',\n"
+     "                    'href', 'format', 'src', 'language', 'number_delim', 'number_style', 'start',\n"
+     "                    'template_name', 'alt', 'link_type', 'pandoc_ast', 'execution_count', 'title')),\n"
+     "                lambda e: to_json(e.key) || ':' || to_json(e.value)), ',') || '}',\n"
+     "                '\"m\":{}')\n"
+     "        ) || '}' || chr(10), '' ORDER BY b.element_order, n), '')\n"
+     "    FROM (SELECT x.b AS b, x.n AS n FROM (SELECT unnest(list_transform(blocks, lambda b, i: {b: b, n: i})) AS "
+     "x))\n"
+     ")"},
+    // The reader numbers lines itself (list_transform's index), so the order never
+    // depends on how DuckDB schedules a scan. Empty lines are skipped, so files
+    // concatenate. An unknown code without a colon is refused rather than guessed at.
+    {DEFAULT_SCHEMA,
+     "duck_blocks_from_compact",
+     {"compact", nullptr},
+     {{nullptr, nullptr}},
+     "(\n"
+     "    SELECT coalesce(list(\n"
+     "        struct_pack(\n"
+     "            kind := t[:position(':' IN t) - 1],\n"
+     "            element_type := t[position(':' IN t) + 1:],\n"
+     "            content := j.c,\n"
+     "            level := CASE WHEN j.l IS NULL\n"
+     "                          THEN error('duck_blocks_from_compact: missing level on line ' || n::VARCHAR)\n"
+     "                          ELSE j.l END,\n"
+     "            encoding := CASE coalesce(j.e, 't') WHEN 't' THEN 'text' WHEN 'j' THEN 'json' ELSE j.e END,\n"
+     "            attributes := map_from_entries(list_sort(map_entries(map_concat(\n"
+     "                coalesce(j.m, MAP {}::MAP(VARCHAR, VARCHAR)),\n"
+     "                map_from_entries(list_filter([\n"
+     "                    {k: 'class', v: j.a.c}, {k: 'id', v: j.a.i}, {k: 'source_type', v: j.a.s},\n"
+     "                    {k: 'heading_level', v: j.a.h}, {k: 'list_type', v: j.a.t}, {k: 'ordered', v: j.a.o},\n"
+     "                    {k: 'key', v: j.a.k}, {k: 'role', v: j.a.r}, {k: 'href', v: j.a.w},\n"
+     "                    {k: 'format', v: j.a.f}, {k: 'src', v: j.a.u}, {k: 'language', v: j.a.g},\n"
+     "                    {k: 'number_delim', v: j.a.d}, {k: 'number_style', v: j.a.y}, {k: 'start', v: j.a.n},\n"
+     "                    {k: 'template_name', v: j.a.m}, {k: 'alt', v: j.a.a}, {k: 'link_type', v: j.a.l},\n"
+     "                    {k: 'pandoc_ast', v: j.a.p}, {k: 'execution_count', v: j.a.x}, {k: 'title', v: j.a.e}],\n"
+     "                    lambda x: x.v IS NOT NULL)))))),\n"
+     "            element_order := ord\n"
+     "        )::duck_block ORDER BY n), []::duck_block[])\n"
+     "    FROM (\n"
+     "        SELECT n, j, (row_number() OVER (ORDER BY n) - 1)::INTEGER AS ord,\n"
+     "               coalesce(\n"
+     "                   MAP {'h': 'block:heading', 'p': 'block:paragraph', 'i': 'block:list_item',\n"
+     "                        'l': 'block:list', 'q': 'block:blockquote', 'C': 'block:code', 'd': 'block:div',\n"
+     "                        'T': 'block:table', 'R': 'block:raw', 'r': 'block:hr', 'f': 'block:figure',\n"
+     "                        's': 'block:section', 'P': 'block:plain', 'n': 'block:caption',\n"
+     "                        'x': 'inline:text', 'S': 'inline:space', 'b': 'inline:bold', 'e': 'inline:italic',\n"
+     "                        'c': 'inline:code', 'k': 'inline:strikethrough', 'a': 'inline:link',\n"
+     "                        'N': 'inline:note', 'g': 'inline:image', 'v': 'inline:subscript',\n"
+     "                        'u': 'inline:superscript', 'z': 'inline:cite', 'w': 'inline:raw',\n"
+     "                        'o': 'inline:caption', 'y': 'inline:span', 'B': 'inline:linebreak',\n"
+     "                        'j': 'inline:softbreak', 'V': 'value:inlines', 'L': 'value:list',\n"
+     "                        'Z': 'value:string', 'M': 'value:map'}[j.t],\n"
+     "                   CASE WHEN contains(j.t, ':') THEN j.t\n"
+     "                        ELSE error('duck_blocks_from_compact: unknown type code ' || coalesce(to_json(j.t), "
+     "'NULL')\n"
+     "                                   || ' on line ' || n::VARCHAR) END) AS t\n"
+     "        FROM (\n"
+     "            SELECT x.n AS n,\n"
+     "                   from_json(x.line, '{\"t\": \"VARCHAR\", \"c\": \"VARCHAR\", \"l\": \"INTEGER\", \"e\": "
+     "\"VARCHAR\",\n"
+     "                       \"a\": {\"c\": \"VARCHAR\", \"i\": \"VARCHAR\", \"s\": \"VARCHAR\", \"h\": \"VARCHAR\", "
+     "\"t\": \"VARCHAR\",\n"
+     "                             \"o\": \"VARCHAR\", \"k\": \"VARCHAR\", \"r\": \"VARCHAR\", \"w\": \"VARCHAR\", "
+     "\"f\": \"VARCHAR\",\n"
+     "                             \"u\": \"VARCHAR\", \"g\": \"VARCHAR\", \"d\": \"VARCHAR\", \"y\": \"VARCHAR\", "
+     "\"n\": \"VARCHAR\",\n"
+     "                             \"m\": \"VARCHAR\", \"a\": \"VARCHAR\", \"l\": \"VARCHAR\", \"p\": \"VARCHAR\", "
+     "\"x\": \"VARCHAR\",\n"
+     "                             \"e\": \"VARCHAR\"},\n"
+     "                       \"m\": \"MAP(VARCHAR, VARCHAR)\"}') AS j\n"
+     "            FROM (SELECT unnest(list_transform(string_split(compact, chr(10)),\n"
+     "                                               lambda line, i: {line: line, n: i})) AS x)\n"
+     "            WHERE x.line <> ''\n"
+     "        )\n"
+     "    )\n"
+     ")"},
     {nullptr, nullptr, {nullptr}, {{nullptr, nullptr}}, nullptr}};
 
 static const DefaultTableMacro DOC_TABLE_MACROS[] = {
@@ -438,6 +579,15 @@ static const DefaultTableMacro DOC_TABLE_MACROS[] = {
      {{nullptr, nullptr}},
      "SELECT section, start_order, duck_blocks_to_text(blocks) AS content\n"
      "    FROM duck_blocks_sections_like(doc, query_term)"},
+    // read_compact_blocks(path): one row per element, the seven canonical fields then
+    // `filename` (spec 6.4), so list(b) binds as a duck_block list. A glob reads many files.
+    {DEFAULT_SCHEMA,
+     "read_compact_blocks",
+     {"path", nullptr},
+     {{nullptr, nullptr}},
+     "SELECT b.kind, b.element_type, b.content, b.level, b.encoding, b.attributes, b.element_order, filename\n"
+     "FROM (SELECT filename, unnest(duck_blocks_from_compact(content)) AS b FROM read_text(path))\n"
+     "ORDER BY filename, b.element_order"},
     {nullptr, nullptr, {nullptr}, {{nullptr, nullptr}}, nullptr}};
 
 void DocMacros::Register(ExtensionLoader &loader) {
