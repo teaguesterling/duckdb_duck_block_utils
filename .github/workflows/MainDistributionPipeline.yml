@@ -156,10 +156,10 @@ jobs:
       # `0 passed, N skipped` survived here. With the guard the same condition
       # reads `require duck_block_utils: FAILED`.
       test_config: '{"test_env_variables": {"T": "--test-flags \"--require duck_block_utils\" \"test/*\""}}'
-  # THE SHIPPING LINE, now v2.0.0. The same commit, version and ci-tools branch as
+  # THE SHIPPING LINE, now v2.0.1. The same commit, version and ci-tools branch as
   # community-extensions' build.yml builds every descriptor with by default, so what
   # this repo ships is what the registry serves. Artifacts are named from
-  # duckdb_version, so they land as `duck_block_utils-v2.0.0-extension-<arch>`.
+  # duckdb_version, so they land as `duck_block_utils-v2.0.1-extension-<arch>`.
   # Since duckdb/community-extensions#3086 closed (2026-10-20) this leg runs the
   # tests itself; READ ITS `ran tests:` COUNT, not the check colour.
   #
@@ -173,11 +173,11 @@ jobs:
     name: Build extension binaries
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v2.0-cyanoptera
     with:
-      # v2.0.0 is semver-shaped, so ci_phase.py does not override it, and
+      # v2.0.1 is semver-shaped, so ci_phase.py does not override it, and
       # duckdb_commit selects the checkout. A branch name here would break every
       # `require duck_block_utils` -- see the note on duckdb-next-build above.
-      duckdb_version: v2.0.0
-      duckdb_commit: d54cbbe3df17e8e5ce68312f483b4155836112aa
+      duckdb_version: v2.0.1
+      duckdb_commit: 8d78114e90a53823803660bf821f6073ac87da8c
       ci_tools_version: v2.0-cyanoptera
       extension_name: duck_block_utils
       # REQUIRED on the shipping leg. Without it an extension that fails to load
@@ -193,7 +193,7 @@ jobs:
     name: Code Quality Check
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_code_quality.yml@v2.0-cyanoptera
     with:
-      duckdb_version: v2.0.0
+      duckdb_version: v2.0.1
       ci_tools_version: v2.0-cyanoptera
       extension_name: duck_block_utils
       format_checks: 'format;tidy'
@@ -217,14 +217,14 @@ jobs:
     # required-check configuration may key on this job name.
     runs-on: ubuntu-latest
     env:
-      DUCKDB_COMMIT: d54cbbe3df17e8e5ce68312f483b4155836112aa
+      DUCKDB_COMMIT: 8d78114e90a53823803660bf821f6073ac87da8c
       # The version the build reports, passed as duckdb_version while duckdb_commit
       # selects the checkout. It must be a short release-shaped string: the
       # extension's metadata stamps at most 32 bytes of it, and DuckDB refuses to
       # load a file whose stamp differs from its own version, so a bare 40-char
       # commit as duckdb_version makes every `require duck_block_utils` fail
       # (duckdb/community-extensions#3086).
-      DUCKDB_VERSION: v2.0.0
+      DUCKDB_VERSION: v2.0.1
       DUCKDB_CI_TOOLS: v2.0-cyanoptera
       # The next line duckdb-next-build tests: the v2.0-cyanoptera tip, pinned as an
       # explicit STAGED VERSION + COMMIT pair (Teague, 2026-10-25; same form as
